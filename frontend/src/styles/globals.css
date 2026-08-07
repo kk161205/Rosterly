@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Only add custom CSS here for things Tailwind + DESIGN.md tokens genuinely
+   can't express. Default to utility classes using the generated tokens in
+   tailwind.config.js — see rules.md §2 rule 2. */
