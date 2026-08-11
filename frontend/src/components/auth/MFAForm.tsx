@@ -107,7 +107,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
       {errorMessage && (
         <div
           role="alert"
-          className="flex items-center gap-2.5 rounded-sm bg-error-container p-3 text-body-sm text-on-error-container border border-error/20"
+          className="flex items-center gap-2.5 rounded-md bg-error-container p-3 text-body-sm text-on-error-container border border-error/20"
         >
           <AlertCircle className="h-4 w-4 shrink-0 text-error" />
           <span>{errorMessage}</span>
@@ -116,7 +116,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
 
       {/* Success Notification for Resend */}
       {resendMessage && (
-        <div className="flex items-center gap-2 rounded-sm bg-tertiary-container p-3 text-body-sm text-on-tertiary-container">
+        <div className="flex items-center gap-2 rounded-md bg-tertiary-container p-3 text-body-sm text-on-tertiary-container">
           <RefreshCw className="h-4 w-4 shrink-0 text-tertiary animate-spin" />
           <span>{resendMessage}</span>
         </div>
@@ -138,7 +138,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
             onChange={(e) => handleDigitChange(idx, e.target.value)}
             onKeyDown={(e) => handleKeyDown(idx, e)}
             disabled={isLoading}
-            className="h-12 w-11 sm:w-12 rounded-sm border border-outline-variant text-center font-mono text-title-md font-bold text-on-surface bg-surface focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-60 transition-all duration-150"
+            className="h-12 w-11 sm:w-12 rounded-lg border border-outline-variant hover:border-outline text-center font-mono text-title-md font-bold text-on-surface bg-surface focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-60 transition-all duration-150"
             aria-label={`Digit ${idx + 1}`}
           />
         ))}
@@ -148,7 +148,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
       <button
         type="submit"
         disabled={isLoading || !isComplete}
-        className="w-full flex items-center justify-center gap-2 rounded-sm bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        className="w-full flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
       >
         {isLoading ? (
           <>
@@ -166,7 +166,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
           type="button"
           onClick={onBackToLogin}
           disabled={isLoading}
-          className="flex items-center gap-1.5 text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none"
+          className="flex items-center gap-1.5 text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Back to login</span>
@@ -176,7 +176,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
           type="button"
           onClick={handleResendCode}
           disabled={resendCooldown > 0 || isLoading}
-          className="text-accent hover:text-on-accent-container font-medium disabled:text-outline disabled:cursor-not-allowed transition-colors focus:outline-none"
+          className="text-accent hover:text-on-accent-container font-medium disabled:text-outline disabled:cursor-not-allowed transition-colors focus:outline-none cursor-pointer"
         >
           {resendCooldown > 0 ? (
             `Resend code in ${resendCooldown}s`
@@ -188,3 +188,4 @@ export const MFAForm: React.FC<MFAFormProps> = ({
     </form>
   )
 }
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Loader2, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, KeyRound, CheckCircle2, AlertCircle, Mail } from 'lucide-react'
 
 interface ForgotPasswordFormProps {
   onSubmit: (email: string) => Promise<void>
@@ -26,7 +26,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(val.trim())) {
-      setEmailError('Please enter a valid email address')
+      setEmailError('Please enter a valid work email')
       return false
     }
     setEmailError(null)
@@ -63,7 +63,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
 
       {/* Success Notification */}
       {isSuccess ? (
-        <div className="space-y-5 rounded-sm bg-surface-container-low p-4 border border-outline-variant text-center animate-fadeIn">
+        <div className="space-y-5 rounded-lg bg-surface-container-low p-5 border border-outline-variant text-center animate-fadeIn">
           <div className="flex justify-center text-tertiary">
             <CheckCircle2 className="h-8 w-8 text-tertiary" />
           </div>
@@ -78,18 +78,18 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
           <button
             type="button"
             onClick={onBackToLogin}
-            className="w-full flex items-center justify-center gap-1.5 rounded-sm bg-accent px-4 py-2 text-body-sm font-medium text-on-accent hover:bg-accent/90 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 rounded-md bg-accent px-4 py-2.5 text-body-sm font-medium text-on-accent hover:bg-accent/90 transition-colors cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>Return to Login</span>
           </button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {errorMessage && (
             <div
               role="alert"
-              className="flex items-center gap-2.5 rounded-sm bg-error-container p-3 text-body-sm text-on-error-container border border-error/20"
+              className="flex items-center gap-2.5 rounded-md bg-error-container p-3 text-body-sm text-on-error-container border border-error/20"
             >
               <AlertCircle className="h-4 w-4 shrink-0 text-error" />
               <span>{errorMessage}</span>
@@ -103,26 +103,31 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
             >
               Work Email
             </label>
-            <input
-              id="forgot-email"
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                if (emailTouched) validateEmail(e.target.value)
-              }}
-              onBlur={() => {
-                setEmailTouched(true)
-                validateEmail(email)
-              }}
-              placeholder="name@company.com"
-              disabled={isLoading}
-              className={`w-full rounded-sm border px-3.5 py-2.5 text-body-md text-on-surface bg-surface placeholder:text-outline/70 transition-all duration-150 focus:outline-none ${
-                emailTouched && emailError
-                  ? 'border-error ring-1 ring-error/20'
-                  : 'border-outline-variant focus:border-accent focus:ring-2 focus:ring-accent/15'
-              } disabled:opacity-60 disabled:cursor-not-allowed`}
-            />
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-on-surface-variant/70">
+                <Mail className="h-4 w-4" />
+              </div>
+              <input
+                id="forgot-email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  if (emailTouched) validateEmail(e.target.value)
+                }}
+                onBlur={() => {
+                  setEmailTouched(true)
+                  validateEmail(email)
+                }}
+                placeholder="alex.chen@rosterly.example"
+                disabled={isLoading}
+                className={`w-full rounded-md border pl-10 pr-3.5 py-2.5 text-body-md text-on-surface bg-surface placeholder:text-on-surface-variant/40 transition-all duration-150 focus:outline-none ${
+                  emailTouched && emailError
+                    ? 'border-error ring-1 ring-error/20'
+                    : 'border-outline-variant hover:border-outline focus:border-accent focus:ring-2 focus:ring-accent/15'
+                } disabled:opacity-60 disabled:cursor-not-allowed`}
+              />
+            </div>
             {emailTouched && emailError && (
               <p className="text-body-sm text-error mt-1">{emailError}</p>
             )}
@@ -131,7 +136,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
           <button
             type="submit"
             disabled={isLoading || !email}
-            className="w-full flex items-center justify-center gap-2 rounded-sm bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer mt-2"
           >
             {isLoading ? (
               <>
@@ -148,7 +153,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
               type="button"
               onClick={onBackToLogin}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 text-body-sm text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none"
+              className="inline-flex items-center gap-1.5 text-body-sm text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none cursor-pointer"
             >
               <ArrowLeft className="h-4 w-4" />
               <span>Back to login</span>
@@ -159,3 +164,4 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     </div>
   )
 }
+

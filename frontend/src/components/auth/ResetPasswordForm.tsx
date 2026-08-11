@@ -59,12 +59,12 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
           Set New Password
         </h2>
         <p className="text-body-sm text-on-surface-variant max-w-xs">
-          Please enter your new password below.
+          Please enter your new secure password below.
         </p>
       </div>
 
       {isSuccess ? (
-        <div className="space-y-5 rounded-sm bg-surface-container-low p-4 border border-outline-variant text-center animate-fadeIn">
+        <div className="space-y-5 rounded-lg bg-surface-container-low p-5 border border-outline-variant text-center animate-fadeIn">
           <div className="flex justify-center text-tertiary">
             <CheckCircle2 className="h-8 w-8 text-tertiary" />
           </div>
@@ -79,17 +79,17 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
           <button
             type="button"
             onClick={onBackToLogin}
-            className="w-full flex items-center justify-center gap-1.5 rounded-sm bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent hover:bg-accent/90 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent hover:bg-accent/90 transition-colors cursor-pointer"
           >
             <span>Proceed to Login</span>
           </button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {(errorMessage || validationError) && (
             <div
               role="alert"
-              className="flex items-center gap-2.5 rounded-sm bg-error-container p-3 text-body-sm text-on-error-container border border-error/20"
+              className="flex items-center gap-2.5 rounded-md bg-error-container p-3 text-body-sm text-on-error-container border border-error/20"
             >
               <AlertCircle className="h-4 w-4 shrink-0 text-error" />
               <span>{validationError || errorMessage}</span>
@@ -105,20 +105,23 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
               New Password
             </label>
             <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-on-surface-variant/70">
+                <Lock className="h-4 w-4" />
+              </div>
               <input
                 id="new-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="••••••••••••"
                 disabled={isLoading}
-                className="w-full rounded-sm border border-outline-variant px-3.5 py-2.5 pr-10 text-body-md text-on-surface bg-surface placeholder:text-outline/70 transition-all duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15 disabled:opacity-60"
+                className="w-full rounded-md border border-outline-variant hover:border-outline pl-10 pr-10 py-2.5 text-body-md text-on-surface bg-surface placeholder:text-on-surface-variant/40 transition-all duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15 disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 disabled={isLoading}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface-variant focus:outline-none"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60 hover:text-on-surface focus:outline-none cursor-pointer"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -130,7 +133,7 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
           </div>
 
           {/* Password Requirements */}
-          <div className="space-y-1.5 rounded-sm bg-surface-container-low p-3 text-body-sm">
+          <div className="space-y-1.5 rounded-md bg-surface-container-low p-3 text-body-sm border border-outline-variant/40">
             <p className="font-medium text-on-surface text-label-caps">Password requirements:</p>
             <ul className="space-y-1 text-on-surface-variant text-body-sm">
               <li className={`flex items-center gap-1.5 ${hasMinLength ? 'text-tertiary font-medium' : ''}`}>
@@ -153,21 +156,26 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
             >
               Confirm New Password
             </label>
-            <input
-              id="confirm-password"
-              type={showPassword ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-              disabled={isLoading}
-              className="w-full rounded-sm border border-outline-variant px-3.5 py-2.5 text-body-md text-on-surface bg-surface placeholder:text-outline/70 transition-all duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15 disabled:opacity-60"
-            />
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-on-surface-variant/70">
+                <Lock className="h-4 w-4" />
+              </div>
+              <input
+                id="confirm-password"
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••••••"
+                disabled={isLoading}
+                className="w-full rounded-md border border-outline-variant hover:border-outline pl-10 pr-3.5 py-2.5 text-body-md text-on-surface bg-surface placeholder:text-on-surface-variant/40 transition-all duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15 disabled:opacity-60"
+              />
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={isLoading || !password || !confirmPassword}
-            className="w-full flex items-center justify-center gap-2 rounded-sm bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer mt-2"
           >
             {isLoading ? (
               <>
@@ -184,7 +192,7 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
               type="button"
               onClick={onBackToLogin}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 text-body-sm text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none"
+              className="inline-flex items-center gap-1.5 text-body-sm text-on-surface-variant hover:text-on-surface transition-colors focus:outline-none cursor-pointer"
             >
               <ArrowLeft className="h-4 w-4" />
               <span>Back to login</span>
@@ -195,3 +203,4 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
     </div>
   )
 }
+
