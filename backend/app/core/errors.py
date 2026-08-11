@@ -78,6 +78,16 @@ class ForbiddenError(AppError):
         super().__init__(403, "forbidden", message)
 
 
+class UnauthenticatedError(AppError):
+    def __init__(self, message: str = "Unauthenticated", code: str = "unauthenticated"):
+        super().__init__(401, code, message)
+
+
+class AccountLockedError(AppError):
+    def __init__(self, message: str = "Too many failed attempts. Account locked for 15 minutes."):
+        super().__init__(400, "account_locked", message)
+
+
 class ValidationAppError(AppError):
     def __init__(self, message: str = "Validation failed", field_errors: dict | None = None):
         super().__init__(400, "validation_error", message, field_errors)
@@ -86,3 +96,4 @@ class ValidationAppError(AppError):
 class ConflictError(AppError):
     def __init__(self, message: str = "Conflict", code: str = "conflict"):
         super().__init__(409, code, message)
+
