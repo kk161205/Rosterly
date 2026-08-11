@@ -1,82 +1,174 @@
 """
 Zero-trust session enforcement — project doc §2.
 
-CRITICAL: this is the piece rules.md §5 rule 1 explicitly warns against
-simplifying. Every authenticated request must:
+Every authenticated request MUST:
   1. Verify JWT signature and expiry (standard)
   2. Look up the session by access_token_jti — reject if revoked, even if
      the JWT itself is still technically valid
   3. Re-fetch the user's CURRENT role_id from the DB (not the JWT claim)
      for any permission check
   4. Update sessions.last_seen_at
-
-Do not skip steps 2-3 "for now and add it later" — a role change or a
-forced logout must take effect on the very next request, not on next
-login. That guarantee only holds if this is built correctly from day one.
-
-TODO (agent): implement against the actual `sessions` and `users` models
-once app/models/ exists. This file defines the shape/contract; the DB
-calls are intentionally left as the first real task, not stubbed with
-fake data (see rules.md §1.1 — same principle applies to backend TODOs:
-don't fake it, wire it to the real table once it exists).
 """
+import hashlib
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Tuple
+
 from fastapi import Depends, Header
-from jose import jwt, JWTError
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
-from app.core.errors import AppError
+from app.core.errors import AppError, ForbiddenError, UnauthenticatedError
+from app.db.session import get_db
+from app.models.auth import Session as SessionModel, User as UserModel, UserStatus
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_access_token(
+    user_id: uuid.UUID | str,
+    role: str,
+    jti: Optional[str] = None,
+    expires_delta: Optional[timedelta] = None,
+) -> Tuple[str, str]:
+    token_jti = jti or str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    if expires_delta:
+        expire = now + expires_delta
+    else:
+        expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    payload = {
+        "sub": str(user_id),
+        "role": role,
+        "jti": token_jti,
+        "iat": int(now.timestamp()),
+        "exp": int(expire.timestamp()),
+    }
+    encoded_jwt = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return encoded_jwt, token_jti
+
+
+def create_refresh_token() -> Tuple[str, str]:
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hash_refresh_token(raw_token)
+    return raw_token, token_hash
+
+
+def create_password_reset_token(user_id: uuid.UUID | str) -> str:
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=15)
+    payload = {
+        "sub": str(user_id),
+        "type": "password_reset",
+        "iat": int(now.timestamp()),
+        "exp": int(expire.timestamp()),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_password_reset_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "password_reset":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
 
 
 class CurrentUser:
     """Populated from a validated, non-revoked session. Role is always the
     live DB value, never trusted from the JWT claim alone."""
 
-    def __init__(self, user_id: str, role: str, session_id: str):
+    def __init__(self, user_id: str, role: str, session_id: str, email: str):
         self.user_id = user_id
         self.role = role
         self.session_id = session_id
+        self.email = email
 
 
-async def get_current_user(authorization: str = Header(default=None)) -> CurrentUser:
+async def get_current_user(
+    authorization: str = Header(default=None),
+    db: DBSession = Depends(get_db),
+) -> CurrentUser:
     if not authorization or not authorization.startswith("Bearer "):
-        raise AppError(401, "unauthenticated", "Missing or invalid Authorization header")
+        raise UnauthenticatedError("Missing or invalid Authorization header")
 
     token = authorization.removeprefix("Bearer ").strip()
 
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
-        raise AppError(401, "unauthenticated", "Invalid or expired token")
+        raise UnauthenticatedError("Invalid or expired token")
 
     jti = payload.get("jti")
     sub = payload.get("sub")
     if not jti or not sub:
-        raise AppError(401, "unauthenticated", "Malformed token")
+        raise UnauthenticatedError("Malformed token")
 
-    # --- Required next steps (project doc §2.2) ---
-    # 1. session = db.query(Session).filter_by(access_token_jti=jti).first()
-    #    if not session or session.revoked_at is not None: raise 401
-    # 2. user = db.query(User).filter_by(id=sub).first()
-    #    role = user.role.name  <-- live value, never payload["role"]
-    # 3. session.last_seen_at = now(); db.commit()
-    #
-    # Raising here deliberately until the DB layer exists, so this can
-    # never silently pass with a fake/hardcoded user — see rules.md §1.1.
-    raise NotImplementedError(
-        "Wire this up to the sessions/users tables before using this dependency. "
-        "Do not stub a fake CurrentUser to unblock other work — build the DB layer first."
+    # 1. Zero-trust check: Lookup session by access_token_jti
+    session = db.query(SessionModel).filter(SessionModel.access_token_jti == jti).first()
+    if not session or session.revoked_at is not None:
+        raise UnauthenticatedError("Session has been revoked or is invalid")
+
+    now = datetime.now(timezone.utc)
+    if session.expires_at is not None:
+        expires_at = session.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            raise UnauthenticatedError("Session has expired")
+
+    # 2. Re-fetch user and live role from DB
+    try:
+        user_uuid = uuid.UUID(sub)
+    except ValueError:
+        raise UnauthenticatedError("Invalid user identity in token")
+
+    user = db.query(UserModel).filter(UserModel.id == user_uuid).first()
+    if not user:
+        raise UnauthenticatedError("User no longer exists")
+
+    if user.status != UserStatus.active:
+        raise UnauthenticatedError("User account is inactive or disabled")
+
+    # Live role name from DB
+    live_role = user.role.name if user.role else "employee"
+
+    # 3. Update last_seen_at
+    session.last_seen_at = now
+    db.commit()
+
+    return CurrentUser(
+        user_id=str(user.id),
+        role=live_role,
+        session_id=str(session.id),
+        email=user.email,
     )
 
 
 def require_role(*allowed_roles: str):
-    """Route-level role check — project doc §3.2 step 2. Still requires the
-    attribute (ABAC) scope check to be applied separately inside the handler
-    where relevant (e.g. manager department scoping) — this only covers the
-    role/permission layer, not the full §3.2 chain."""
+    """Route-level role check — project doc §3.2 step 2."""
 
     async def checker(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
         if current_user.role not in allowed_roles:
-            raise AppError(403, "forbidden", "You do not have permission to access this resource")
+            raise ForbiddenError("You do not have permission to access this resource")
         return current_user
 
     return checker
