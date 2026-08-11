@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 
 from fastapi import Depends, Header
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
@@ -25,15 +25,21 @@ from app.core.errors import AppError, ForbiddenError, UnauthenticatedError
 from app.db.session import get_db
 from app.models.auth import Session as SessionModel, User as UserModel, UserStatus
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode("utf-8")[:72]
+    hashed_bytes = hashed_password.encode("utf-8")
+    try:
+        return bcrypt.checkpw(password_bytes, hashed_bytes)
+    except Exception:
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    password_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
+
 
 
 def hash_refresh_token(token: str) -> str:
