@@ -1,4 +1,21 @@
-# Pydantic schemas go here — every request/response body in every
-# endpoint table across ROSTERLY_PROJECT_DOCUMENTATION.md §5 needs a
-# matching schema. No handler should accept/return an unvalidated dict
-# — see rules.md §3 rule 5.
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    LoginResponse,
+    MessageResponse,
+    MFAVerifyRequest,
+    RefreshTokenRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+)
+
+__all__ = [
+    "LoginRequest",
+    "LoginResponse",
+    "MFAVerifyRequest",
+    "RefreshTokenRequest",
+    "TokenResponse",
+    "ForgotPasswordRequest",
+    "ResetPasswordRequest",
+    "MessageResponse",
+]
