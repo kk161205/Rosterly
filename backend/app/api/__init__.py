@@ -1,3 +1,4 @@
-from app.api import dashboard
+from app.api import auth, dashboard
 
-__all__ = ["dashboard"]
+__all__ = ["auth", "dashboard"]
+

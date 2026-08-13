@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    JSON,
     String,
     Text,
 )
@@ -50,9 +51,10 @@ class AuditLog(Base):
     action = Column(String(100), nullable=False, index=True)
     entity_type = Column(String(100), nullable=False, index=True)
     entity_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    before_state = Column(JSONB, nullable=True)
-    after_state = Column(JSONB, nullable=True)
+    before_state = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    after_state = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     ip_address = Column(String(45), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
 
     actor = relationship("User", foreign_keys=[actor_id])

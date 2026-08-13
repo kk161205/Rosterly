@@ -90,6 +90,8 @@ class DashboardService:
                 AssetAssignment.employee_id == user_id,
                 AssetAssignment.returned_at.is_(None),
             )
+            .order_by(AssetAssignment.assigned_at.desc())
+            .limit(10)
             .all()
         )
         assigned_assets_list = [
@@ -103,6 +105,15 @@ class DashboardService:
             )
             for a in assignments
         ]
+        assigned_assets_count = (
+            self.db.query(func.count(AssetAssignment.id))
+            .filter(
+                AssetAssignment.employee_id == user_id,
+                AssetAssignment.returned_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
 
         # 2. My Open Requests
         open_requests = (
@@ -126,6 +137,15 @@ class DashboardService:
             )
             for r in open_requests
         ]
+        open_requests_count = (
+            self.db.query(func.count(Request.id))
+            .filter(
+                Request.requester_id == user_id,
+                Request.status.in_([RequestStatus.pending, RequestStatus.in_progress]),
+            )
+            .scalar()
+            or 0
+        )
 
         # 3. Pending Action Items (from checklists assigned to user)
         pending_items = (
@@ -148,6 +168,16 @@ class DashboardService:
             )
             for item in pending_items
         ]
+        pending_tasks_count = (
+            self.db.query(func.count(ChecklistItem.id))
+            .join(Checklist)
+            .filter(
+                Checklist.employee_id == user_id,
+                ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
+            )
+            .scalar()
+            or 0
+        )
 
         # 4. Notifications / Recent Activity
         notifications = (
@@ -175,9 +205,9 @@ class DashboardService:
         ]
 
         metrics = EmployeeDashboardMetrics(
-            my_assigned_assets_count=len(assigned_assets_list),
-            my_open_requests_count=len(open_requests_list),
-            pending_tasks_count=len(pending_tasks_list),
+            my_assigned_assets_count=assigned_assets_count,
+            my_open_requests_count=open_requests_count,
+            pending_tasks_count=pending_tasks_count,
             unread_alerts_count=unread_count,
         ).model_dump()
 
@@ -219,10 +249,19 @@ class DashboardService:
             for pa in pending_approvals
         ]
 
+        req_approvals_count = (
+            self.db.query(func.count(RequestApproval.id))
+            .filter(
+                RequestApproval.approver_id == user_id,
+                RequestApproval.status == ApprovalStatus.pending,
+            )
+            .scalar()
+            or 0
+        )
+
         # Additional pending leave requests for direct reports / department
         pending_leaves_count = 0
         if dept_id or user_id:
-            leave_filters = [LeaveRequest.status == LeaveStatus.pending]
             sub_filters = []
             if user_id:
                 sub_filters.append(LeaveRequest.approver_id == user_id)
@@ -233,29 +272,41 @@ class DashboardService:
             pending_leaves_count = (
                 self.db.query(func.count(LeaveRequest.id))
                 .join(User, LeaveRequest.employee_id == User.id)
-                .filter(and_(*leave_filters, or_(*sub_filters)))
+                .filter(and_(LeaveRequest.status == LeaveStatus.pending, or_(*sub_filters)))
                 .scalar()
                 or 0
             )
 
-        total_pending_approvals = len(pending_approvals_list) + pending_leaves_count
+        total_pending_approvals = req_approvals_count + pending_leaves_count
 
         # 2. Team Members & Headcount
         team_members_list = []
         team_headcount = 0
         dept_asset_count = 0
 
+        team_conditions = []
         if dept_id:
+            team_conditions.append(User.department_id == dept_id)
+        if user_id:
+            team_conditions.append(User.manager_id == user_id)
+
+        if team_conditions:
+            team_filter = and_(
+                User.status == UserStatus.active,
+                User.id != user_id,
+                or_(*team_conditions),
+            )
+
             team_members = (
                 self.db.query(User)
-                .filter(User.department_id == dept_id, User.status == UserStatus.active)
+                .filter(team_filter)
                 .order_by(User.full_name.asc())
                 .limit(10)
                 .all()
             )
             team_headcount = (
                 self.db.query(func.count(User.id))
-                .filter(User.department_id == dept_id, User.status == UserStatus.active)
+                .filter(team_filter)
                 .scalar()
                 or 0
             )
@@ -263,7 +314,7 @@ class DashboardService:
                 TeamMemberItem(
                     id=u.id,
                     full_name=u.full_name,
-                    designation=u.designation,
+                    designation=u.designation or "",
                     status=str(u.status.value) if hasattr(u.status, "value") else str(u.status),
                     email=u.email,
                 )
@@ -273,7 +324,7 @@ class DashboardService:
                 self.db.query(func.count(AssetAssignment.id))
                 .join(User, AssetAssignment.employee_id == User.id)
                 .filter(
-                    User.department_id == dept_id,
+                    team_filter,
                     AssetAssignment.returned_at.is_(None),
                 )
                 .scalar()
@@ -368,7 +419,7 @@ class DashboardService:
             or 0
         )
 
-        # 4. Document Watchlist (Confidential documents or recent uploads)
+        # 4. Document Watchlist (Confidential documents or compliance verification)
         doc_expiry_watchlist_count = (
             self.db.query(func.count(Document.id))
             .filter(Document.is_confidential.is_(True))
