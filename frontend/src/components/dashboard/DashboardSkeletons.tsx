@@ -74,3 +74,51 @@ export const SplitGridSkeleton: React.FC = () => {
     </div>
   )
 }
+
+export const FullPageDashboardSkeleton: React.FC = () => {
+  return (
+    <div className="space-y-6 animate-pulse">
+      {/* Header Banner Skeleton */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-outline-variant">
+        <div className="space-y-2">
+          <div className="w-64 h-8 bg-surface-container-high rounded" />
+          <div className="w-96 max-w-full h-4 bg-surface-container-high rounded" />
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 bg-surface-container-high rounded" />
+          <div className="w-36 h-10 bg-surface-container-high rounded" />
+        </div>
+      </div>
+
+      {/* Metric Ribbon Skeleton */}
+      <MetricRibbonSkeleton />
+
+      {/* Role Widget Skeleton */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 space-y-4">
+        <div className="w-48 h-6 bg-surface-container-high rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 bg-surface-container-low border border-outline-variant rounded p-4 space-y-2">
+              <div className="w-24 h-4 bg-surface-container-high rounded" />
+              <div className="w-16 h-6 bg-surface-container-high rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Split Grid Skeleton */}
+      <SplitGridSkeleton />
+    </div>
+  )
+}
+
+export const SlowLoadingBanner: React.FC = () => {
+  return (
+    <div className="p-3.5 rounded-md bg-accent-container/30 border border-accent/20 text-on-accent-container flex items-center justify-center gap-3 animate-fade-in shadow-xs my-2">
+      <div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin flex-shrink-0" />
+      <span className="text-body-sm font-sans font-medium text-center">
+        Connecting to enterprise workspace... Taking slightly longer than usual to fetch live records.
+      </span>
+    </div>
+  )
+}
