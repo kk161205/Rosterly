@@ -44,3 +44,11 @@ class ResetPasswordRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class CurrentUserResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+

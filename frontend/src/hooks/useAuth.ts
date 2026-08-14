@@ -1,11 +1,14 @@
 import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { authService } from '@/services/authService'
 import { AuthStep, LoginResponse } from '@/types/auth'
+import { authStorage } from '@/utils/authStorage'
 
 const MAX_FAILED_ATTEMPTS = 5
 const LOCKOUT_DURATION_SECONDS = 15 * 60 // 15 minutes
 
 export function useAuth() {
+  const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState<AuthStep>('login')
   const [mfaSessionId, setMfaSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -38,11 +41,12 @@ export function useAuth() {
         setCurrentStep('mfa')
         setFailedAttempts(0)
       } else if (response.access_token) {
-        localStorage.setItem('rosterly_access_token', response.access_token)
+        authStorage.setAccessToken(response.access_token)
         if (response.refresh_token) {
-          localStorage.setItem('rosterly_refresh_token', response.refresh_token)
+          authStorage.setRefreshToken(response.refresh_token)
         }
         setFailedAttempts(0)
+        navigate('/dashboard')
       }
     } catch (err: unknown) {
       handleFailedAttempt()
@@ -60,10 +64,11 @@ export function useAuth() {
     try {
       const response = await authService.verifyMFA({ mfa_session_id: sessionId, code })
       if (response.access_token) {
-        localStorage.setItem('rosterly_access_token', response.access_token)
+        authStorage.setAccessToken(response.access_token)
         if (response.refresh_token) {
-          localStorage.setItem('rosterly_refresh_token', response.refresh_token)
+          authStorage.setRefreshToken(response.refresh_token)
         }
+        navigate('/dashboard')
       }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: { message?: string } } } }

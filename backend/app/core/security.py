@@ -21,7 +21,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session as DBSession, joinedload
 
 from app.core.config import settings
-from app.core.errors import AppError, ForbiddenError, UnauthenticatedError
+from app.core.errors import ForbiddenError, UnauthenticatedError
 from app.db.session import get_db
 from app.models.auth import Session as SessionModel, User as UserModel, UserStatus
 
@@ -120,7 +120,7 @@ class CurrentUser:
         self.role_id = uuid.UUID(str(role_id)) if role_id and isinstance(role_id, str) else role_id
 
 
-async def get_current_user(
+def get_current_user(
     authorization: str = Header(default=None),
     db: DBSession = Depends(get_db),
 ) -> CurrentUser:
@@ -139,8 +139,13 @@ async def get_current_user(
     if not jti or not sub:
         raise UnauthenticatedError("Malformed token")
 
-    # 1. Zero-trust check: Lookup session by access_token_jti
-    session = db.query(SessionModel).filter(SessionModel.access_token_jti == jti).first()
+    # 1. Zero-trust check: Lookup session, user and live role in ONE single query
+    session = (
+        db.query(SessionModel)
+        .options(joinedload(SessionModel.user).joinedload(UserModel.role))
+        .filter(SessionModel.access_token_jti == jti)
+        .first()
+    )
     if not session or session.revoked_at is not None:
         raise UnauthenticatedError("Session has been revoked or is invalid")
 
@@ -152,18 +157,7 @@ async def get_current_user(
         if expires_at <= now:
             raise UnauthenticatedError("Session has expired")
 
-    # 2. Re-fetch user and live role from DB
-    try:
-        user_uuid = uuid.UUID(sub) if isinstance(sub, str) else sub
-    except ValueError:
-        raise UnauthenticatedError("Invalid user identity in token")
-
-    user = (
-        db.query(UserModel)
-        .options(joinedload(UserModel.role))
-        .filter(UserModel.id == user_uuid)
-        .first()
-    )
+    user = session.user
     if not user:
         raise UnauthenticatedError("User no longer exists")
 
@@ -173,9 +167,11 @@ async def get_current_user(
     # Live role name from DB
     live_role = user.role.name if user.role else "employee"
 
-    # 3. Update last_seen_at
-    session.last_seen_at = now
-    db.commit()
+    # 3. Update last_seen_at with throttling (60s) to avoid expensive DB write & commit on every GET request
+    last_seen = session.last_seen_at
+    if last_seen is None or (now - (last_seen.replace(tzinfo=timezone.utc) if last_seen.tzinfo is None else last_seen)).total_seconds() > 60:
+        session.last_seen_at = now
+        db.commit()
 
     return CurrentUser(
         user_id=user.id,
@@ -191,7 +187,7 @@ async def get_current_user(
 def require_role(*allowed_roles: str):
     """Route-level role check — project doc §3.2 step 2."""
 
-    async def checker(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    def checker(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
         if current_user.role not in allowed_roles:
             raise ForbiddenError("You do not have permission to access this resource")
         return current_user

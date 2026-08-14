@@ -10,6 +10,13 @@ export interface User {
   mfa_enabled: boolean
 }
 
+export interface UserProfile {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
+
 export interface LoginRequest {
   email: string
   password: string

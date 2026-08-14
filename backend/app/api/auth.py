@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.schemas.auth import (
+    CurrentUserResponse,
     ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
@@ -19,7 +20,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login_endpoint(
+def login_endpoint(
     req: LoginRequest,
     request: Request,
     db: DBSession = Depends(get_db),
@@ -37,7 +38,7 @@ async def login_endpoint(
 
 
 @router.post("/mfa/verify", response_model=TokenResponse)
-async def mfa_verify_endpoint(
+def mfa_verify_endpoint(
     req: MFAVerifyRequest,
     request: Request,
     db: DBSession = Depends(get_db),
@@ -54,7 +55,7 @@ async def mfa_verify_endpoint(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_endpoint(
+def refresh_endpoint(
     req: RefreshTokenRequest,
     db: DBSession = Depends(get_db),
 ) -> TokenResponse:
@@ -62,7 +63,7 @@ async def refresh_endpoint(
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-async def forgot_password_endpoint(
+def forgot_password_endpoint(
     req: ForgotPasswordRequest,
     db: DBSession = Depends(get_db),
 ) -> MessageResponse:
@@ -70,7 +71,7 @@ async def forgot_password_endpoint(
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-async def reset_password_endpoint(
+def reset_password_endpoint(
     req: ResetPasswordRequest,
     db: DBSession = Depends(get_db),
 ) -> MessageResponse:
@@ -78,7 +79,7 @@ async def reset_password_endpoint(
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout_endpoint(
+def logout_endpoint(
     current_user: CurrentUser = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> MessageResponse:
@@ -86,8 +87,21 @@ async def logout_endpoint(
 
 
 @router.post("/logout-all-devices", response_model=MessageResponse)
-async def logout_all_devices_endpoint(
+def logout_all_devices_endpoint(
     current_user: CurrentUser = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> MessageResponse:
     return auth_service.logout_all_user_sessions(db=db, user_id=current_user.user_id)
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+def get_me_endpoint(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CurrentUserResponse:
+    return CurrentUserResponse(
+        id=str(current_user.user_id),
+        email=current_user.email or "",
+        full_name=current_user.full_name or "Rosterly User",
+        role=current_user.role,
+    )
+

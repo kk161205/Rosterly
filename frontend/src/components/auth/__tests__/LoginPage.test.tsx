@@ -17,6 +17,7 @@ describe('LoginPage Component (PRD §5.1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('renders login form with logo, inputs, and submit button', () => {
