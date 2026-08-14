@@ -3,9 +3,8 @@ import {
   Laptop,
   FileText,
   CheckCircle2,
-  BellAlert,
+  Bell,
   Users,
-  PieChart,
   UserPlus,
   UserMinus,
   Wrench,
@@ -34,7 +33,7 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
       case 'task':
         return <CheckCircle2 className="w-5 h-5 text-tertiary" />
       case 'alert':
-        return <BellAlert className="w-5 h-5 text-error" />
+        return <Bell className="w-5 h-5 text-error" />
       case 'approval':
         return <CheckCircle2 className="w-5 h-5 text-amber-600" />
       case 'team':

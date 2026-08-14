@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api'
+import { apiClient } from '@/lib/api-client'
 import {
   LoginRequest,
   LoginResponse,
@@ -6,10 +6,20 @@ import {
   ForgotPasswordRequest,
   ResetPasswordRequest,
   MessageResponse,
+  UserProfile,
 } from '@/types/auth'
 import { getDeviceFingerprint } from '@/utils/fingerprint'
 
 export const authService = {
+  /**
+   * GET /auth/me
+   * Fetches currently authenticated user profile from active zero-trust session.
+   */
+  async getCurrentUser(): Promise<UserProfile> {
+    const response = await apiClient.get<UserProfile>('/auth/me')
+    return response.data
+  },
+
   /**
    * POST /auth/login
    * Authenticates email & password. Returns tokens or mfa_required state.

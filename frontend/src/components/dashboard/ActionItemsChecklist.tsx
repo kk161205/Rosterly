@@ -1,12 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   CheckSquare,
   Square,
   CheckCircle2,
-  Clock,
   Tag,
   Calendar,
-  Sparkles,
   ArrowRight,
 } from 'lucide-react'
 import { TaskChecklistItem } from '@/types/dashboard'
@@ -26,6 +24,10 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
 }) => {
   const [taskList, setTaskList] = useState<TaskChecklistItem[]>(initialTasks)
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
+
+  useEffect(() => {
+    setTaskList(initialTasks)
+  }, [initialTasks])
 
   const handleToggle = (taskId: string) => {
     setTaskList((prev) =>

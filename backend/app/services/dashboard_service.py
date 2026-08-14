@@ -1,6 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -13,7 +12,7 @@ from app.models.assets import (
     MaintenanceStatus,
     MaintenanceTicket,
 )
-from app.models.auth import Department, Role, User, UserStatus
+from app.models.auth import User, UserStatus
 from app.models.leave_attendance import LeaveRequest, LeaveStatus
 from app.models.lifecycle import (
     Checklist,
@@ -105,7 +104,7 @@ class DashboardService:
             )
             for a in assignments
         ]
-        assigned_assets_count = (
+        assigned_assets_count = len(assignments) if len(assignments) < 10 else (
             self.db.query(func.count(AssetAssignment.id))
             .filter(
                 AssetAssignment.employee_id == user_id,
@@ -137,7 +136,7 @@ class DashboardService:
             )
             for r in open_requests
         ]
-        open_requests_count = (
+        open_requests_count = len(open_requests) if len(open_requests) < 10 else (
             self.db.query(func.count(Request.id))
             .filter(
                 Request.requester_id == user_id,
@@ -168,7 +167,7 @@ class DashboardService:
             )
             for item in pending_items
         ]
-        pending_tasks_count = (
+        pending_tasks_count = len(pending_items) if len(pending_items) < 10 else (
             self.db.query(func.count(ChecklistItem.id))
             .join(Checklist)
             .filter(
