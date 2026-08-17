@@ -1,3 +1,7 @@
+"""
+Employee Directory Service — handles employee directory querying, search,
+status filtering, and ABAC row-level scoping for manager role.
+"""
 import math
 from typing import Any
 from uuid import UUID
@@ -11,6 +15,8 @@ from app.schemas.employee_directory import EmployeeDirectoryResponse, EmployeeLi
 
 
 class EmployeeDirectoryService:
+    """Service providing sanitized employee directory data with ABAC department scoping for managers."""
+
     def __init__(self, db: Session, current_user: CurrentUser):
         self.db = db
         self.current_user = current_user
