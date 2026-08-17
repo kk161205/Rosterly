@@ -1,3 +1,6 @@
+"""
+Employee Directory API routes — project doc §5.3.
+"""
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
