@@ -1,7 +1,10 @@
 from datetime import date
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+from app.models.auth import UserStatus
 
 
 class EmployeeListItem(BaseModel):
@@ -10,13 +13,13 @@ class EmployeeListItem(BaseModel):
     full_name: str
     email: str
     designation: str
-    department_id: UUID | None = None
-    department_name: str | None = None
-    manager_id: UUID | None = None
-    manager_name: str | None = None
-    status: str
-    phone: str | None = None
-    date_of_joining: date | None = None
+    department_id: Optional[UUID] = None
+    department_name: Optional[str] = None
+    manager_id: Optional[UUID] = None
+    manager_name: Optional[str] = None
+    status: UserStatus
+    phone: Optional[str] = None
+    date_of_joining: date
 
     model_config = ConfigDict(from_attributes=True)
 
