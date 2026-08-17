@@ -1,3 +1,7 @@
+"""
+Unit & Integration Tests for Employee Directory API (`GET /api/v1/employees`).
+Tests ABAC manager row-scoping, employee sanitized field set, search, filtering, and pagination.
+"""
 import datetime
 import uuid
 from unittest.mock import MagicMock
