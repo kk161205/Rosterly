@@ -78,7 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
-    { name: 'Employees', path: '/employees', icon: Users, roleAccess: ['manager', 'hr_admin', 'super_admin', 'auditor'] },
+    { name: 'Employees', path: '/employees', icon: Users, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
     { name: 'Asset Inventory', path: '/assets', icon: Box, roleAccess: ['employee', 'manager', 'it_admin', 'super_admin', 'auditor'] },
     { name: 'Approvals Queue', path: '/approvals', icon: CheckSquare, badge: 'P0', roleAccess: ['manager', 'hr_admin', 'super_admin'] },
     { name: 'Maintenance & Tickets', path: '/maintenance', icon: Wrench, roleAccess: ['it_admin', 'super_admin'] },
