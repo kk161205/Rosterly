@@ -97,6 +97,38 @@ def verify_password_reset_token(token: str) -> Optional[str]:
         return None
 
 
+import time
+from threading import Lock
+
+# In-memory short-TTL session cache to eliminate redundant remote DB round-trips
+_SESSION_CACHE: dict[str, tuple["CurrentUser", float]] = {}
+_SESSION_CACHE_LOCK = Lock()
+_SESSION_CACHE_TTL = 15.0  # 15 seconds TTL
+
+
+def invalidate_session_cache(
+    jti: Optional[str] = None,
+    user_id: Optional[uuid.UUID | str] = None,
+    session_id: Optional[uuid.UUID | str] = None,
+) -> None:
+    """Invalidates session cache on logout, token refresh, or revocation."""
+    with _SESSION_CACHE_LOCK:
+        if jti and jti in _SESSION_CACHE:
+            del _SESSION_CACHE[jti]
+        elif session_id:
+            sid_str = str(session_id)
+            keys = [k for k, (u, _) in _SESSION_CACHE.items() if str(u.session_id) == sid_str]
+            for k in keys:
+                del _SESSION_CACHE[k]
+        elif user_id:
+            uid_str = str(user_id)
+            keys = [k for k, (u, _) in _SESSION_CACHE.items() if str(u.user_id) == uid_str]
+            for k in keys:
+                del _SESSION_CACHE[k]
+        else:
+            _SESSION_CACHE.clear()
+
+
 class CurrentUser:
     """Populated from a validated, non-revoked session. Role is always the
     live DB value, never trusted from the JWT claim alone."""
@@ -139,6 +171,16 @@ def get_current_user(
     if not jti or not sub:
         raise UnauthenticatedError("Malformed token")
 
+    # Fast in-memory check to prevent redundant remote SSL queries for parallel requests
+    now_ts = time.time()
+    with _SESSION_CACHE_LOCK:
+        if jti in _SESSION_CACHE:
+            cached_user, cached_at = _SESSION_CACHE[jti]
+            if now_ts - cached_at < _SESSION_CACHE_TTL:
+                return cached_user
+            else:
+                del _SESSION_CACHE[jti]
+
     # 1. Zero-trust check: Lookup session, user and live role in ONE single query
     session = (
         db.query(SessionModel)
@@ -173,7 +215,7 @@ def get_current_user(
         session.last_seen_at = now
         db.commit()
 
-    return CurrentUser(
+    current_u = CurrentUser(
         user_id=user.id,
         role=live_role,
         session_id=session.id,
@@ -182,6 +224,11 @@ def get_current_user(
         full_name=user.full_name,
         role_id=user.role_id,
     )
+
+    with _SESSION_CACHE_LOCK:
+        _SESSION_CACHE[jti] = (current_u, now_ts)
+
+    return current_u
 
 
 def require_role(*allowed_roles: str):

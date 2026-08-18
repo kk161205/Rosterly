@@ -26,11 +26,12 @@ app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
-from app.api import auth, dashboard, employees
+from app.api import auth, dashboard, departments, employees
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX + "/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix=settings.API_V1_PREFIX + "/dashboard", tags=["dashboard"])
 app.include_router(employees.router, prefix=settings.API_V1_PREFIX + "/employees", tags=["employees"])
+app.include_router(departments.router, prefix=settings.API_V1_PREFIX + "/departments", tags=["departments"])
 
 
 
