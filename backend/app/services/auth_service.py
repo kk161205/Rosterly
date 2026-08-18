@@ -18,6 +18,7 @@ from app.core.security import (
     create_refresh_token,
     get_password_hash,
     hash_refresh_token,
+    invalidate_session_cache,
     verify_password,
     verify_password_reset_token,
 )
@@ -228,11 +229,13 @@ def refresh_tokens(db: DBSession, raw_refresh_token: str) -> TokenResponse:
     new_access_token, new_jti = create_access_token(user.id, role_name)
     new_raw_refresh, new_refresh_hash = create_refresh_token()
 
+    old_jti = session.access_token_jti
     session.access_token_jti = new_jti
     session.refresh_token_hash = new_refresh_hash
     session.expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     session.last_seen_at = now
     db.commit()
+    invalidate_session_cache(jti=old_jti, session_id=session.id)
 
     return TokenResponse(
         access_token=new_access_token,
@@ -287,6 +290,7 @@ def logout_session(db: DBSession, session_id: uuid.UUID | str) -> MessageRespons
     if session:
         session.revoked_at = datetime.now(timezone.utc)
         db.commit()
+        invalidate_session_cache(session_id=session.id, jti=session.access_token_jti)
 
     return MessageResponse(message="Logged out successfully.")
 
@@ -296,7 +300,6 @@ def logout_all_user_sessions(db: DBSession, user_id: uuid.UUID | str) -> Message
         user_uuid = uuid.UUID(str(user_id)) if not isinstance(user_id, uuid.UUID) else user_id
     except (ValueError, AttributeError):
         raise AppError(400, "invalid_id", "Invalid user ID format")
-
 
     now = datetime.now(timezone.utc)
     active_sessions = (
@@ -310,5 +313,6 @@ def logout_all_user_sessions(db: DBSession, user_id: uuid.UUID | str) -> Message
     for session in active_sessions:
         session.revoked_at = now
     db.commit()
+    invalidate_session_cache(user_id=user_uuid)
 
     return MessageResponse(message="All sessions have been revoked.")

@@ -32,3 +32,37 @@ class EmployeeDirectoryResponse(BaseModel):
     pages: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FilterOptionItem(BaseModel):
+    value: str
+    label: str
+    count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeFiltersMetaResponse(BaseModel):
+    departments: list[FilterOptionItem] = []
+    statuses: list[FilterOptionItem] = []
+    roles: list[FilterOptionItem] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    designation: Optional[str] = None
+    department_id: Optional[UUID] = None
+    role_name: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    status: Optional[str] = None
+    manager_id: Optional[UUID] = None
+
+
+class EmployeeActionResponse(BaseModel):
+    success: bool
+    message: str
+    employee: Optional[EmployeeListItem] = None
+

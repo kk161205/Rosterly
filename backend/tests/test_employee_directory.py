@@ -231,3 +231,126 @@ def test_employee_directory_search_filter_pagination():
 
     finally:
         app.dependency_overrides.clear()
+
+
+def test_departments_endpoint():
+    current_user = CurrentUser(
+        user_id=uuid.uuid4(),
+        role="employee",
+        session_id=uuid.uuid4(),
+    )
+    app.dependency_overrides[get_current_user] = lambda: current_user
+
+    mock_db = MagicMock()
+    dept_id = uuid.uuid4()
+    mock_row = MagicMock()
+    mock_row.id = dept_id
+    mock_row.name = "Engineering"
+    mock_row.head_count = 5
+
+    query_mock = MagicMock()
+    query_mock.outerjoin.return_value.group_by.return_value.order_by.return_value.all.return_value = [mock_row]
+    mock_db.query.return_value = query_mock
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        response = client.get("/api/v1/departments")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+        assert payload[0]["name"] == "Engineering"
+        assert payload[0]["code"] == "E"
+        assert payload[0]["head_count"] == 5
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_employee_filters_endpoint():
+    current_user = CurrentUser(
+        user_id=uuid.uuid4(),
+        role="employee",
+        session_id=uuid.uuid4(),
+    )
+    app.dependency_overrides[get_current_user] = lambda: current_user
+
+    mock_db = MagicMock()
+    # Mock query for departments, statuses, roles
+    mock_db.query.return_value.join.return_value.group_by.return_value.order_by.return_value.all.return_value = [
+        (uuid.uuid4(), "Engineering", 10)
+    ]
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
+        (UserStatus.active, 10)
+    ]
+    mock_db.query.return_value.join.return_value.group_by.return_value.all.return_value = [
+        ("employee", 10)
+    ]
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        response = client.get("/api/v1/employees/filters")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "departments" in payload
+        assert "statuses" in payload
+        assert "roles" in payload
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_employee_permission_forbidden_for_employee():
+    current_user = CurrentUser(
+        user_id=uuid.uuid4(),
+        role="employee",
+        session_id=uuid.uuid4(),
+    )
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        emp_id = uuid.uuid4()
+        response = client.patch(f"/api/v1/employees/{emp_id}", json={"designation": "New Lead"})
+        assert response.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_offboard_employee_permission_forbidden_for_employee():
+    current_user = CurrentUser(
+        user_id=uuid.uuid4(),
+        role="employee",
+        session_id=uuid.uuid4(),
+    )
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        emp_id = uuid.uuid4()
+        response = client.post(f"/api/v1/employees/{emp_id}/offboard")
+        assert response.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_employee_permission_forbidden_for_hr_admin():
+    current_user = CurrentUser(
+        user_id=uuid.uuid4(),
+        role="hr_admin",
+        session_id=uuid.uuid4(),
+    )
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        emp_id = uuid.uuid4()
+        response = client.delete(f"/api/v1/employees/{emp_id}")
+        assert response.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+

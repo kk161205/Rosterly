@@ -48,13 +48,44 @@ from app.schemas.dashboard import (
 )
 
 
+import time
+from threading import Lock
+
+# In-memory short-TTL dashboard cache for ultra-fast tab switches and page loads
+_DASHBOARD_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+_DASHBOARD_CACHE_LOCK = Lock()
+_DASHBOARD_CACHE_TTL = 10.0  # 10 seconds TTL
+
+
+def invalidate_dashboard_cache(user_id: str | None = None) -> None:
+    with _DASHBOARD_CACHE_LOCK:
+        if user_id:
+            uid_str = str(user_id)
+            keys = [k for k in _DASHBOARD_CACHE if k.startswith(uid_str)]
+            for k in keys:
+                del _DASHBOARD_CACHE[k]
+        else:
+            _DASHBOARD_CACHE.clear()
+
+
 class DashboardService:
     def __init__(self, db: Session, current_user: CurrentUser):
         self.db = db
         self.user = current_user
 
     def get_dashboard_data(self) -> dict[str, Any]:
+        user_id_str = str(self.user.user_id)
         role_name = (self.user.role or "").lower()
+        cache_key = f"{user_id_str}:{role_name}"
+
+        now_ts = time.time()
+        with _DASHBOARD_CACHE_LOCK:
+            if cache_key in _DASHBOARD_CACHE:
+                cached_data, cached_at = _DASHBOARD_CACHE[cache_key]
+                if now_ts - cached_at < _DASHBOARD_CACHE_TTL:
+                    return cached_data
+                else:
+                    del _DASHBOARD_CACHE[cache_key]
 
         if role_name == "employee":
             metrics, widgets = self._get_employee_dashboard()
@@ -70,11 +101,16 @@ class DashboardService:
             # Fallback to employee payload for custom/unknown roles
             metrics, widgets = self._get_employee_dashboard()
 
-        return {
+        result = {
             "role": role_name,
             "metrics": metrics,
             "widgets": widgets,
         }
+
+        with _DASHBOARD_CACHE_LOCK:
+            _DASHBOARD_CACHE[cache_key] = (result, now_ts)
+
+        return result
 
     # --- Role Compilers ---
 
@@ -674,12 +710,12 @@ class DashboardService:
             .limit(10)
             .all()
         )
-        unread_count = (
+        unread_raw = (
             self.db.query(func.count(Notification.id))
             .filter(Notification.user_id == self.user.user_id, Notification.is_read.is_(False))
             .scalar()
-            or 0
         )
+        unread_count = int(unread_raw) if isinstance(unread_raw, (int, float)) else 0
         recent_activity_list = [
             ActivityTimelineItem(
                 id=n.id,
