@@ -84,19 +84,26 @@ def get_employee_directory(
     return EmployeeDirectoryResponse.model_validate(data)
 
 
-@router.patch("/{employee_id}", response_model=EmployeeListItem)
+from app.schemas.employee_profile import EmployeeProfileResponse, EmployeeProfileUpdateRequest
+
+
+@router.patch("/{employee_id}", response_model=EmployeeProfileResponse)
 def update_employee(
     employee_id: UUID,
-    payload: EmployeeUpdateRequest,
+    payload: EmployeeProfileUpdateRequest,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> EmployeeListItem:
+) -> EmployeeProfileResponse:
     """
-    Update employee profile details (Super Admin, HR Admin, or Manager within department).
+    Update employee profile details (PRD §5.4).
+    Applies field-level permission checks:
+    - Self may only update 'phone'. Attempting to update restricted fields returns 400 Bad Request.
+    - HR Admin / Super Admin may update all fields including role_id, status, department_id, manager_id.
+    - Manager, IT Admin, Auditor are denied (403).
     """
-    service = EmployeeDirectoryService(db=db, current_user=current_user)
-    data = service.update_employee(employee_id=employee_id, data=payload)
-    return EmployeeListItem.model_validate(data)
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.patch_employee_profile(employee_id=employee_id, payload=payload)
+    return EmployeeProfileResponse.model_validate(data)
 
 
 @router.post("/{employee_id}/offboard", response_model=EmployeeListItem)
