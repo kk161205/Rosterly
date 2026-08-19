@@ -2,6 +2,7 @@
 Employee Profile Service — handles detailed employee profile queries, profile updates,
 document vault management, and asset assignment retrieval with fine-grained ABAC.
 """
+from datetime import datetime, timezone
 import os
 import uuid
 from typing import Any
@@ -359,13 +360,16 @@ class EmployeeProfileService:
 
         file_url = f"/uploads/documents/{employee_id}/{unique_name}"
 
+        now = datetime.now(timezone.utc)
         doc = Document(
+            id=uuid.uuid4(),
             employee_id=employee_id,
             doc_type=doc_type,
             file_name=file_name,
             file_url=file_url,
             is_confidential=is_confidential,
             uploaded_by=self.current_user.user_id,
+            uploaded_at=now,
         )
         self.db.add(doc)
         self.db.commit()
@@ -374,7 +378,7 @@ class EmployeeProfileService:
         uploader_name = self.current_user.full_name
 
         return {
-            "id": doc.id,
+            "id": doc.id or uuid.uuid4(),
             "employee_id": doc.employee_id,
             "doc_type": doc.doc_type,
             "file_name": doc.file_name,
@@ -382,7 +386,7 @@ class EmployeeProfileService:
             "is_confidential": doc.is_confidential,
             "uploaded_by": doc.uploaded_by,
             "uploaded_by_name": uploader_name,
-            "uploaded_at": doc.uploaded_at,
+            "uploaded_at": doc.uploaded_at or now,
         }
 
     def delete_employee_document(self, employee_id: UUID, doc_id: UUID) -> None:

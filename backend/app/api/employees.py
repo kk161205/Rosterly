@@ -1,5 +1,5 @@
 """
-Employee Directory API routes — project doc §5.3.
+Employee Directory & Profile API routes — project doc §5.3 & §5.4.
 """
 from uuid import UUID
 
@@ -14,32 +14,66 @@ from app.schemas.employee_directory import (
     EmployeeDirectoryResponse,
     EmployeeFiltersMetaResponse,
     EmployeeListItem,
-    EmployeeUpdateRequest,
 )
-from app.schemas.employee_profile import DocumentResponse, EmployeeAssetsResponse, EmployeeProfileResponse
-
-
-@router.get("/{employee_id}/assets", response_model=EmployeeAssetsResponse)
-def get_employee_assets(
-    employee_id: UUID,
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> EmployeeAssetsResponse:
-    """
-    Get hardware devices and licenses assigned to employee (PRD §5.4).
-    Returns current active assignments and past historical assignments.
-    Applies department scoping for manager role (403 if out of dept).
-    Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
-    """
-    service = EmployeeProfileService(db=db, current_user=current_user)
-    data = service.get_employee_assets(employee_id=employee_id)
-    return EmployeeAssetsResponse.model_validate(data)
-
+from app.schemas.employee_profile import (
+    DocumentResponse,
+    EmployeeAssetsResponse,
+    EmployeeProfileResponse,
+    EmployeeProfileUpdateRequest,
+)
 from app.services.employee_directory_service import EmployeeDirectoryService
 from app.services.employee_profile_service import EmployeeProfileService
 
 router = APIRouter()
 
+
+# --- Static / Directory Routes (§5.3) ---
+
+@router.get("/filters", response_model=EmployeeFiltersMetaResponse)
+def get_employee_filters(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeFiltersMetaResponse:
+    """
+    Get distinct status and role filter options populated from current DB records.
+    """
+    service = EmployeeDirectoryService(db=db, current_user=current_user)
+    data = service.get_filter_options()
+    return EmployeeFiltersMetaResponse.model_validate(data)
+
+
+@router.get("", response_model=EmployeeDirectoryResponse)
+@router.get("/", response_model=EmployeeDirectoryResponse)
+def get_employee_directory(
+    search: str | None = Query(None, description="Search term for name, email, employee code, or designation"),
+    department_id: UUID | None = Query(None, description="Filter by department ID"),
+    status: str | None = Query(None, description="Filter by user status"),
+    role: str | None = Query(None, description="Filter by user role name"),
+    view: str = Query("list", pattern="^(list|tree)$", description="View format: list or tree"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=1000, description="Items per page"),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeDirectoryResponse:
+    """
+    Get employee directory list or tree view (PRD §5.3).
+    Applies ABAC row-level scoping for manager callers (forced department match).
+    Sanitized fields only — excludes salary/document fields for all roles.
+    """
+    service = EmployeeDirectoryService(db=db, current_user=current_user)
+    data = service.get_employees(
+        search=search,
+        department_id=department_id,
+        status=status,
+        role=role,
+        view=view,
+        page=page,
+        page_size=page_size,
+    )
+    return EmployeeDirectoryResponse.model_validate(data)
+
+
+# --- Parameterized Employee Profile Routes (§5.4) ---
 
 @router.get("/{employee_id}", response_model=EmployeeProfileResponse)
 def get_employee_profile_detail(
@@ -54,6 +88,25 @@ def get_employee_profile_detail(
     """
     service = EmployeeProfileService(db=db, current_user=current_user)
     data = service.get_employee_profile(employee_id=employee_id)
+    return EmployeeProfileResponse.model_validate(data)
+
+
+@router.patch("/{employee_id}", response_model=EmployeeProfileResponse)
+def update_employee(
+    employee_id: UUID,
+    payload: EmployeeProfileUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeProfileResponse:
+    """
+    Update employee profile details (PRD §5.4).
+    Applies field-level permission checks:
+    - Self may only update 'phone'. Attempting to update restricted fields or address returns 400 Bad Request.
+    - HR Admin / Super Admin may update all fields including role_id, status, department_id, manager_id.
+    - Manager, IT Admin, Auditor are denied (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.patch_employee_profile(employee_id=employee_id, payload=payload)
     return EmployeeProfileResponse.model_validate(data)
 
 
@@ -121,74 +174,21 @@ def delete_employee_document(
     service.delete_employee_document(employee_id=employee_id, doc_id=doc_id)
 
 
-
-
-
-@router.get("/filters", response_model=EmployeeFiltersMetaResponse)
-def get_employee_filters(
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> EmployeeFiltersMetaResponse:
-    """
-    Get distinct status and role filter options populated from current DB records.
-    """
-    service = EmployeeDirectoryService(db=db, current_user=current_user)
-    data = service.get_filter_options()
-    return EmployeeFiltersMetaResponse.model_validate(data)
-
-
-@router.get("", response_model=EmployeeDirectoryResponse)
-@router.get("/", response_model=EmployeeDirectoryResponse)
-def get_employee_directory(
-    search: str | None = Query(None, description="Search term for name, email, employee code, or designation"),
-    department_id: UUID | None = Query(None, description="Filter by department ID"),
-    status: str | None = Query(None, description="Filter by user status"),
-    role: str | None = Query(None, description="Filter by user role name"),
-    view: str = Query("list", pattern="^(list|tree)$", description="View format: list or tree"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(20, ge=1, le=1000, description="Items per page"),
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> EmployeeDirectoryResponse:
-    """
-    Get employee directory list or tree view (PRD §5.3).
-
-    Applies ABAC row-level scoping for `manager` callers (forced department match).
-    Sanitized fields only — excludes salary/document fields for all roles.
-    """
-    service = EmployeeDirectoryService(db=db, current_user=current_user)
-    data = service.get_employees(
-        search=search,
-        department_id=department_id,
-        status=status,
-        role=role,
-        view=view,
-        page=page,
-        page_size=page_size,
-    )
-    return EmployeeDirectoryResponse.model_validate(data)
-
-
-from app.schemas.employee_profile import EmployeeProfileResponse, EmployeeProfileUpdateRequest
-
-
-@router.patch("/{employee_id}", response_model=EmployeeProfileResponse)
-def update_employee(
+@router.get("/{employee_id}/assets", response_model=EmployeeAssetsResponse)
+def get_employee_assets(
     employee_id: UUID,
-    payload: EmployeeProfileUpdateRequest,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> EmployeeProfileResponse:
+) -> EmployeeAssetsResponse:
     """
-    Update employee profile details (PRD §5.4).
-    Applies field-level permission checks:
-    - Self may only update 'phone'. Attempting to update restricted fields returns 400 Bad Request.
-    - HR Admin / Super Admin may update all fields including role_id, status, department_id, manager_id.
-    - Manager, IT Admin, Auditor are denied (403).
+    Get hardware devices and licenses assigned to employee (PRD §5.4).
+    Returns current active assignments and past historical assignments.
+    Applies department scoping for manager role (403 if out of dept).
+    Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
     """
     service = EmployeeProfileService(db=db, current_user=current_user)
-    data = service.patch_employee_profile(employee_id=employee_id, payload=payload)
-    return EmployeeProfileResponse.model_validate(data)
+    data = service.get_employee_assets(employee_id=employee_id)
+    return EmployeeAssetsResponse.model_validate(data)
 
 
 @router.post("/{employee_id}/offboard", response_model=EmployeeListItem)
