@@ -10,11 +10,13 @@ import { dashboardService } from '@/services/dashboardService'
 import { authService } from '@/services/authService'
 import { UserRole, DashboardResponse, DashboardMetricCard } from '@/types/dashboard'
 import { UserProfile } from '@/types/auth'
+import { authStorage } from '@/utils/authStorage'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 export const DashboardPage: React.FC = () => {
-  const [currentRole, setCurrentRole] = useState<UserRole>('employee')
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const cachedUser = authStorage.getUser()
+  const [currentRole, setCurrentRole] = useState<UserRole>((cachedUser?.role as UserRole) || 'employee')
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(cachedUser)
   const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false)
@@ -42,6 +44,7 @@ export const DashboardPage: React.FC = () => {
 
       if (profileData.status === 'fulfilled') {
         setUserProfile(profileData.value)
+        authStorage.setUser(profileData.value)
       }
     } catch {
       setError('Unable to load live dashboard summary data from server. Please verify network/session.')

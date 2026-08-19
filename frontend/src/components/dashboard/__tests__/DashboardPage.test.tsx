@@ -3,7 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { dashboardService } from '@/services/dashboardService'
+import { authService } from '@/services/authService'
 import { DashboardResponse } from '@/types/dashboard'
+
+vi.mock('@/services/authService', () => ({
+  authService: {
+    getCurrentUser: vi.fn(),
+  },
+}))
 
 vi.mock('@/services/dashboardService', () => ({
   dashboardService: {
@@ -95,6 +102,12 @@ describe('DashboardPage Component (PRD §5.2)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(authService.getCurrentUser).mockResolvedValue({
+      id: 'user-001',
+      email: 'alex.chen@rosterly.example',
+      full_name: 'Alex Chen',
+      role: 'employee',
+    })
     vi.mocked(dashboardService.getMetricRibbonCards).mockReturnValue(mockMetricCards)
   })
 

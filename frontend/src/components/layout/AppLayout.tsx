@@ -47,7 +47,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <Sidebar
         currentRole={currentRole}
         unreadAlertsCount={unreadAlertsCount}
-        isLoading={isLoading}
       />
 
       {/* Main Workspace Layout with Independent Scrolling */}

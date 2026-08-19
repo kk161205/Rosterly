@@ -27,54 +27,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   currentRole,
   unreadAlertsCount = 0,
-  isLoading = false,
 }) => {
   const location = useLocation()
-
-  if (isLoading) {
-    return (
-      <aside className="w-60 h-screen bg-primary text-on-primary flex flex-col justify-between border-r border-primary-container shadow-sm select-none flex-shrink-0 sticky top-0 overflow-y-auto animate-pulse">
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Brand Header Skeleton */}
-          <div className="h-16 px-5 flex items-center gap-3 border-b border-primary-container/60 flex-shrink-0">
-            <div className="w-8 h-8 rounded-md bg-primary-container/80" />
-            <div className="space-y-1.5">
-              <div className="w-20 h-4 rounded bg-primary-container/80" />
-              <div className="w-14 h-2.5 rounded bg-primary-container/60" />
-            </div>
-          </div>
-
-          {/* Role Identity Tag Skeleton */}
-          <div className="px-4 py-2.5 mx-3 my-3 rounded-md bg-primary-container/40 border border-primary-container/40 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-primary-container/80" />
-              <div className="w-20 h-3 rounded bg-primary-container/80" />
-            </div>
-            <div className="w-8 h-3 rounded bg-primary-container/60" />
-          </div>
-
-          {/* Primary Navigation Links Skeleton */}
-          <div className="px-3 space-y-2 flex-1 pt-1">
-            <div className="w-24 h-3 mx-3 mb-2 rounded bg-primary-container/60" />
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-primary-container/30"
-              >
-                <div className="w-4 h-4 rounded bg-primary-container/80" />
-                <div className="w-28 h-4 rounded bg-primary-container/80" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer Skeleton */}
-        <div className="p-3 border-t border-primary-container/60 space-y-2 flex-shrink-0 bg-primary">
-          <div className="w-full h-9 rounded-md bg-primary-container/40" />
-        </div>
-      </aside>
-    )
-  }
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },

@@ -6,6 +6,7 @@ import { EmployeeOrgChartView } from '@/components/employee/EmployeeOrgChartView
 import { EmployeeProfileDrawer } from '@/components/employee/EmployeeProfileDrawer'
 import {
   EmployeeTableSkeleton,
+  EmployeeOrgChartSkeleton,
   EmployeeEmptyState,
 } from '@/components/employee/EmployeeSkeletons'
 import { employeeService } from '@/services/employeeService'
@@ -15,10 +16,12 @@ import {
   Department,
   EmployeeQueryFilters,
   EmployeePaginatedResponse,
+  EmployeeFiltersMeta,
   OrgChartNode,
 } from '@/types/employee'
 import { UserRole } from '@/types/dashboard'
 import { UserProfile } from '@/types/auth'
+import { authStorage } from '@/utils/authStorage'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 const DEFAULT_FILTERS: EmployeeQueryFilters = {
@@ -32,10 +35,12 @@ const DEFAULT_FILTERS: EmployeeQueryFilters = {
 }
 
 export const EmployeeDirectoryPage: React.FC = () => {
-  const [currentRole, setCurrentRole] = useState<UserRole>('employee')
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const cachedUser = authStorage.getUser()
+  const [currentRole, setCurrentRole] = useState<UserRole>((cachedUser?.role as UserRole) || 'employee')
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(cachedUser)
   const [filters, setFilters] = useState<EmployeeQueryFilters>(DEFAULT_FILTERS)
   const [departments, setDepartments] = useState<Department[]>([])
+  const [filterMeta, setFilterMeta] = useState<EmployeeFiltersMeta>({ departments: [], statuses: [], roles: [] })
   const [employeeData, setEmployeeData] = useState<EmployeePaginatedResponse>({
     items: [],
     total: 0,
@@ -53,14 +58,21 @@ export const EmployeeDirectoryPage: React.FC = () => {
     setError(null)
 
     try {
-      const [profileResult, deptResult, empResult] = await Promise.allSettled([
+      const queryParams: EmployeeQueryFilters = {
+        ...filters,
+        page_size: filters.view === 'tree' ? 1000 : filters.page_size,
+      }
+
+      const [profileResult, deptResult, filterMetaResult, empResult] = await Promise.allSettled([
         authService.getCurrentUser(),
         employeeService.getDepartments(),
-        employeeService.getEmployees(filters),
+        employeeService.getFilterOptions(),
+        employeeService.getEmployees(queryParams),
       ])
 
       if (profileResult.status === 'fulfilled') {
         setUserProfile(profileResult.value)
+        authStorage.setUser(profileResult.value)
         if (profileResult.value.role) {
           setCurrentRole(profileResult.value.role as UserRole)
         }
@@ -68,6 +80,10 @@ export const EmployeeDirectoryPage: React.FC = () => {
 
       if (deptResult.status === 'fulfilled') {
         setDepartments(deptResult.value)
+      }
+
+      if (filterMetaResult.status === 'fulfilled') {
+        setFilterMeta(filterMetaResult.value)
       }
 
       if (empResult.status === 'fulfilled') {
@@ -89,7 +105,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
   }, [loadData])
 
   const handleFilterChange = (updated: Partial<EmployeeQueryFilters>) => {
-    setFilters((prev) => ({ ...prev, ...updated }))
+    setFilters((prev) => ({ ...prev, ...updated, page: 1 }))
   }
 
   const handleResetFilters = () => {
@@ -115,6 +131,16 @@ export const EmployeeDirectoryPage: React.FC = () => {
     }
   }
 
+  const handleEmployeeUpdated = (updated: Employee) => {
+    setSelectedEmployee(updated)
+    loadData()
+  }
+
+  const handleEmployeeDeleted = () => {
+    setSelectedEmployee(null)
+    loadData()
+  }
+
   return (
     <AppLayout
       currentRole={currentRole}
@@ -129,6 +155,9 @@ export const EmployeeDirectoryPage: React.FC = () => {
         <EmployeeFilterBar
           filters={filters}
           departments={departments}
+          availableDepartments={filterMeta.departments}
+          availableStatuses={filterMeta.statuses}
+          availableRoles={filterMeta.roles}
           onFilterChange={handleFilterChange}
           onResetFilters={handleResetFilters}
           viewMode={filters.view || 'list'}
@@ -156,7 +185,11 @@ export const EmployeeDirectoryPage: React.FC = () => {
 
         {/* Loading Skeleton */}
         {isLoading ? (
-          <EmployeeTableSkeleton />
+          filters.view === 'tree' ? (
+            <EmployeeOrgChartSkeleton />
+          ) : (
+            <EmployeeTableSkeleton />
+          )
         ) : employeeData.items.length === 0 ? (
           /* Empty State */
           <EmployeeEmptyState onResetFilters={handleResetFilters} />
@@ -180,7 +213,11 @@ export const EmployeeDirectoryPage: React.FC = () => {
         {/* Slide-over Profile Drawer */}
         <EmployeeProfileDrawer
           employee={selectedEmployee}
+          currentUserRole={currentRole || userProfile?.role || 'employee'}
+          departments={departments}
           onClose={() => setSelectedEmployee(null)}
+          onEmployeeUpdated={handleEmployeeUpdated}
+          onEmployeeDeleted={handleEmployeeDeleted}
         />
       </div>
     </AppLayout>
