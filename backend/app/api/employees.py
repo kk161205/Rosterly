@@ -85,6 +85,25 @@ async def upload_employee_document(
     return DocumentResponse.model_validate(data)
 
 
+@router.delete(
+    "/{employee_id}/documents/{doc_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_employee_document(
+    employee_id: UUID,
+    doc_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """
+    Delete a document from an employee's vault (PRD §5.4).
+    HR Admin and Super Admin only. Employees cannot delete own documents (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    service.delete_employee_document(employee_id=employee_id, doc_id=doc_id)
+
+
+
 
 
 @router.get("/filters", response_model=EmployeeFiltersMetaResponse)

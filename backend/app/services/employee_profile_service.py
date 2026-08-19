@@ -385,4 +385,40 @@ class EmployeeProfileService:
             "uploaded_at": doc.uploaded_at,
         }
 
+    def delete_employee_document(self, employee_id: UUID, doc_id: UUID) -> None:
+        """
+        Delete document from vault (PRD §5.4).
+        Allowed roles: hr_admin, super_admin.
+        Denied roles: self (403), manager (403), it_admin (403), auditor (403).
+        Self cannot delete own documents.
+        """
+        user_role = (self.current_user.role or "").lower()
+        if user_role not in ("hr_admin", "super_admin"):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Only HR Admin or Super Admin can delete employee documents.",
+            )
+
+        doc = (
+            self.db.query(Document)
+            .filter(Document.id == doc_id, Document.employee_id == employee_id)
+            .first()
+        )
+        if not doc:
+            raise AppError(status_code=404, code="not_found", message="Document not found.")
+
+        # Attempt physical file deletion
+        if doc.file_url and doc.file_url.startswith("/uploads/"):
+            rel_path = doc.file_url.lstrip("/")
+            if os.path.exists(rel_path):
+                try:
+                    os.remove(rel_path)
+                except OSError:
+                    pass
+
+        self.db.delete(doc)
+        self.db.commit()
+
+
 
