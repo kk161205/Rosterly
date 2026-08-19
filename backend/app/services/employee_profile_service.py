@@ -238,3 +238,151 @@ class EmployeeProfileService:
 
         return self.get_employee_profile(employee_id=employee_id)
 
+    def get_employee_documents(self, employee_id: UUID) -> list[dict[str, Any]]:
+        """
+        Get categorized documents for an employee with confidentiality filtering (PRD §5.4).
+        Allowed roles: self (own profile), hr_admin, super_admin, auditor.
+        Denied roles: manager (403), it_admin (403).
+        Auditor receives non-confidential documents only (is_confidential == False).
+        """
+        user_role = (self.current_user.role or "").lower()
+        if user_role in ("manager", "it_admin"):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message=f"Role '{user_role}' does not have permission to view employee documents.",
+            )
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
+
+        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
+        if is_self and str(self.current_user.user_id) != str(employee_id):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Employees may only view their own documents.",
+            )
+
+        UploaderUser = aliased(User)
+        query = (
+            self.db.query(
+                Document,
+                UploaderUser.full_name.label("uploaded_by_name"),
+            )
+            .outerjoin(UploaderUser, Document.uploaded_by == UploaderUser.id)
+            .filter(Document.employee_id == employee_id)
+        )
+
+        # Auditor role gets non-confidential documents only
+        if user_role == "auditor":
+            query = query.filter(Document.is_confidential == False)  # noqa: E712
+
+        rows = query.order_by(Document.uploaded_at.desc()).all()
+
+        return [
+            {
+                "id": doc.id,
+                "employee_id": doc.employee_id,
+                "doc_type": doc.doc_type,
+                "file_name": doc.file_name,
+                "file_url": doc.file_url,
+                "is_confidential": doc.is_confidential,
+                "uploaded_by": doc.uploaded_by,
+                "uploaded_by_name": uploader_name,
+                "uploaded_at": doc.uploaded_at,
+            }
+            for doc, uploader_name in rows
+        ]
+
+    def upload_employee_document(
+        self,
+        employee_id: UUID,
+        file_name: str,
+        file_bytes: bytes,
+        doc_type: DocumentType,
+        is_confidential: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Upload document for an employee with file size & extension validation (PRD §5.4).
+        Allowed roles: self (own profile), hr_admin, super_admin.
+        Denied roles: manager (403), it_admin (403), auditor (403).
+        """
+        user_role = (self.current_user.role or "").lower()
+        if user_role in ("manager", "it_admin", "auditor"):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message=f"Role '{user_role}' does not have permission to upload documents.",
+            )
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
+
+        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
+        if is_self and str(self.current_user.user_id) != str(employee_id):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Employees may only upload documents to their own profile.",
+            )
+
+        # File size validation: max 10MB
+        max_bytes = 10 * 1024 * 1024
+        if len(file_bytes) > max_bytes:
+            raise AppError(
+                status_code=400,
+                code="bad_request",
+                message="File size exceeds maximum allowed limit of 10MB.",
+            )
+
+        # File extension validation
+        ext = os.path.splitext(file_name)[1].lower()
+        allowed_exts = {".pdf", ".png", ".jpg", ".jpeg", ".docx"}
+        if ext not in allowed_exts:
+            raise AppError(
+                status_code=400,
+                code="bad_request",
+                message="Invalid file type. Allowed formats: PDF, PNG, JPG, JPEG, DOCX.",
+            )
+
+        # Save file to disk
+        unique_name = f"{uuid.uuid4().hex}_{file_name}"
+        save_dir = os.path.join("uploads", "documents", str(employee_id))
+        os.makedirs(save_dir, exist_ok=True)
+        file_path = os.path.join(save_dir, unique_name)
+
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+
+        file_url = f"/uploads/documents/{employee_id}/{unique_name}"
+
+        doc = Document(
+            employee_id=employee_id,
+            doc_type=doc_type,
+            file_name=file_name,
+            file_url=file_url,
+            is_confidential=is_confidential,
+            uploaded_by=self.current_user.user_id,
+        )
+        self.db.add(doc)
+        self.db.commit()
+        self.db.refresh(doc)
+
+        uploader_name = self.current_user.full_name
+
+        return {
+            "id": doc.id,
+            "employee_id": doc.employee_id,
+            "doc_type": doc.doc_type,
+            "file_name": doc.file_name,
+            "file_url": doc.file_url,
+            "is_confidential": doc.is_confidential,
+            "uploaded_by": doc.uploaded_by,
+            "uploaded_by_name": uploader_name,
+            "uploaded_at": doc.uploaded_at,
+        }
+
+

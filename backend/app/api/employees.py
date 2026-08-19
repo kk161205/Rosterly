@@ -3,11 +3,12 @@ Employee Directory API routes — project doc §5.3.
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
+from app.models.lifecycle import DocumentType
 from app.schemas.employee_directory import (
     EmployeeActionResponse,
     EmployeeDirectoryResponse,
@@ -15,7 +16,7 @@ from app.schemas.employee_directory import (
     EmployeeListItem,
     EmployeeUpdateRequest,
 )
-from app.schemas.employee_profile import EmployeeProfileResponse
+from app.schemas.employee_profile import DocumentResponse, EmployeeProfileResponse
 from app.services.employee_directory_service import EmployeeDirectoryService
 from app.services.employee_profile_service import EmployeeProfileService
 
@@ -36,6 +37,53 @@ def get_employee_profile_detail(
     service = EmployeeProfileService(db=db, current_user=current_user)
     data = service.get_employee_profile(employee_id=employee_id)
     return EmployeeProfileResponse.model_validate(data)
+
+
+@router.get("/{employee_id}/documents", response_model=list[DocumentResponse])
+def get_employee_documents(
+    employee_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[DocumentResponse]:
+    """
+    Get documents for an employee (PRD §5.4).
+    Excludes is_confidential=true documents unless caller is HR/Admin/self.
+    Manager and IT Admin are denied (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_documents(employee_id=employee_id)
+    return [DocumentResponse.model_validate(d) for d in data]
+
+
+@router.post(
+    "/{employee_id}/documents",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_employee_document(
+    employee_id: UUID,
+    file: UploadFile = File(...),
+    doc_type: DocumentType = Form(...),
+    is_confidential: bool = Form(False),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentResponse:
+    """
+    Upload a document for an employee (PRD §5.4).
+    Validates file size (max 10MB) and allowed extension (.pdf, .png, .jpg, .jpeg, .docx).
+    Allowed roles: Self, HR Admin, Super Admin. Manager/IT Admin/Auditor denied (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    content = await file.read()
+    data = service.upload_employee_document(
+        employee_id=employee_id,
+        file_name=file.filename or "uploaded_doc",
+        file_bytes=content,
+        doc_type=doc_type,
+        is_confidential=is_confidential,
+    )
+    return DocumentResponse.model_validate(data)
+
 
 
 
