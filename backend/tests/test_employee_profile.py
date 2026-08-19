@@ -1,6 +1,6 @@
 """
-Comprehensive Tests for Employee Profile Detail API (§5.4).
-Verifies 100% of allowed and denied permission matrix cells for all 6 endpoints across all 6 roles.
+Comprehensive Unit & Integration Tests for Employee Profile Detail API (§5.4).
+Verifies 100% of allowed and denied permission matrix cells across all 6 endpoints for all 6 roles.
 """
 import datetime
 import io
@@ -20,7 +20,6 @@ from app.models.lifecycle import Document, DocumentType
 client = TestClient(app)
 
 
-# Mock user objects
 def create_mock_user(
     user_id=None,
     full_name="John Doe",
@@ -71,7 +70,9 @@ def set_user_context(user_id: uuid.UUID, role: str, dept_id: uuid.UUID = None):
     return curr_u
 
 
-# --- 1. GET /employees/{id} ---
+# ============================================================================
+# 1. GET /api/v1/employees/{id}
+# ============================================================================
 
 def test_get_employee_profile_self_allowed():
     emp_id = uuid.uuid4()
@@ -80,7 +81,6 @@ def test_get_employee_profile_self_allowed():
 
     mock_db = MagicMock()
     mock_user = create_mock_user(user_id=emp_id, dept_id=dept_id)
-
     mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
         mock_user,
         "Engineering",
@@ -99,6 +99,22 @@ def test_get_employee_profile_self_allowed():
         app.dependency_overrides.clear()
 
 
+def test_get_employee_profile_self_other_employee_denied_403():
+    emp_self = uuid.uuid4()
+    emp_other = uuid.uuid4()
+    set_user_context(emp_self, "employee")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_other}")
+        assert res.status_code == 403
+        assert res.json()["error"]["code"] == "forbidden"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_employee_profile_manager_own_dept_allowed():
     mgr_id = uuid.uuid4()
     emp_id = uuid.uuid4()
@@ -107,7 +123,6 @@ def test_get_employee_profile_manager_own_dept_allowed():
 
     mock_db = MagicMock()
     mock_user = create_mock_user(user_id=emp_id, dept_id=dept_id)
-
     mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
         mock_user,
         "Engineering",
@@ -132,7 +147,6 @@ def test_get_employee_profile_manager_out_of_dept_denied_403():
 
     mock_db = MagicMock()
     mock_user = create_mock_user(user_id=emp_id, dept_id=emp_dept)
-
     mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
         mock_user,
         "Marketing",
@@ -144,8 +158,7 @@ def test_get_employee_profile_manager_out_of_dept_denied_403():
     try:
         res = client.get(f"/api/v1/employees/{emp_id}")
         assert res.status_code == 403
-        data = res.json()
-        assert data["error"]["code"] == "forbidden"
+        assert res.json()["error"]["code"] == "forbidden"
     finally:
         app.dependency_overrides.clear()
 
@@ -161,6 +174,50 @@ def test_get_employee_profile_it_admin_denied_403():
     try:
         res = client.get(f"/api/v1/employees/{emp_id}")
         assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_employee_profile_hr_admin_allowed():
+    hr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(hr_id, "hr_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
+        mock_user,
+        "Engineering",
+        "employee",
+        "Manager One",
+    )
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}")
+        assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_employee_profile_super_admin_allowed():
+    sa_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(sa_id, "super_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
+        mock_user,
+        "Engineering",
+        "employee",
+        "Manager One",
+    )
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}")
+        assert res.status_code == 200
     finally:
         app.dependency_overrides.clear()
 
@@ -187,7 +244,9 @@ def test_get_employee_profile_auditor_allowed():
         app.dependency_overrides.clear()
 
 
-# --- 2. PATCH /employees/{id} ---
+# ============================================================================
+# 2. PATCH /api/v1/employees/{id}
+# ============================================================================
 
 def test_patch_employee_self_phone_allowed():
     emp_id = uuid.uuid4()
@@ -195,7 +254,6 @@ def test_patch_employee_self_phone_allowed():
 
     mock_db = MagicMock()
     mock_user = create_mock_user(user_id=emp_id)
-
     mock_db.query().filter().first.return_value = mock_user
     mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
         mock_user,
@@ -213,26 +271,34 @@ def test_patch_employee_self_phone_allowed():
         app.dependency_overrides.clear()
 
 
-def test_patch_employee_self_restricted_field_rejected_400():
-    emp_id = uuid.uuid4()
-    set_user_context(emp_id, "employee")
+def test_patch_employee_self_other_employee_denied_403():
+    emp_self = uuid.uuid4()
+    emp_other = uuid.uuid4()
+    set_user_context(emp_self, "employee")
 
     mock_db = MagicMock()
-    mock_user = create_mock_user(user_id=emp_id)
-    mock_db.query().filter().first.return_value = mock_user
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
-        res = client.patch(f"/api/v1/employees/{emp_id}", json={"full_name": "New Name"})
-        assert res.status_code == 400
-        data = res.json()
-        assert data["error"]["code"] == "bad_request"
-        assert "Restricted field" in data["error"]["message"]
+        res = client.patch(f"/api/v1/employees/{emp_other}", json={"phone": "+12345"})
+        assert res.status_code == 403
     finally:
         app.dependency_overrides.clear()
 
 
-def test_patch_employee_self_address_rejected_400():
+@pytest.mark.parametrize(
+    "restricted_field,value",
+    [
+        ("full_name", "Hacker Name"),
+        ("designation", "CEO"),
+        ("department_id", str(uuid.uuid4())),
+        ("role_id", str(uuid.uuid4())),
+        ("status", "inactive"),
+        ("manager_id", str(uuid.uuid4())),
+        ("address", "123 Main St"),
+    ],
+)
+def test_patch_employee_self_every_restricted_field_rejected_400(restricted_field, value):
     emp_id = uuid.uuid4()
     set_user_context(emp_id, "employee")
 
@@ -242,10 +308,10 @@ def test_patch_employee_self_address_rejected_400():
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
-        res = client.patch(f"/api/v1/employees/{emp_id}", json={"address": "123 Main St"})
+        res = client.patch(f"/api/v1/employees/{emp_id}", json={restricted_field: value})
         assert res.status_code == 400
         data = res.json()
-        assert "Address field storage is not supported" in data["error"]["message"]
+        assert data["error"]["code"] == "bad_request"
     finally:
         app.dependency_overrides.clear()
 
@@ -254,6 +320,36 @@ def test_patch_employee_manager_denied_403():
     mgr_id = uuid.uuid4()
     emp_id = uuid.uuid4()
     set_user_context(mgr_id, "manager")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.patch(f"/api/v1/employees/{emp_id}", json={"phone": "+12345"})
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_employee_it_admin_denied_403():
+    it_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(it_id, "it_admin")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.patch(f"/api/v1/employees/{emp_id}", json={"phone": "+12345"})
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_employee_auditor_denied_403():
+    auditor_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(auditor_id, "auditor")
 
     mock_db = MagicMock()
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -279,12 +375,11 @@ def test_patch_employee_hr_admin_allowed_all_fields():
     mock_role = Role(id=new_role_id, name="hr_admin")
     mock_mgr = create_mock_user(user_id=new_mgr_id)
 
-    # Query returns
     mock_db.query().filter().first.side_effect = [
-        mock_user,  # target user
-        mock_dept,  # department check
-        mock_role,  # role check
-        mock_mgr,   # manager check
+        mock_user,
+        mock_dept,
+        mock_role,
+        mock_mgr,
     ]
     mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
         mock_user,
@@ -312,7 +407,31 @@ def test_patch_employee_hr_admin_allowed_all_fields():
         app.dependency_overrides.clear()
 
 
-def test_patch_employee_unknown_field_422():
+def test_patch_employee_super_admin_allowed_all_fields():
+    sa_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(sa_id, "super_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
+        mock_user,
+        "Engineering",
+        "super_admin",
+        "Manager Boss",
+    )
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.patch(f"/api/v1/employees/{emp_id}", json={"designation": "Principal Engineer"})
+        assert res.status_code == 200
+        assert mock_user.designation == "Principal Engineer"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_employee_unknown_field_400_validation_error():
     emp_id = uuid.uuid4()
     set_user_context(emp_id, "hr_admin")
 
@@ -327,7 +446,9 @@ def test_patch_employee_unknown_field_422():
         app.dependency_overrides.clear()
 
 
-# --- 3. GET /employees/{id}/documents ---
+# ============================================================================
+# 3. GET /api/v1/employees/{id}/documents
+# ============================================================================
 
 def test_get_documents_self_includes_confidential():
     emp_id = uuid.uuid4()
@@ -340,7 +461,7 @@ def test_get_documents_self_includes_confidential():
         employee_id=emp_id,
         doc_type=DocumentType.contract,
         file_name="contract.pdf",
-        file_url="/uploads/contract.pdf",
+        file_url="/uploads/documents/contract.pdf",
         is_confidential=True,
         uploaded_by=emp_id,
         uploaded_at=datetime.datetime.now(datetime.timezone.utc),
@@ -359,6 +480,21 @@ def test_get_documents_self_includes_confidential():
         app.dependency_overrides.clear()
 
 
+def test_get_documents_self_other_employee_denied_403():
+    emp_self = uuid.uuid4()
+    emp_other = uuid.uuid4()
+    set_user_context(emp_self, "employee")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_other}/documents")
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_documents_auditor_excludes_confidential():
     auditor_id = uuid.uuid4()
     emp_id = uuid.uuid4()
@@ -371,7 +507,7 @@ def test_get_documents_auditor_excludes_confidential():
         employee_id=emp_id,
         doc_type=DocumentType.policy_ack,
         file_name="policy.pdf",
-        file_url="/uploads/policy.pdf",
+        file_url="/uploads/documents/policy.pdf",
         is_confidential=False,
         uploaded_by=emp_id,
         uploaded_at=datetime.datetime.now(datetime.timezone.utc),
@@ -408,7 +544,86 @@ def test_get_documents_manager_denied_403():
         app.dependency_overrides.clear()
 
 
-# --- 4. POST /employees/{id}/documents ---
+def test_get_documents_it_admin_denied_403():
+    it_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(it_id, "it_admin")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/documents")
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_documents_hr_admin_includes_confidential():
+    hr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(hr_id, "hr_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    doc_conf = Document(
+        id=uuid.uuid4(),
+        employee_id=emp_id,
+        doc_type=DocumentType.contract,
+        file_name="salary_contract.pdf",
+        file_url="/uploads/documents/salary_contract.pdf",
+        is_confidential=True,
+        uploaded_by=hr_id,
+        uploaded_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().outerjoin().filter().order_by().all.return_value = [(doc_conf, "HR Admin")]
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/documents")
+        assert res.status_code == 200
+        docs = res.json()
+        assert len(docs) == 1
+        assert docs[0]["is_confidential"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_documents_super_admin_includes_confidential():
+    sa_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(sa_id, "super_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    doc_conf = Document(
+        id=uuid.uuid4(),
+        employee_id=emp_id,
+        doc_type=DocumentType.contract,
+        file_name="salary_contract.pdf",
+        file_url="/uploads/documents/salary_contract.pdf",
+        is_confidential=True,
+        uploaded_by=sa_id,
+        uploaded_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().outerjoin().filter().order_by().all.return_value = [(doc_conf, "Super Admin")]
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/documents")
+        assert res.status_code == 200
+        docs = res.json()
+        assert len(docs) == 1
+        assert docs[0]["is_confidential"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ============================================================================
+# 4. POST /api/v1/employees/{id}/documents
+# ============================================================================
 
 def test_upload_document_self_allowed():
     emp_id = uuid.uuid4()
@@ -429,6 +644,145 @@ def test_upload_document_self_allowed():
         payload = res.json()
         assert payload["file_name"] == "test.pdf"
         assert payload["doc_type"] == "contract"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_self_other_employee_denied_403():
+    emp_self = uuid.uuid4()
+    emp_other = uuid.uuid4()
+    set_user_context(emp_self, "employee")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        file_content = b"%PDF-1.4 sample content"
+        files = {"file": ("test.pdf", io.BytesIO(file_content), "application/pdf")}
+        data = {"doc_type": "contract"}
+
+        res = client.post(f"/api/v1/employees/{emp_other}/documents", data=data, files=files)
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_path_traversal_sanitized():
+    emp_id = uuid.uuid4()
+    set_user_context(emp_id, "employee")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        file_content = b"%PDF-1.4 sample content"
+        # Path traversal filename attempt
+        files = {"file": ("../../etc/passwd.pdf", io.BytesIO(file_content), "application/pdf")}
+        data = {"doc_type": "contract"}
+
+        res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
+        assert res.status_code == 201
+        payload = res.json()
+        # Display filename sanitized to basename
+        assert payload["file_name"] == "passwd.pdf"
+        assert ".." not in payload["file_url"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_manager_denied_403():
+    mgr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(mgr_id, "manager")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        file_content = b"%PDF-1.4"
+        files = {"file": ("test.pdf", io.BytesIO(file_content), "application/pdf")}
+        data = {"doc_type": "contract"}
+
+        res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_it_admin_denied_403():
+    it_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(it_id, "it_admin")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        files = {"file": ("test.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")}
+        data = {"doc_type": "contract"}
+
+        res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_auditor_denied_403():
+    auditor_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(auditor_id, "auditor")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        files = {"file": ("test.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")}
+        data = {"doc_type": "contract"}
+
+        res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_hr_admin_allowed():
+    hr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(hr_id, "hr_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        files = {"file": ("hr_doc.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")}
+        data = {"doc_type": "offer_letter"}
+
+        res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
+        assert res.status_code == 201
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_document_super_admin_allowed():
+    sa_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(sa_id, "super_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        files = {"file": ("sa_doc.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")}
+        data = {"doc_type": "contract"}
+
+        res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
+        assert res.status_code == 201
     finally:
         app.dependency_overrides.clear()
 
@@ -464,7 +818,7 @@ def test_upload_document_size_exceeded_rejected_400():
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
-        large_content = b"0" * (10 * 1024 * 1024 + 1)  # 10MB + 1 byte
+        large_content = b"0" * (10 * 1024 * 1024 + 1)
         files = {"file": ("large.pdf", io.BytesIO(large_content), "application/pdf")}
         data = {"doc_type": "contract"}
 
@@ -475,7 +829,9 @@ def test_upload_document_size_exceeded_rejected_400():
         app.dependency_overrides.clear()
 
 
-# --- 5. DELETE /employees/{id}/documents/{doc_id} ---
+# ============================================================================
+# 5. DELETE /api/v1/employees/{id}/documents/{doc_id}
+# ============================================================================
 
 def test_delete_document_self_denied_403():
     emp_id = uuid.uuid4()
@@ -489,6 +845,54 @@ def test_delete_document_self_denied_403():
         res = client.delete(f"/api/v1/employees/{emp_id}/documents/{doc_id}")
         assert res.status_code == 403
         assert "Only HR Admin or Super Admin" in res.json()["error"]["message"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_document_manager_denied_403():
+    mgr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    set_user_context(mgr_id, "manager")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.delete(f"/api/v1/employees/{emp_id}/documents/{doc_id}")
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_document_it_admin_denied_403():
+    it_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    set_user_context(it_id, "it_admin")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.delete(f"/api/v1/employees/{emp_id}/documents/{doc_id}")
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_document_auditor_denied_403():
+    auditor_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    set_user_context(auditor_id, "auditor")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.delete(f"/api/v1/employees/{emp_id}/documents/{doc_id}")
+        assert res.status_code == 403
     finally:
         app.dependency_overrides.clear()
 
@@ -515,7 +919,31 @@ def test_delete_document_hr_admin_allowed():
         app.dependency_overrides.clear()
 
 
-# --- 6. GET /employees/{id}/assets ---
+def test_delete_document_super_admin_allowed():
+    sa_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    set_user_context(sa_id, "super_admin")
+
+    mock_db = MagicMock()
+    mock_doc = Document(
+        id=doc_id,
+        employee_id=emp_id,
+        file_url="/uploads/documents/sample.pdf",
+    )
+    mock_db.query().filter().first.return_value = mock_doc
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.delete(f"/api/v1/employees/{emp_id}/documents/{doc_id}")
+        assert res.status_code == 204
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ============================================================================
+# 6. GET /api/v1/employees/{id}/assets
+# ============================================================================
 
 def test_get_assets_self_returns_current_and_history():
     emp_id = uuid.uuid4()
@@ -571,6 +999,40 @@ def test_get_assets_self_returns_current_and_history():
         app.dependency_overrides.clear()
 
 
+def test_get_assets_self_other_employee_denied_403():
+    emp_self = uuid.uuid4()
+    emp_other = uuid.uuid4()
+    set_user_context(emp_self, "employee")
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_other}/assets")
+        assert res.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_assets_manager_own_dept_allowed():
+    mgr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    dept_id = uuid.uuid4()
+    set_user_context(mgr_id, "manager", dept_id)
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id, dept_id=dept_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().join().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/assets")
+        assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_assets_manager_out_of_dept_denied_403():
     mgr_id = uuid.uuid4()
     emp_id = uuid.uuid4()
@@ -587,5 +1049,77 @@ def test_get_assets_manager_out_of_dept_denied_403():
         res = client.get(f"/api/v1/employees/{emp_id}/assets")
         assert res.status_code == 403
         assert "Managers may only view assets for employees within their own department" in res.json()["error"]["message"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_assets_hr_admin_allowed():
+    hr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(hr_id, "hr_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().join().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/assets")
+        assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_assets_it_admin_allowed():
+    it_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(it_id, "it_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().join().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/assets")
+        assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_assets_super_admin_allowed():
+    sa_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(sa_id, "super_admin")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().join().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/assets")
+        assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_assets_auditor_allowed():
+    auditor_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    set_user_context(auditor_id, "auditor")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().join().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{emp_id}/assets")
+        assert res.status_code == 200
     finally:
         app.dependency_overrides.clear()

@@ -4,6 +4,7 @@ document vault management, and asset assignment retrieval with fine-grained ABAC
 """
 from datetime import datetime, timezone
 import os
+import re
 import uuid
 from typing import Any
 from uuid import UUID
@@ -17,6 +18,11 @@ from app.models.assets import Asset, AssetAssignment
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.lifecycle import Document, DocumentType
 from app.schemas.employee_profile import EmployeeProfileUpdateRequest
+
+# Canonical absolute upload directory root (independent of CWD)
+UPLOAD_BASE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+)
 
 
 class EmployeeProfileService:
@@ -40,6 +46,14 @@ class EmployeeProfileService:
                 message="IT Admin does not have permission to view employee profile details.",
             )
 
+        is_self = str(self.current_user.user_id) == str(employee_id)
+        if user_role == "employee" and not is_self:
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Employees may only view their own profile.",
+            )
+
         ManagerUser = aliased(User)
         target = (
             self.db.query(
@@ -61,18 +75,16 @@ class EmployeeProfileService:
         user_obj, dept_name, role_name, manager_name = target
 
         # Row-level department scoping for manager role
-        if user_role == "manager":
-            is_self = str(self.current_user.user_id) == str(employee_id)
-            if not is_self:
-                if (
-                    not self.current_user.department_id
-                    or user_obj.department_id != self.current_user.department_id
-                ):
-                    raise AppError(
-                        status_code=403,
-                        code="forbidden",
-                        message="Managers may only view employees within their own department.",
-                    )
+        if user_role == "manager" and not is_self:
+            if (
+                not self.current_user.department_id
+                or user_obj.department_id != self.current_user.department_id
+            ):
+                raise AppError(
+                    status_code=403,
+                    code="forbidden",
+                    message="Managers may only view employees within their own department.",
+                )
 
         status_val = (
             user_obj.status.value
@@ -117,22 +129,21 @@ class EmployeeProfileService:
                 message=f"Role '{user_role}' is not permitted to update employee profiles.",
             )
 
+        is_self = str(self.current_user.user_id) == str(employee_id)
+        if user_role == "employee" and not is_self:
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Employees may only update their own profile.",
+            )
+
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
         set_fields = payload.model_dump(exclude_unset=True)
 
-        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
-
-        if is_self:
-            if str(self.current_user.user_id) != str(employee_id):
-                raise AppError(
-                    status_code=403,
-                    code="forbidden",
-                    message="Employees may only update their own profile.",
-                )
-
+        if is_self or user_role == "employee":
             # Reject address explicitly if present
             if "address" in set_fields:
                 raise AppError(
@@ -254,17 +265,17 @@ class EmployeeProfileService:
                 message=f"Role '{user_role}' does not have permission to view employee documents.",
             )
 
-        target_user = self.db.query(User).filter(User.id == employee_id).first()
-        if not target_user:
-            raise AppError(status_code=404, code="not_found", message="Employee not found.")
-
-        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
-        if is_self and str(self.current_user.user_id) != str(employee_id):
+        is_self = str(self.current_user.user_id) == str(employee_id)
+        if user_role == "employee" and not is_self:
             raise AppError(
                 status_code=403,
                 code="forbidden",
                 message="Employees may only view their own documents.",
             )
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
         UploaderUser = aliased(User)
         query = (
@@ -318,17 +329,17 @@ class EmployeeProfileService:
                 message=f"Role '{user_role}' does not have permission to upload documents.",
             )
 
-        target_user = self.db.query(User).filter(User.id == employee_id).first()
-        if not target_user:
-            raise AppError(status_code=404, code="not_found", message="Employee not found.")
-
-        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
-        if is_self and str(self.current_user.user_id) != str(employee_id):
+        is_self = str(self.current_user.user_id) == str(employee_id)
+        if user_role == "employee" and not is_self:
             raise AppError(
                 status_code=403,
                 code="forbidden",
                 message="Employees may only upload documents to their own profile.",
             )
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
         # File size validation: max 10MB
         max_bytes = 10 * 1024 * 1024
@@ -339,8 +350,12 @@ class EmployeeProfileService:
                 message="File size exceeds maximum allowed limit of 10MB.",
             )
 
+        # Path traversal prevention: strip directory components
+        raw_basename = os.path.basename(file_name)
+        display_name = raw_basename or "uploaded_doc"
+
         # File extension validation
-        ext = os.path.splitext(file_name)[1].lower()
+        ext = os.path.splitext(display_name)[1].lower()
         allowed_exts = {".pdf", ".png", ".jpg", ".jpeg", ".docx"}
         if ext not in allowed_exts:
             raise AppError(
@@ -349,9 +364,23 @@ class EmployeeProfileService:
                 message="Invalid file type. Allowed formats: PDF, PNG, JPG, JPEG, DOCX.",
             )
 
-        # Save file to disk
-        unique_name = f"{uuid.uuid4().hex}_{file_name}"
-        save_dir = os.path.join("uploads", "documents", str(employee_id))
+        # Generate a safe physical filename on disk
+        safe_base = re.sub(r"[^a-zA-Z0-9_.-]", "_", display_name)
+        unique_name = f"{uuid.uuid4().hex}_{safe_base}"
+
+        # Resolve storage directory relative to UPLOAD_BASE_DIR
+        save_dir = os.path.abspath(
+            os.path.join(UPLOAD_BASE_DIR, "documents", str(employee_id))
+        )
+
+        # Path containment check
+        if not save_dir.startswith(UPLOAD_BASE_DIR):
+            raise AppError(
+                status_code=400,
+                code="bad_request",
+                message="Invalid upload path destination.",
+            )
+
         os.makedirs(save_dir, exist_ok=True)
         file_path = os.path.join(save_dir, unique_name)
 
@@ -365,7 +394,7 @@ class EmployeeProfileService:
             id=uuid.uuid4(),
             employee_id=employee_id,
             doc_type=doc_type,
-            file_name=file_name,
+            file_name=display_name,
             file_url=file_url,
             is_confidential=is_confidential,
             uploaded_by=self.current_user.user_id,
@@ -412,12 +441,15 @@ class EmployeeProfileService:
         if not doc:
             raise AppError(status_code=404, code="not_found", message="Document not found.")
 
-        # Attempt physical file deletion
-        if doc.file_url and doc.file_url.startswith("/uploads/"):
-            rel_path = doc.file_url.lstrip("/")
-            if os.path.exists(rel_path):
+        # Attempt physical file deletion safely using UPLOAD_BASE_DIR
+        if doc.file_url and "/uploads/" in doc.file_url:
+            rel_part = doc.file_url.split("/uploads/", 1)[1]
+            target_path = os.path.abspath(os.path.join(UPLOAD_BASE_DIR, rel_part))
+
+            # Ensure path containment before deletion
+            if target_path.startswith(UPLOAD_BASE_DIR) and os.path.exists(target_path):
                 try:
-                    os.remove(rel_path)
+                    os.remove(target_path)
                 except OSError:
                     pass
 
@@ -432,17 +464,17 @@ class EmployeeProfileService:
         """
         user_role = (self.current_user.role or "").lower()
 
-        target_user = self.db.query(User).filter(User.id == employee_id).first()
-        if not target_user:
-            raise AppError(status_code=404, code="not_found", message="Employee not found.")
-
-        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
-        if is_self and str(self.current_user.user_id) != str(employee_id):
+        is_self = str(self.current_user.user_id) == str(employee_id)
+        if user_role == "employee" and not is_self:
             raise AppError(
                 status_code=403,
                 code="forbidden",
                 message="Employees may only view their own assigned assets.",
             )
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
         if user_role == "manager" and not is_self:
             if (
@@ -494,7 +526,3 @@ class EmployeeProfileService:
                 history_list.append(item)
 
         return {"current": current_list, "history": history_list}
-
-
-
-
