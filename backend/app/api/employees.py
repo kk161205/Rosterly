@@ -15,9 +15,28 @@ from app.schemas.employee_directory import (
     EmployeeListItem,
     EmployeeUpdateRequest,
 )
+from app.schemas.employee_profile import EmployeeProfileResponse
 from app.services.employee_directory_service import EmployeeDirectoryService
+from app.services.employee_profile_service import EmployeeProfileService
 
 router = APIRouter()
+
+
+@router.get("/{employee_id}", response_model=EmployeeProfileResponse)
+def get_employee_profile_detail(
+    employee_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeProfileResponse:
+    """
+    Get detailed employee profile record (PRD §5.4).
+    Applies row-level ABAC scoping: Manager is restricted to own department (403 if out of dept).
+    IT Admin is denied (403). Self, HR Admin, Super Admin, and Auditor are allowed.
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_profile(employee_id=employee_id)
+    return EmployeeProfileResponse.model_validate(data)
+
 
 
 @router.get("/filters", response_model=EmployeeFiltersMetaResponse)
