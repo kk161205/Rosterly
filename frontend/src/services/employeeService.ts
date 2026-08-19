@@ -4,6 +4,7 @@ import {
   Department,
   EmployeeQueryFilters,
   EmployeePaginatedResponse,
+  EmployeeFiltersMeta,
   OrgChartNode,
 } from '@/types/employee'
 
@@ -14,7 +15,7 @@ export const employeeService = {
   async getEmployees(filters: EmployeeQueryFilters = {}): Promise<EmployeePaginatedResponse> {
     const params = new URLSearchParams()
     if (filters.search) params.append('search', filters.search)
-    if (filters.department_id) params.append('department_id', filters.department_id)
+    if (filters.department_id && filters.department_id !== 'all') params.append('department_id', filters.department_id)
     if (filters.status && filters.status !== 'all') params.append('status', filters.status)
     if (filters.role && filters.role !== 'all') params.append('role', filters.role)
     if (filters.view) params.append('view', filters.view)
@@ -34,10 +35,42 @@ export const employeeService = {
   },
 
   /**
+   * Fetches dynamic status and role filter options populated from current DB records.
+   */
+  async getFilterOptions(): Promise<EmployeeFiltersMeta> {
+    const response = await apiClient.get<EmployeeFiltersMeta>('/employees/filters')
+    return response.data
+  },
+
+  /**
    * Fetches single employee record details by ID.
    */
   async getEmployeeById(employeeId: string): Promise<Employee> {
     const response = await apiClient.get<Employee>(`/employees/${employeeId}`)
+    return response.data
+  },
+
+  /**
+   * Updates employee profile details (Admin or Manager).
+   */
+  async updateEmployee(employeeId: string, payload: import('@/types/employee').EmployeeUpdatePayload): Promise<Employee> {
+    const response = await apiClient.patch<Employee>(`/employees/${employeeId}`, payload)
+    return response.data
+  },
+
+  /**
+   * Initiates employee offboarding transition (Admin).
+   */
+  async offboardEmployee(employeeId: string): Promise<Employee> {
+    const response = await apiClient.post<Employee>(`/employees/${employeeId}/offboard`)
+    return response.data
+  },
+
+  /**
+   * Permanently deletes an employee record (Super Admin only).
+   */
+  async deleteEmployee(employeeId: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete<{ success: boolean; message: string }>(`/employees/${employeeId}`)
     return response.data
   },
 
@@ -53,7 +86,7 @@ export const employeeService = {
         id: emp.id,
         full_name: emp.full_name,
         designation: emp.designation,
-        department_name: emp.department_name,
+        department_name: emp.department_name || 'Unassigned',
         status: emp.status,
         avatar_url: emp.avatar_url,
         manager_id: emp.manager_id,

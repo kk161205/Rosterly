@@ -2,10 +2,8 @@ import React from 'react'
 import {
   ChevronLeft,
   ChevronRight,
-  User,
   Building,
   UserCheck,
-  ChevronRightIcon,
 } from 'lucide-react'
 import { Employee, EmployeePaginatedResponse } from '@/types/employee'
 
@@ -43,6 +41,20 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             Onboarding
           </span>
         )
+      case 'offboarding':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-amber-50 text-amber-800 border border-amber-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            Offboarding
+          </span>
+        )
+      case 'terminated':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-surface-container text-on-surface-variant border border-outline-variant">
+            <span className="w-1.5 h-1.5 rounded-full bg-outline" />
+            Terminated
+          </span>
+        )
       case 'inactive':
       default:
         return (
@@ -75,7 +87,6 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               <th className="py-3 px-4 font-semibold">Department</th>
               <th className="py-3 px-4 font-semibold">Reporting To</th>
               <th className="py-3 px-4 font-semibold">Status</th>
-              <th className="py-3 px-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant/60">
@@ -141,22 +152,6 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
                 {/* Status Column */}
                 <td className="py-3.5 px-4">{getStatusBadge(emp.status)}</td>
-
-                {/* Action Column */}
-                <td className="py-3.5 px-4 text-right">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSelectEmployee(emp)
-                    }}
-                    className="p-1.5 text-on-surface-variant hover:text-accent hover:bg-surface-container rounded transition-all cursor-pointer inline-flex items-center gap-1"
-                    title="View Profile Drawer"
-                  >
-                    <span className="text-xs font-mono font-medium hidden sm:inline">Profile</span>
-                    <ChevronRightIcon className="w-4 h-4" />
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>

@@ -1,18 +1,21 @@
 import React from 'react'
 import {
-  Search,
-  X,
   LayoutList,
   Network,
   RotateCcw,
   Building2,
   Filter,
+  Shield,
 } from 'lucide-react'
-import { Department, EmployeeQueryFilters } from '@/types/employee'
+import { Department, EmployeeQueryFilters, FilterOption } from '@/types/employee'
+import { SearchInput, SelectDropdown, SelectOption } from '@/components/common/CommonUI'
 
 interface EmployeeFilterBarProps {
   filters: EmployeeQueryFilters
-  departments: Department[]
+  departments?: Department[]
+  availableDepartments?: FilterOption[]
+  availableStatuses?: FilterOption[]
+  availableRoles?: FilterOption[]
   onFilterChange: (updated: Partial<EmployeeQueryFilters>) => void
   onResetFilters: () => void
   viewMode: 'list' | 'tree'
@@ -22,7 +25,10 @@ interface EmployeeFilterBarProps {
 
 export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
   filters,
-  departments,
+  departments = [],
+  availableDepartments = [],
+  availableStatuses = [],
+  availableRoles = [],
   onFilterChange,
   onResetFilters,
   viewMode,
@@ -35,6 +41,38 @@ export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
       (filters.status && filters.status !== 'all') ||
       (filters.role && filters.role !== 'all')
   )
+
+  const depts =
+    availableDepartments && availableDepartments.length > 0
+      ? availableDepartments.map((d) => ({
+          value: d.value,
+          label: `${d.label} (${d.count})`,
+        }))
+      : departments.map((d) => ({
+          value: d.id,
+          label: `${d.name} (${d.head_count})`,
+        }))
+
+  const departmentOptions: SelectOption[] = [
+    { value: 'all', label: 'All Departments' },
+    ...depts,
+  ]
+
+  const statusOptions: SelectOption[] = [
+    { value: 'all', label: 'All Statuses' },
+    ...availableStatuses.map((s) => ({
+      value: s.value,
+      label: `${s.label} (${s.count})`,
+    })),
+  ]
+
+  const roleOptions: SelectOption[] = [
+    { value: 'all', label: 'All Roles' },
+    ...availableRoles.map((r) => ({
+      value: r.value,
+      label: `${r.label} (${r.count})`,
+    })),
+  ]
 
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-5 shadow-sm space-y-4">
@@ -87,72 +125,49 @@ export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
       {/* Filter Inputs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
         {/* Full-Text Search Input */}
-        <div className="lg:col-span-4 relative">
-          <Search className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
+        <div className="lg:col-span-4">
+          <SearchInput
             value={filters.search || ''}
             onChange={(e) => onFilterChange({ search: e.target.value, page: 1 })}
             placeholder="Search by name, email, designation..."
-            className="w-full pl-9 pr-8 py-2 rounded border border-outline-variant bg-surface-container-lowest text-body-sm font-body text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-all"
+            shortcut=""
           />
-          {filters.search && (
-            <button
-              type="button"
-              onClick={() => onFilterChange({ search: '', page: 1 })}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
 
         {/* Department Filter Dropdown */}
-        <div className="lg:col-span-3 relative">
-          <Building2 className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <select
+        <div className="lg:col-span-3">
+          <SelectDropdown
+            options={departmentOptions}
             value={filters.department_id || 'all'}
-            onChange={(e) => onFilterChange({ department_id: e.target.value, page: 1 })}
-            className="w-full pl-9 pr-8 py-2 rounded border border-outline-variant bg-surface-container-lowest text-body-sm font-body text-on-surface focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-all cursor-pointer appearance-none"
-          >
-            <option value="all">All Departments</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.id}>
-                {dept.name} ({dept.head_count})
-              </option>
-            ))}
-          </select>
+            onChange={(val) => onFilterChange({ department_id: val, page: 1 })}
+            icon={<Building2 className="w-4 h-4 text-outline" />}
+            containerClassName="w-full"
+            className="w-full justify-between"
+          />
         </div>
 
         {/* Status Dropdown */}
-        <div className="lg:col-span-2 relative">
-          <Filter className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <select
+        <div className="lg:col-span-2">
+          <SelectDropdown
+            options={statusOptions}
             value={filters.status || 'all'}
-            onChange={(e) => onFilterChange({ status: e.target.value, page: 1 })}
-            className="w-full pl-9 pr-8 py-2 rounded border border-outline-variant bg-surface-container-lowest text-body-sm font-body text-on-surface focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-all cursor-pointer appearance-none"
-          >
-            <option value="all">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="onboarding">Onboarding</option>
-            <option value="inactive">Inactive</option>
-          </select>
+            onChange={(val) => onFilterChange({ status: val, page: 1 })}
+            icon={<Filter className="w-4 h-4 text-outline" />}
+            containerClassName="w-full"
+            className="w-full justify-between"
+          />
         </div>
 
         {/* Role Filter Dropdown */}
-        <div className="lg:col-span-2 relative">
-          <select
+        <div className="lg:col-span-2">
+          <SelectDropdown
+            options={roleOptions}
             value={filters.role || 'all'}
-            onChange={(e) => onFilterChange({ role: e.target.value, page: 1 })}
-            className="w-full px-3 py-2 rounded border border-outline-variant bg-surface-container-lowest text-body-sm font-body text-on-surface focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-all cursor-pointer appearance-none"
-          >
-            <option value="all">All Roles</option>
-            <option value="employee">Employee</option>
-            <option value="manager">Manager</option>
-            <option value="hr_admin">HR Admin</option>
-            <option value="it_admin">IT Admin</option>
-            <option value="super_admin">Super Admin</option>
-          </select>
+            onChange={(val) => onFilterChange({ role: val, page: 1 })}
+            icon={<Shield className="w-4 h-4 text-outline" />}
+            containerClassName="w-full"
+            className="w-full justify-between"
+          />
         </div>
 
         {/* Reset Filter Action */}
