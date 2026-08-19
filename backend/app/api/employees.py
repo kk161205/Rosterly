@@ -16,7 +16,25 @@ from app.schemas.employee_directory import (
     EmployeeListItem,
     EmployeeUpdateRequest,
 )
-from app.schemas.employee_profile import DocumentResponse, EmployeeProfileResponse
+from app.schemas.employee_profile import DocumentResponse, EmployeeAssetsResponse, EmployeeProfileResponse
+
+
+@router.get("/{employee_id}/assets", response_model=EmployeeAssetsResponse)
+def get_employee_assets(
+    employee_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeAssetsResponse:
+    """
+    Get hardware devices and licenses assigned to employee (PRD §5.4).
+    Returns current active assignments and past historical assignments.
+    Applies department scoping for manager role (403 if out of dept).
+    Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_assets(employee_id=employee_id)
+    return EmployeeAssetsResponse.model_validate(data)
+
 from app.services.employee_directory_service import EmployeeDirectoryService
 from app.services.employee_profile_service import EmployeeProfileService
 

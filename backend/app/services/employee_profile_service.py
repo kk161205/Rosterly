@@ -420,5 +420,77 @@ class EmployeeProfileService:
         self.db.delete(doc)
         self.db.commit()
 
+    def get_employee_assets(self, employee_id: UUID) -> dict[str, list[dict[str, Any]]]:
+        """
+        Get hardware devices and licenses assigned to employee, split into current and history (PRD §5.4).
+        Allowed roles: self (own profile), manager (own dept), hr_admin, it_admin, super_admin, auditor.
+        Manager gets 403 if target employee is outside manager's department.
+        """
+        user_role = (self.current_user.role or "").lower()
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
+
+        is_self = str(self.current_user.user_id) == str(employee_id) or user_role == "employee"
+        if is_self and str(self.current_user.user_id) != str(employee_id):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Employees may only view their own assigned assets.",
+            )
+
+        if user_role == "manager" and not is_self:
+            if (
+                not self.current_user.department_id
+                or target_user.department_id != self.current_user.department_id
+            ):
+                raise AppError(
+                    status_code=403,
+                    code="forbidden",
+                    message="Managers may only view assets for employees within their own department.",
+                )
+
+        AssignerUser = aliased(User)
+        rows = (
+            self.db.query(
+                AssetAssignment,
+                Asset,
+                AssignerUser.full_name.label("assigned_by_name"),
+            )
+            .join(Asset, AssetAssignment.asset_id == Asset.id)
+            .outerjoin(AssignerUser, AssetAssignment.assigned_by == AssignerUser.id)
+            .filter(AssetAssignment.employee_id == employee_id)
+            .order_by(AssetAssignment.assigned_at.desc())
+            .all()
+        )
+
+        current_list: list[dict[str, Any]] = []
+        history_list: list[dict[str, Any]] = []
+
+        for assignment, asset, assigner_name in rows:
+            item = {
+                "id": assignment.id,
+                "asset_id": asset.id,
+                "asset_tag": asset.asset_tag,
+                "asset_name": asset.name,
+                "category": asset.category,
+                "serial_number": asset.serial_number,
+                "assigned_by": assignment.assigned_by,
+                "assigned_by_name": assigner_name,
+                "assigned_at": assignment.assigned_at,
+                "returned_at": assignment.returned_at,
+                "condition_at_assignment": assignment.condition_at_assignment,
+                "condition_at_return": assignment.condition_at_return,
+                "notes": assignment.notes,
+            }
+            if assignment.returned_at is None:
+                current_list.append(item)
+            else:
+                history_list.append(item)
+
+        return {"current": current_list, "history": history_list}
+
+
 
 
