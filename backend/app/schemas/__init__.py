@@ -10,6 +10,13 @@ from app.schemas.auth import (
 )
 from app.schemas.dashboard import DashboardResponse
 from app.schemas.employee_directory import EmployeeDirectoryResponse, EmployeeListItem
+from app.schemas.employee_profile import (
+    AssetAssignmentItem,
+    DocumentResponse,
+    EmployeeAssetsResponse,
+    EmployeeProfileResponse,
+    EmployeeProfileUpdateRequest,
+)
 
 __all__ = [
     "LoginRequest",
@@ -23,6 +30,11 @@ __all__ = [
     "DashboardResponse",
     "EmployeeListItem",
     "EmployeeDirectoryResponse",
+    "EmployeeProfileResponse",
+    "EmployeeProfileUpdateRequest",
+    "DocumentResponse",
+    "AssetAssignmentItem",
+    "EmployeeAssetsResponse",
 ]
 
 
