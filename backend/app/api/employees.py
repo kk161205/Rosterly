@@ -1,24 +1,33 @@
 """
-Employee Directory API routes — project doc §5.3.
+Employee Directory & Profile API routes — project doc §5.3 & §5.4.
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
+from app.models.lifecycle import DocumentType
 from app.schemas.employee_directory import (
     EmployeeActionResponse,
     EmployeeDirectoryResponse,
     EmployeeFiltersMetaResponse,
     EmployeeListItem,
-    EmployeeUpdateRequest,
+)
+from app.schemas.employee_profile import (
+    DocumentResponse,
+    EmployeeAssetsResponse,
+    EmployeeProfileResponse,
+    EmployeeProfileUpdateRequest,
 )
 from app.services.employee_directory_service import EmployeeDirectoryService
+from app.services.employee_profile_service import EmployeeProfileService
 
 router = APIRouter()
 
+
+# --- Static / Directory Routes (§5.3) ---
 
 @router.get("/filters", response_model=EmployeeFiltersMetaResponse)
 def get_employee_filters(
@@ -48,8 +57,7 @@ def get_employee_directory(
 ) -> EmployeeDirectoryResponse:
     """
     Get employee directory list or tree view (PRD §5.3).
-
-    Applies ABAC row-level scoping for `manager` callers (forced department match).
+    Applies ABAC row-level scoping for manager callers (forced department match).
     Sanitized fields only — excludes salary/document fields for all roles.
     """
     service = EmployeeDirectoryService(db=db, current_user=current_user)
@@ -65,19 +73,122 @@ def get_employee_directory(
     return EmployeeDirectoryResponse.model_validate(data)
 
 
-@router.patch("/{employee_id}", response_model=EmployeeListItem)
-def update_employee(
+# --- Parameterized Employee Profile Routes (§5.4) ---
+
+@router.get("/{employee_id}", response_model=EmployeeProfileResponse)
+def get_employee_profile_detail(
     employee_id: UUID,
-    payload: EmployeeUpdateRequest,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> EmployeeListItem:
+) -> EmployeeProfileResponse:
     """
-    Update employee profile details (Super Admin, HR Admin, or Manager within department).
+    Get detailed employee profile record (PRD §5.4).
+    Applies row-level ABAC scoping: Manager is restricted to own department (403 if out of dept).
+    IT Admin is denied (403). Self, HR Admin, Super Admin, and Auditor are allowed.
     """
-    service = EmployeeDirectoryService(db=db, current_user=current_user)
-    data = service.update_employee(employee_id=employee_id, data=payload)
-    return EmployeeListItem.model_validate(data)
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_profile(employee_id=employee_id)
+    return EmployeeProfileResponse.model_validate(data)
+
+
+@router.patch("/{employee_id}", response_model=EmployeeProfileResponse)
+def update_employee(
+    employee_id: UUID,
+    payload: EmployeeProfileUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeProfileResponse:
+    """
+    Update employee profile details (PRD §5.4).
+    Applies field-level permission checks:
+    - Self may only update 'phone'. Attempting to update restricted fields or address returns 400 Bad Request.
+    - HR Admin / Super Admin may update all fields including role_id, status, department_id, manager_id.
+    - Manager, IT Admin, Auditor are denied (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.patch_employee_profile(employee_id=employee_id, payload=payload)
+    return EmployeeProfileResponse.model_validate(data)
+
+
+@router.get("/{employee_id}/documents", response_model=list[DocumentResponse])
+def get_employee_documents(
+    employee_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[DocumentResponse]:
+    """
+    Get documents for an employee (PRD §5.4).
+    Excludes is_confidential=true documents unless caller is HR/Admin/self.
+    Manager and IT Admin are denied (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_documents(employee_id=employee_id)
+    return [DocumentResponse.model_validate(d) for d in data]
+
+
+@router.post(
+    "/{employee_id}/documents",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_employee_document(
+    employee_id: UUID,
+    file: UploadFile = File(...),
+    doc_type: DocumentType = Form(...),
+    is_confidential: bool = Form(False),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentResponse:
+    """
+    Upload a document for an employee (PRD §5.4).
+    Validates file size (max 10MB) and allowed extension (.pdf, .png, .jpg, .jpeg, .docx).
+    Allowed roles: Self, HR Admin, Super Admin. Manager/IT Admin/Auditor denied (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    content = await file.read()
+    data = service.upload_employee_document(
+        employee_id=employee_id,
+        file_name=file.filename or "uploaded_doc",
+        file_bytes=content,
+        doc_type=doc_type,
+        is_confidential=is_confidential,
+    )
+    return DocumentResponse.model_validate(data)
+
+
+@router.delete(
+    "/{employee_id}/documents/{doc_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_employee_document(
+    employee_id: UUID,
+    doc_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """
+    Delete a document from an employee's vault (PRD §5.4).
+    HR Admin and Super Admin only. Employees cannot delete own documents (403).
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    service.delete_employee_document(employee_id=employee_id, doc_id=doc_id)
+
+
+@router.get("/{employee_id}/assets", response_model=EmployeeAssetsResponse)
+def get_employee_assets(
+    employee_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeAssetsResponse:
+    """
+    Get hardware devices and licenses assigned to employee (PRD §5.4).
+    Returns current active assignments and past historical assignments.
+    Applies department scoping for manager role (403 if out of dept).
+    Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_assets(employee_id=employee_id)
+    return EmployeeAssetsResponse.model_validate(data)
 
 
 @router.post("/{employee_id}/offboard", response_model=EmployeeListItem)
