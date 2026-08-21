@@ -170,6 +170,8 @@ describe('DashboardPage Component (PRD §5.2)', () => {
     const resolveBtn = screen.getByRole('button', { name: /Resolve/i })
     fireEvent.click(resolveBtn)
 
-    expect(screen.getByText('Completed')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Completed')).toBeInTheDocument()
+    })
   })
 })

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   X,
   Mail,
@@ -18,6 +19,7 @@ import {
   Save,
   RotateCcw,
   Loader2,
+  ExternalLink,
 } from 'lucide-react'
 import { Employee, Department, EmployeeUpdatePayload } from '@/types/employee'
 import { employeeService } from '@/services/employeeService'
@@ -39,6 +41,8 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
   onEmployeeUpdated,
   onEmployeeDeleted,
 }) => {
+  const navigate = useNavigate()
+
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState<EmployeeUpdatePayload>({})
@@ -265,31 +269,47 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
             </div>
           )}
 
-          {/* Employee Avatar & Core Info */}
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-sans font-bold text-xl shadow-sm flex-shrink-0">
-              {employee.avatar_url ? (
-                <img
-                  src={employee.avatar_url}
-                  alt={employee.full_name}
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                employee.full_name.substring(0, 2).toUpperCase()
-              )}
-            </div>
+          {/* Employee Avatar & Core Info with Side Action Button */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-4 min-w-0 flex-1">
+              <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-sans font-bold text-xl shadow-sm flex-shrink-0">
+                {employee.avatar_url ? (
+                  <img
+                    src={employee.avatar_url}
+                    alt={employee.full_name}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  employee.full_name.substring(0, 2).toUpperCase()
+                )}
+              </div>
 
-            <div className="min-w-0 flex-1">
-              <h2 className="text-headline-lg-mobile font-sans font-semibold text-on-surface truncate">
-                {employee.full_name}
-              </h2>
-              <p className="text-body-md font-body text-on-surface-variant mt-0.5 truncate">
-                {employee.designation}
-              </p>
-              <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                {getStatusBadge(employee.status)}
+              <div className="min-w-0 flex-1">
+                <h2 className="text-headline-lg-mobile font-sans font-semibold text-on-surface truncate">
+                  {employee.full_name}
+                </h2>
+                <p className="text-body-md font-body text-on-surface-variant mt-0.5 truncate">
+                  {employee.designation}
+                </p>
+                <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                  {getStatusBadge(employee.status)}
+                </div>
               </div>
             </div>
+
+            {/* Side Action Button */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                navigate(`/employees/${employee.id}`)
+              }}
+              className="px-3.5 py-2 text-xs font-sans font-semibold rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-xs flex-shrink-0"
+              title="Open full employee profile page"
+            >
+              <span>Full Profile</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 

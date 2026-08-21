@@ -57,6 +57,7 @@ describe('EmployeeProfilePage Component', () => {
   const mockDocuments: DocumentItem[] = [
     {
       id: 'doc-1',
+      file_name: 'Employment_Contract.pdf',
       doc_name: 'Employment_Contract.pdf',
       doc_type: 'contract',
       is_confidential: true,
@@ -124,8 +125,8 @@ describe('EmployeeProfilePage Component', () => {
     renderComponent()
 
     await waitFor(() => {
-      expect(screen.getByText('Alex Vance')).toBeInTheDocument()
-      expect(screen.getByText('EMP-0101')).toBeInTheDocument()
+      expect(screen.getAllByText('Alex Vance')[0]).toBeInTheDocument()
+      expect(screen.getAllByText('EMP-0101')[0]).toBeInTheDocument()
       expect(screen.getByText('Senior Frontend Engineer')).toBeInTheDocument()
     })
   })
