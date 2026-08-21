@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { EmployeeDirectoryPage } from '@/pages/EmployeeDirectoryPage'
+import { EmployeeProfilePage } from '@/pages/EmployeeProfilePage'
 import { authStorage } from '@/utils/authStorage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -31,6 +32,22 @@ function App() {
           element={
             <ProtectedRoute>
               <EmployeeDirectoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employees/:id"
+          element={
+            <ProtectedRoute>
+              <EmployeeProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <EmployeeProfilePage />
             </ProtectedRoute>
           }
         />
