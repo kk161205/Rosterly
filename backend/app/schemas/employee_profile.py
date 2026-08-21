@@ -80,3 +80,28 @@ class EmployeeAssetsResponse(BaseModel):
     history: list[AssetAssignmentItem] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChecklistItemDetailResponse(BaseModel):
+    id: UUID
+    title: str
+    category: str
+    owner_role: str
+    status: str
+    due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LifecycleChecklistResponse(BaseModel):
+    id: UUID
+    type: str
+    status: str
+    progress_percentage: int
+    total_items: int
+    completed_items: int
+    items: list[ChecklistItemDetailResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+

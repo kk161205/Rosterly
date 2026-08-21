@@ -16,7 +16,15 @@ from app.core.errors import AppError
 from app.core.security import CurrentUser, invalidate_session_cache
 from app.models.assets import Asset, AssetAssignment
 from app.models.auth import Department, Role, User, UserStatus
-from app.models.lifecycle import Document, DocumentType
+from app.models.lifecycle import (
+    Checklist,
+    ChecklistItem,
+    ChecklistItemStatus,
+    ChecklistStatus,
+    ChecklistType,
+    Document,
+    DocumentType,
+)
 from app.schemas.employee_profile import EmployeeProfileUpdateRequest
 
 # Canonical absolute upload directory root (independent of CWD)
@@ -526,3 +534,89 @@ class EmployeeProfileService:
                 history_list.append(item)
 
         return {"current": current_list, "history": history_list}
+
+    def get_employee_lifecycle(self, employee_id: UUID) -> dict[str, Any] | None:
+        """
+        Get active or latest onboarding/offboarding lifecycle checklist for employee (§5.4).
+        Allowed roles: self, manager (own dept), hr_admin, it_admin, super_admin, auditor.
+        """
+        user_role = (self.current_user.role or "").lower()
+        is_self = str(self.current_user.user_id) == str(employee_id)
+        if user_role == "employee" and not is_self:
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="Employees may only view their own lifecycle records.",
+            )
+
+        target_user = self.db.query(User).filter(User.id == employee_id).first()
+        if not target_user:
+            raise AppError(status_code=404, code="not_found", message="Employee not found.")
+
+        if user_role == "manager" and not is_self:
+            if (
+                not self.current_user.department_id
+                or target_user.department_id != self.current_user.department_id
+            ):
+                raise AppError(
+                    status_code=403,
+                    code="forbidden",
+                    message="Managers may only view lifecycle records for employees in their department.",
+                )
+
+        checklist = (
+            self.db.query(Checklist)
+            .filter(Checklist.employee_id == employee_id)
+            .order_by(Checklist.created_at.desc())
+            .first()
+        )
+
+        if not checklist:
+            return None
+
+        items = (
+            self.db.query(ChecklistItem, Role.name.label("role_name"))
+            .outerjoin(Role, ChecklistItem.owner_role_id == Role.id)
+            .filter(ChecklistItem.checklist_id == checklist.id)
+            .order_by(ChecklistItem.sort_order.asc(), ChecklistItem.created_at.asc())
+            .all()
+        )
+
+        total_items = len(items)
+        completed_items = sum(1 for item, _ in items if item.status == ChecklistItemStatus.done)
+        progress_pct = int((completed_items / total_items) * 100) if total_items > 0 else 0
+
+        formatted_items = []
+        for item, role_name in items:
+            owner_r = (role_name or "hr_admin").lower()
+            if "it" in owner_r:
+                cat = "it"
+            elif "facilities" in owner_r or "admin" in owner_r:
+                cat = "facilities"
+            else:
+                cat = "hr"
+
+            status_str = "completed" if item.status == ChecklistItemStatus.done else item.status.value
+
+            formatted_items.append(
+                {
+                    "id": item.id,
+                    "title": item.task_name,
+                    "category": cat,
+                    "owner_role": role_name or "HR Operations",
+                    "status": status_str,
+                    "due_date": None,
+                    "completed_at": item.completed_at,
+                }
+            )
+
+        return {
+            "id": checklist.id,
+            "type": checklist.type.value if hasattr(checklist.type, "value") else str(checklist.type),
+            "status": checklist.status.value if hasattr(checklist.status, "value") else str(checklist.status),
+            "progress_percentage": progress_pct,
+            "total_items": total_items,
+            "completed_items": completed_items,
+            "items": formatted_items,
+        }
+

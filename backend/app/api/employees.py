@@ -20,6 +20,7 @@ from app.schemas.employee_profile import (
     EmployeeAssetsResponse,
     EmployeeProfileResponse,
     EmployeeProfileUpdateRequest,
+    LifecycleChecklistResponse,
 )
 from app.services.employee_directory_service import EmployeeDirectoryService
 from app.services.employee_profile_service import EmployeeProfileService
@@ -189,6 +190,24 @@ def get_employee_assets(
     service = EmployeeProfileService(db=db, current_user=current_user)
     data = service.get_employee_assets(employee_id=employee_id)
     return EmployeeAssetsResponse.model_validate(data)
+
+
+@router.get("/{employee_id}/lifecycle", response_model=LifecycleChecklistResponse | None)
+def get_employee_lifecycle(
+    employee_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> LifecycleChecklistResponse | None:
+    """
+    Get active or latest onboarding/offboarding lifecycle checklist for employee (PRD §5.4).
+    Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    data = service.get_employee_lifecycle(employee_id=employee_id)
+    if not data:
+        return None
+    return LifecycleChecklistResponse.model_validate(data)
+
 
 
 @router.post("/{employee_id}/offboard", response_model=EmployeeListItem)
