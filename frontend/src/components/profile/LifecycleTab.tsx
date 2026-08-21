@@ -1,5 +1,5 @@
 import React from 'react'
-import { CheckCircle2, Clock, ShieldCheck, UserCheck, CheckSquare, Layers } from 'lucide-react'
+import { CheckCircle2, Clock, CheckSquare, Layers } from 'lucide-react'
 import { LifecycleChecklist, ChecklistItem } from '@/types/profile'
 
 interface LifecycleTabProps {
@@ -9,7 +9,6 @@ interface LifecycleTabProps {
 
 export const LifecycleTab: React.FC<LifecycleTabProps> = ({
   lifecycleData,
-  isLoading = false,
 }) => {
   if (!lifecycleData) {
     return (
@@ -47,6 +46,12 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
         return (
           <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-secondary-container text-on-secondary-container font-medium">
             Facilities
+          </span>
+        )
+      default:
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-surface-container text-on-surface-variant font-medium capitalize">
+            {category}
           </span>
         )
     }
@@ -90,7 +95,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                   r="26"
                   stroke="currentColor"
                   strokeWidth="5"
-                  dasharray={163}
+                  strokeDasharray={163}
                   strokeDashoffset={163 - (163 * progress_percentage) / 100}
                   className="text-accent transition-all duration-500"
                   fill="transparent"
@@ -127,7 +132,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-surface-container-low/50 transition-colors"
             >
               <div className="flex items-start gap-3">
-                {item.status === 'completed' ? (
+                {item.status === 'completed' || item.status === 'done' ? (
                   <CheckCircle2 className="w-5 h-5 text-tertiary flex-shrink-0 mt-0.5" />
                 ) : (
                   <Clock className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
@@ -144,7 +149,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               </div>
 
               <div className="sm:text-right flex items-center sm:flex-col justify-between gap-1 text-[11px] font-mono">
-                {item.status === 'completed' ? (
+                {item.status === 'completed' || item.status === 'done' ? (
                   <span className="text-tertiary font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Completed {item.completed_at ? new Date(item.completed_at).toLocaleDateString() : ''}
@@ -163,3 +168,4 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
     </div>
   )
 }
+

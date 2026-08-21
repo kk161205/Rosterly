@@ -6,8 +6,6 @@ import {
   HardDrive,
   ShieldCheck,
   ShieldAlert,
-  Clock,
-  CheckCircle2,
   AlertTriangle,
   History,
   Tag,
@@ -21,7 +19,6 @@ interface AssignedAssetsTabProps {
 
 export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
   assetsData,
-  isLoading = false,
 }) => {
   const { current = [], history = [] } = assetsData
 
@@ -135,7 +132,9 @@ export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
                   </div>
 
                   <div className="pt-1">
-                    {getWarrantyBadge(asset.warranty_status, asset.warranty_expires_at)}
+                    {asset.warranty_status && asset.warranty_expires_at
+                      ? getWarrantyBadge(asset.warranty_status, asset.warranty_expires_at)
+                      : null}
                   </div>
                 </div>
               </div>
@@ -167,7 +166,7 @@ export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
                   <h4 className="font-semibold text-on-surface">{item.asset_name}</h4>
                   <p className="text-[11px] text-on-surface-variant">
                     Asset Tag: <span className="font-mono">{item.asset_tag}</span> • Returned:{' '}
-                    {new Date(item.returned_at).toLocaleDateString()}
+                    {item.returned_at ? new Date(item.returned_at).toLocaleDateString() : 'N/A'}
                   </p>
                   {item.reason && (
                     <p className="text-[11px] text-outline italic mt-0.5">"{item.reason}"</p>

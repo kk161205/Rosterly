@@ -5,13 +5,10 @@ import {
   Phone,
   MapPin,
   Calendar,
-  Building2,
   PhoneCall,
   GitBranch,
   Edit2,
   ShieldAlert,
-  ChevronRight,
-  UserCheck,
 } from 'lucide-react'
 import { EmployeeProfile } from '@/types/profile'
 import { UserRole } from '@/types/dashboard'
@@ -94,11 +91,13 @@ export const ProfileOverviewTab: React.FC<ProfileOverviewTabProps> = ({
                 <span className="text-outline font-medium block">Joining Date</span>
                 <span className="text-on-surface flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-outline" />
-                  {new Date(profile.joining_date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
+                  {profile.joining_date
+                    ? new Date(profile.joining_date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
+                    : 'N/A'}
                 </span>
               </div>
             </div>

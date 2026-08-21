@@ -22,6 +22,18 @@ export const authStorage = {
     }
   },
 
+  getUserRole(): import('@/types/dashboard').UserRole | null {
+    const user = this.getUser()
+    return (user?.role as import('@/types/dashboard').UserRole) || null
+  },
+
+  setUserRole(role: import('@/types/dashboard').UserRole) {
+    const user = this.getUser()
+    if (user) {
+      this.setUser({ ...user, role })
+    }
+  },
+
   setAccessToken(token: string) {
     sessionStorage.setItem(ACCESS_TOKEN_KEY, token)
     localStorage.setItem(ACCESS_TOKEN_KEY, token)

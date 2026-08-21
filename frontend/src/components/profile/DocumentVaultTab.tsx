@@ -4,13 +4,9 @@ import {
   UploadCloud,
   Download,
   Lock,
-  Eye,
   Trash2,
   AlertCircle,
   FileCheck,
-  Loader2,
-  Shield,
-  Plus,
 } from 'lucide-react'
 import { DocumentItem, DocumentCategory } from '@/types/profile'
 import { UserRole } from '@/types/dashboard'
@@ -36,7 +32,6 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
   isSelf,
   onUploadDocument,
   onDeleteDocument,
-  isLoading = false,
 }) => {
   const isHRAdmin = ['hr_admin', 'super_admin'].includes(currentUserRole)
   const canUpload = isSelf || isHRAdmin
@@ -257,7 +252,7 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
                       {new Date(doc.uploaded_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 font-mono text-outline">
-                      {formatFileSize(doc.size_bytes)}
+                      {formatFileSize(doc.size_bytes || 0)}
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
                       <a

@@ -169,7 +169,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
               </span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-outline" />
-                Joined {new Date(profile.joining_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                Joined {profile.joining_date ? new Date(profile.joining_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A'}
               </span>
             </div>
           </div>

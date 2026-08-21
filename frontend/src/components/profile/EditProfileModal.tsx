@@ -8,7 +8,7 @@ interface EditProfileModalProps {
   onClose: () => void
   profile: EmployeeProfile
   currentUserRole: UserRole
-  isSelf: boolean
+  isSelf?: boolean
   onSave: (updates: ProfileUpdatePayload) => Promise<void>
 }
 
@@ -17,7 +17,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   onClose,
   profile,
   currentUserRole,
-  isSelf,
   onSave,
 }) => {
   const isHRAdmin = ['hr_admin', 'super_admin'].includes(currentUserRole)
