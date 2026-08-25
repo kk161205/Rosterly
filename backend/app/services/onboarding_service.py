@@ -68,15 +68,16 @@ class OnboardingService:
             else str(checklist.status)
         )
 
+        now_utc = datetime.now(timezone.utc)
         return {
             "id": checklist.id,
             "employee_id": checklist.employee_id,
-            "employee_name": checklist.employee.full_name if checklist.employee else None,
+            "employee_name": checklist.employee.full_name if (hasattr(checklist, "employee") and checklist.employee) else None,
             "type": checklist.type,
             "status": checklist.status,
             "completed_at": checklist.completed_at,
-            "created_at": checklist.created_at,
-            "updated_at": checklist.updated_at,
+            "created_at": checklist.created_at or now_utc,
+            "updated_at": checklist.updated_at or now_utc,
             "progress_percentage": progress,
             "total_items": total_count,
             "completed_items": completed_count,
@@ -130,12 +131,17 @@ class OnboardingService:
         hr_role_id = hr_role.id if hr_role else fallback_role_id
         it_role_id = it_role.id if it_role else fallback_role_id
 
+        now = datetime.now(timezone.utc)
         checklist = Checklist(
             id=uuid.uuid4(),
             employee_id=employee_id,
             type=ChecklistType.onboarding,
             status=ChecklistStatus.in_progress,
+            created_at=now,
+            updated_at=now,
         )
+        checklist.employee = target_user
+        checklist.items = []
         self.db.add(checklist)
         self.db.flush()
 
@@ -156,7 +162,9 @@ class OnboardingService:
                 owner_role_id=owner_role_id,
                 status=ChecklistItemStatus.pending,
                 sort_order=sort_order,
+                created_at=now,
             )
+            checklist.items.append(item)
             self.db.add(item)
 
         # Dispatch real DB notifications for IT Admins
@@ -193,7 +201,7 @@ class OnboardingService:
         self.db.add(audit_log)
 
         self.db.commit()
-        return self.get_onboarding_checklist(checklist.id)
+        return self._format_checklist_response(checklist)
 
     def get_onboarding_checklist(self, checklist_id: UUID) -> dict[str, Any]:
         """
@@ -305,9 +313,9 @@ class OnboardingService:
         )
 
         all_done = all(
-            (i.id == item_id and new_status == ChecklistItemStatus.done)
-            or (i.id != item_id and i.status == ChecklistItemStatus.done)
-            for i in all_items
+            (getattr(i, "id", None) == item_id and new_status == ChecklistItemStatus.done)
+            or (getattr(i, "id", None) != item_id and getattr(i, "status", None) == ChecklistItemStatus.done)
+            for i in (all_items or [])
         )
 
         if all_done:
@@ -320,7 +328,7 @@ class OnboardingService:
         checklist.updated_at = now
 
         # Notification on task / checklist status update
-        employee_name = checklist.employee.full_name if checklist.employee else "Employee"
+        employee_name = checklist.employee.full_name if (hasattr(checklist, "employee") and checklist.employee) else "Employee"
         if all_done:
             notification = Notification(
                 id=uuid.uuid4(),
@@ -337,29 +345,21 @@ class OnboardingService:
 
         self.db.commit()
 
-        # Fetch refreshed item record
-        updated_item = (
-            self.db.query(ChecklistItem)
-            .options(
-                joinedload(ChecklistItem.owner_role),
-                joinedload(ChecklistItem.completer),
-            )
-            .filter(ChecklistItem.id == item_id)
-            .first()
-        )
+        owner_role_name = item.owner_role.name if (hasattr(item, "owner_role") and item.owner_role) else None
+        completed_by_name = item.completer.full_name if (hasattr(item, "completer") and item.completer) else None
 
         return {
-            "id": updated_item.id,
-            "checklist_id": updated_item.checklist_id,
-            "task_name": updated_item.task_name,
-            "owner_role_id": updated_item.owner_role_id,
-            "owner_role_name": updated_item.owner_role.name if updated_item.owner_role else None,
-            "status": updated_item.status,
-            "completed_by": updated_item.completed_by,
-            "completed_by_name": updated_item.completer.full_name if updated_item.completer else None,
-            "completed_at": updated_item.completed_at,
-            "sort_order": updated_item.sort_order,
-            "created_at": updated_item.created_at,
+            "id": item.id,
+            "checklist_id": item.checklist_id,
+            "task_name": item.task_name,
+            "owner_role_id": item.owner_role_id,
+            "owner_role_name": owner_role_name,
+            "status": item.status,
+            "completed_by": item.completed_by,
+            "completed_by_name": completed_by_name,
+            "completed_at": item.completed_at,
+            "sort_order": item.sort_order,
+            "created_at": item.created_at or now,
         }
 
     def list_onboardings(
