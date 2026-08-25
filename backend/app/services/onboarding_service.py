@@ -343,6 +343,22 @@ class OnboardingService:
             )
             self.db.add(notification)
 
+        # Audit log for item update & cascading completion
+        audit_log = AuditLog(
+            id=uuid.uuid4(),
+            actor_id=self.current_user.user_id,
+            action="onboarding.item_updated",
+            entity_type="checklist_item",
+            entity_id=item.id,
+            after_state={
+                "status": new_status.value if hasattr(new_status, "value") else str(new_status),
+                "checklist_id": str(checklist_id),
+                "checklist_completed": all_done,
+            },
+            ip_address="127.0.0.1",
+        )
+        self.db.add(audit_log)
+
         self.db.commit()
 
         owner_role_name = item.owner_role.name if (hasattr(item, "owner_role") and item.owner_role) else None
