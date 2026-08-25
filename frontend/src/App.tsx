@@ -3,6 +3,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { EmployeeDirectoryPage } from '@/pages/EmployeeDirectoryPage'
 import { EmployeeProfilePage } from '@/pages/EmployeeProfilePage'
+import { OnboardingWorkflowPage } from '@/pages/OnboardingWorkflowPage'
 import { authStorage } from '@/utils/authStorage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -24,6 +25,14 @@ function App() {
           element={
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <OnboardingWorkflowPage />
             </ProtectedRoute>
           }
         />

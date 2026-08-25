@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   Box,
   CheckSquare,
   Wrench,
@@ -33,6 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
     { name: 'Employees', path: '/employees', icon: Users, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
+    { name: 'Onboarding Workflow', path: '/onboarding', icon: UserPlus, roleAccess: ['hr_admin', 'it_admin', 'manager', 'super_admin'] },
     { name: 'Asset Inventory', path: '/assets', icon: Box, roleAccess: ['employee', 'manager', 'it_admin', 'super_admin', 'auditor'] },
     { name: 'Approvals Queue', path: '/approvals', icon: CheckSquare, badge: 'P0', roleAccess: ['manager', 'hr_admin', 'super_admin'] },
     { name: 'Maintenance & Tickets', path: '/maintenance', icon: Wrench, roleAccess: ['it_admin', 'super_admin'] },
