@@ -17,6 +17,13 @@ from app.schemas.employee_profile import (
     EmployeeProfileResponse,
     EmployeeProfileUpdateRequest,
 )
+from app.schemas.onboarding import (
+    ChecklistListResponse,
+    ChecklistItemResponse,
+    ChecklistItemUpdateRequest,
+    ChecklistResponse,
+    OnboardingCreateRequest,
+)
 
 __all__ = [
     "LoginRequest",
@@ -35,6 +42,11 @@ __all__ = [
     "DocumentResponse",
     "AssetAssignmentItem",
     "EmployeeAssetsResponse",
+    "OnboardingCreateRequest",
+    "ChecklistItemResponse",
+    "ChecklistResponse",
+    "ChecklistItemUpdateRequest",
+    "ChecklistListResponse",
 ]
 
 
