@@ -13,12 +13,17 @@ from app.core.errors import (
     ValidationAppError,
 )
 from app.core.security import (
+    consume_mfa_challenge,
     create_access_token,
     create_password_reset_token,
     create_refresh_token,
     get_password_hash,
     hash_refresh_token,
     invalidate_session_cache,
+    is_forgot_password_rate_limited,
+    mark_reset_token_used,
+    peek_mfa_challenge,
+    register_mfa_challenge,
     verify_password,
     verify_password_reset_token,
 )
@@ -94,6 +99,7 @@ def login(
     # 4. MFA Check
     if user.mfa_enabled:
         mfa_session_id = str(uuid.uuid4())
+        register_mfa_challenge(mfa_session_id, user.id)
         attempt = LoginAttempt(
             user_id=user.id,
             email_attempted=email,
@@ -153,26 +159,23 @@ def verify_mfa(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> TokenResponse:
-    # Accept standard test MFA code "123456" or any 6-digit code for dev mode
+    # NOTE: no real SMS/TOTP provider is wired up yet (needs a provider credential
+    # decision — rules.md §4.5), so the verification code itself is still the fixed
+    # "123456" dev value. What this function DOES guarantee is that completing MFA
+    # can only ever issue a session for the specific user who triggered this exact
+    # mfa_session_id — that binding is looked up below, not inferred from whichever
+    # login attempt happened to be most recent.
+    user_id = peek_mfa_challenge(mfa_session_id)
+    if not user_id:
+        raise UnauthenticatedError("MFA session expired or invalid", code="mfa_invalid")
+
     if code != "123456":
         raise UnauthenticatedError("Invalid MFA verification code", code="mfa_invalid")
 
-    # In production, mfa_session_id would look up cached user_id from redis/DB.
-    # For zero-trust model demo/test, find the user from recent login attempt with failure_reason=mfa_required.
-    attempt = (
-        db.query(LoginAttempt)
-        .filter(
-            LoginAttempt.failure_reason == "mfa_required",
-            LoginAttempt.success == True,  # noqa: E712
-        )
-        .order_by(LoginAttempt.created_at.desc())
-        .first()
-    )
+    # Code confirmed correct — now consume the challenge so it can't be replayed.
+    consume_mfa_challenge(mfa_session_id)
 
-    if not attempt or not attempt.user_id:
-        raise UnauthenticatedError("MFA session expired or invalid", code="mfa_invalid")
-
-    user = db.query(User).filter(User.id == attempt.user_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
     if not user or user.status != UserStatus.active:
         raise UnauthenticatedError("User inactive or missing", code="account_disabled")
 
@@ -246,21 +249,29 @@ def refresh_tokens(db: DBSession, raw_refresh_token: str) -> TokenResponse:
 
 
 def forgot_password(db: DBSession, email: str) -> MessageResponse:
+    # Always return the same 200 message regardless of user existence or rate
+    # limiting (PRD §5.1) — never let the response shape reveal either signal.
+    if is_forgot_password_rate_limited(email):
+        return MessageResponse(
+            message="If an account with that email exists, a password reset link has been sent."
+        )
+
     user = db.query(User).filter(User.email == email).first()
     if user:
         reset_token = create_password_reset_token(user.id)
-        logger.info(f"Password reset token for {email}: {reset_token}")
+        # Never log the raw token (rules.md §5.3) — identifiers only.
+        logger.info(f"Password reset requested for user_id={user.id}")
 
-    # Always return 200 message regardless of user existence (PRD §5.1)
     return MessageResponse(
         message="If an account with that email exists, a password reset link has been sent."
     )
 
 
 def reset_password(db: DBSession, token: str, new_password: str) -> MessageResponse:
-    user_id_str = verify_password_reset_token(token)
-    if not user_id_str:
+    result = verify_password_reset_token(token)
+    if not result:
         raise ValidationAppError("Invalid or expired password reset token")
+    user_id_str, jti = result
 
     try:
         user_uuid = uuid.UUID(user_id_str)
@@ -272,6 +283,7 @@ def reset_password(db: DBSession, token: str, new_password: str) -> MessageRespo
         raise ValidationAppError("User not found")
 
     user.password_hash = get_password_hash(new_password)
+    mark_reset_token_used(jti)
 
     # PRD §2.4 & §5.1: password change triggers logout-all-devices
     logout_all_user_sessions(db, str(user.id))

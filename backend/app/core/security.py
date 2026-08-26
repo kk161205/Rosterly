@@ -81,18 +81,28 @@ def create_password_reset_token(user_id: uuid.UUID | str) -> str:
     payload = {
         "sub": str(user_id),
         "type": "password_reset",
+        "jti": str(uuid.uuid4()),
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def verify_password_reset_token(token: str) -> Optional[str]:
+def verify_password_reset_token(token: str) -> Optional[Tuple[str, str]]:
+    """Returns (user_id, jti) if the token is structurally valid, unexpired, and not
+    yet consumed. Caller (auth_service.reset_password) is responsible for marking
+    the jti consumed via mark_reset_token_used() once the password is actually reset."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         if payload.get("type") != "password_reset":
             return None
-        return payload.get("sub")
+        jti = payload.get("jti")
+        sub = payload.get("sub")
+        if not jti or not sub:
+            return None
+        if is_reset_token_used(jti):
+            return None
+        return sub, jti
     except JWTError:
         return None
 
@@ -104,6 +114,86 @@ from threading import Lock
 _SESSION_CACHE: dict[str, tuple["CurrentUser", float]] = {}
 _SESSION_CACHE_LOCK = Lock()
 _SESSION_CACHE_TTL = 15.0  # 15 seconds TTL
+
+# MFA challenge binding — maps a one-time mfa_session_id to the specific user
+# who triggered it, so verify_mfa() can never complete a different user's login.
+# In-memory only (Phase 1); a multi-worker deployment would need this in Redis/DB.
+_MFA_CHALLENGES: dict[str, tuple[uuid.UUID, float]] = {}
+_MFA_CHALLENGES_LOCK = Lock()
+_MFA_CHALLENGE_TTL_SECONDS = 600.0  # 10 minutes
+
+
+def register_mfa_challenge(mfa_session_id: str, user_id: uuid.UUID) -> None:
+    with _MFA_CHALLENGES_LOCK:
+        _MFA_CHALLENGES[mfa_session_id] = (user_id, time.time() + _MFA_CHALLENGE_TTL_SECONDS)
+
+
+def peek_mfa_challenge(mfa_session_id: str) -> Optional[uuid.UUID]:
+    """Returns the bound user_id without consuming it, so a wrong code can be retried."""
+    with _MFA_CHALLENGES_LOCK:
+        entry = _MFA_CHALLENGES.get(mfa_session_id)
+    if not entry:
+        return None
+    user_id, expires_at = entry
+    if time.time() > expires_at:
+        return None
+    return user_id
+
+
+def consume_mfa_challenge(mfa_session_id: str) -> Optional[uuid.UUID]:
+    """Pops and returns the bound user_id if the challenge exists and hasn't expired.
+    Single-use: call only once the code has been verified correct."""
+    with _MFA_CHALLENGES_LOCK:
+        entry = _MFA_CHALLENGES.pop(mfa_session_id, None)
+    if not entry:
+        return None
+    user_id, expires_at = entry
+    if time.time() > expires_at:
+        return None
+    return user_id
+
+
+# Password-reset single-use tracking — records consumed token jtis so a leaked/
+# forwarded reset link can't be replayed a second time within its validity window.
+_USED_RESET_TOKENS: dict[str, float] = {}
+_USED_RESET_TOKENS_LOCK = Lock()
+_RESET_TOKEN_TTL_SECONDS = 900.0  # matches the 15-minute token expiry
+
+
+def is_reset_token_used(jti: str) -> bool:
+    with _USED_RESET_TOKENS_LOCK:
+        expires_at = _USED_RESET_TOKENS.get(jti)
+        if expires_at is None:
+            return False
+        if time.time() > expires_at:
+            del _USED_RESET_TOKENS[jti]
+            return False
+        return True
+
+
+def mark_reset_token_used(jti: str) -> None:
+    with _USED_RESET_TOKENS_LOCK:
+        _USED_RESET_TOKENS[jti] = time.time() + _RESET_TOKEN_TTL_SECONDS
+
+
+# Forgot-password rate limiting — sliding window per email, so a single address
+# can't be used to spam token generation / log volume.
+_FORGOT_PASSWORD_ATTEMPTS: dict[str, list[float]] = {}
+_FORGOT_PASSWORD_LOCK = Lock()
+_FORGOT_PASSWORD_WINDOW_SECONDS = 900.0  # 15 minutes
+_FORGOT_PASSWORD_MAX_ATTEMPTS = 3
+
+
+def is_forgot_password_rate_limited(email: str) -> bool:
+    now = time.time()
+    key = email.lower()
+    with _FORGOT_PASSWORD_LOCK:
+        attempts = [t for t in _FORGOT_PASSWORD_ATTEMPTS.get(key, []) if now - t < _FORGOT_PASSWORD_WINDOW_SECONDS]
+        limited = len(attempts) >= _FORGOT_PASSWORD_MAX_ATTEMPTS
+        if not limited:
+            attempts.append(now)
+        _FORGOT_PASSWORD_ATTEMPTS[key] = attempts
+        return limited
 
 
 def invalidate_session_cache(

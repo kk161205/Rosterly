@@ -161,6 +161,44 @@ def test_login_mfa_required():
     assert "refresh_token" in mfa_data
 
 
+def test_mfa_wrong_session_id_rejected():
+    login_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/login",
+        json={"email": "mfauser@example.com", "password": "Password123!"},
+    )
+    assert login_resp.json()["mfa_required"] is True
+
+    # A completely unrelated session id (as if from another user's concurrent
+    # MFA-pending login) must never be honored, even with the right code.
+    bogus_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
+        json={"mfa_session_id": str(uuid.uuid4()), "code": "123456"},
+    )
+    assert bogus_resp.status_code == 401
+    assert bogus_resp.json()["error"]["code"] == "mfa_invalid"
+
+
+def test_mfa_session_is_single_use():
+    login_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/login",
+        json={"email": "mfauser@example.com", "password": "Password123!"},
+    )
+    mfa_session_id = login_resp.json()["mfa_session_id"]
+
+    first = client.post(
+        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
+        json={"mfa_session_id": mfa_session_id, "code": "123456"},
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
+        json={"mfa_session_id": mfa_session_id, "code": "123456"},
+    )
+    assert second.status_code == 401
+    assert second.json()["error"]["code"] == "mfa_invalid"
+
+
 def test_account_lockout_after_5_failures():
     email = "testuser@example.com"
     # Make 5 failed attempts
@@ -243,6 +281,57 @@ def test_reset_password_revokes_all_sessions():
     )
     assert logout_resp.status_code == 401
     assert logout_resp.json()["error"]["code"] == "unauthenticated"
+
+
+def test_reset_password_token_cannot_be_replayed():
+    db = TestingSessionLocal()
+    user = db.query(User).filter(User.email == "testuser@example.com").first()
+    reset_token = create_password_reset_token(user.id)
+    db.close()
+
+    first = client.post(
+        f"{settings.API_V1_PREFIX}/auth/reset-password",
+        json={"token": reset_token, "new_password": "FirstNewPassword123!"},
+    )
+    assert first.status_code == 200
+
+    # Replaying the same token (e.g. forwarded or reused) must be rejected even
+    # though it hasn't naturally expired yet.
+    second = client.post(
+        f"{settings.API_V1_PREFIX}/auth/reset-password",
+        json={"token": reset_token, "new_password": "SecondNewPassword123!"},
+    )
+    assert second.status_code == 400
+    assert second.json()["error"]["code"] == "validation_error"
+
+
+def test_forgot_password_does_not_log_raw_token(caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="app.services.auth_service"):
+        client.post(
+            f"{settings.API_V1_PREFIX}/auth/forgot-password",
+            json={"email": "testuser@example.com"},
+        )
+    for record in caplog.records:
+        assert "eyJ" not in record.message  # no raw JWT ever logged
+
+
+def test_forgot_password_is_rate_limited(caplog):
+    import logging
+    from app.services import auth_service
+
+    db = TestingSessionLocal()
+    email = "testuser@example.com"
+
+    with caplog.at_level(logging.INFO, logger="app.services.auth_service"):
+        for _ in range(5):
+            auth_service.forgot_password(db, email)
+
+    reset_logs = [r for r in caplog.records if "Password reset requested" in r.message]
+    # Max 3 token-issuing attempts per 15-minute window — the rest are silently throttled.
+    assert len(reset_logs) <= 3
+    db.close()
 
 
 def test_logout_and_logout_all_devices():
