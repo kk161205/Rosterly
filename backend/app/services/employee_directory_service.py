@@ -3,6 +3,8 @@ Employee Directory Service — handles employee directory querying, search,
 status filtering, and ABAC row-level scoping for manager role.
 """
 import math
+import uuid as uuid_lib
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -12,19 +14,17 @@ from sqlalchemy.orm import Session, aliased
 from app.core.errors import AppError
 from app.core.security import CurrentUser, invalidate_session_cache
 from app.models.auth import Department, Role, User, UserStatus
-from app.schemas.employee_directory import (
-    EmployeeDirectoryResponse,
-    EmployeeListItem,
-    EmployeeUpdateRequest,
-)
+from app.models.system import AuditLog
+from app.schemas.employee_directory import EmployeeDirectoryResponse, EmployeeListItem
 
 
 class EmployeeDirectoryService:
     """Service providing sanitized employee directory data with ABAC department scoping for managers."""
 
-    def __init__(self, db: Session, current_user: CurrentUser):
+    def __init__(self, db: Session, current_user: CurrentUser, ip_address: str | None = None):
         self.db = db
         self.current_user = current_user
+        self.ip_address = ip_address or "unknown"
 
     def get_employees(
         self,
@@ -226,71 +226,11 @@ class EmployeeDirectoryService:
             "roles": role_items,
         }
 
-    def update_employee(self, employee_id: UUID, data: EmployeeUpdateRequest) -> dict[str, Any]:
+    def offboard_employee(
+        self, employee_id: UUID, exit_date: date | None = None, reason: str | None = None
+    ) -> dict[str, Any]:
         """
-        Update employee record with role-based validation.
-        """
-        user_role = (self.current_user.role or "").lower()
-        if user_role not in ("super_admin", "hr_admin", "manager"):
-            raise AppError(status_code=403, code="forbidden", message="Insufficient permissions to edit employee record.")
-
-        target_user = self.db.query(User).filter(User.id == employee_id).first()
-        if not target_user:
-            raise AppError(status_code=404, code="not_found", message="Employee not found.")
-
-        # If manager, check department scope
-        if user_role == "manager" and target_user.department_id != self.current_user.department_id:
-            raise AppError(status_code=403, code="forbidden", message="Managers may only update employees within their own department.")
-
-        if data.full_name is not None and data.full_name.strip():
-            target_user.full_name = data.full_name.strip()
-        if data.designation is not None and data.designation.strip():
-            target_user.designation = data.designation.strip()
-        if data.phone is not None:
-            target_user.phone = data.phone.strip() or None
-        if data.department_id is not None:
-            dept = self.db.query(Department).filter(Department.id == data.department_id).first()
-            if dept:
-                target_user.department_id = dept.id
-        if data.manager_id is not None:
-            if data.manager_id != employee_id:
-                target_user.manager_id = data.manager_id
-        if data.status is not None and data.status.strip():
-            try:
-                target_user.status = UserStatus(data.status.strip().lower())
-            except ValueError:
-                pass
-        if data.role_name is not None and user_role in ("super_admin", "hr_admin"):
-            role_rec = self.db.query(Role).filter(func.lower(Role.name) == data.role_name.strip().lower()).first()
-            if role_rec:
-                target_user.role_id = role_rec.id
-
-        self.db.commit()
-        self.db.refresh(target_user)
-        invalidate_session_cache()
-
-        dept_name = target_user.department.name if target_user.department else None
-        mgr_name = target_user.manager.full_name if target_user.manager else None
-        status_val = target_user.status.value if hasattr(target_user.status, "value") else str(target_user.status)
-
-        return {
-            "id": target_user.id,
-            "employee_code": target_user.employee_code,
-            "full_name": target_user.full_name,
-            "email": target_user.email,
-            "designation": target_user.designation,
-            "department_id": target_user.department_id,
-            "department_name": dept_name,
-            "manager_id": target_user.manager_id,
-            "manager_name": mgr_name,
-            "status": status_val,
-            "phone": target_user.phone,
-            "date_of_joining": target_user.date_of_joining,
-        }
-
-    def offboard_employee(self, employee_id: UUID) -> dict[str, Any]:
-        """
-        Initiate offboarding transition for an employee.
+        Initiate offboarding transition for an employee (§5.3 — exit_date/reason query params).
         """
         user_role = (self.current_user.role or "").lower()
         if user_role not in ("super_admin", "hr_admin"):
@@ -300,7 +240,28 @@ class EmployeeDirectoryService:
         if not target_user:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
+        before_state = {"status": target_user.status.value, "date_of_exit": str(target_user.date_of_exit) if target_user.date_of_exit else None}
+
         target_user.status = UserStatus.offboarding
+        target_user.date_of_exit = exit_date or target_user.date_of_exit
+
+        self.db.add(
+            AuditLog(
+                id=uuid_lib.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="employee.offboarded",
+                entity_type="user",
+                entity_id=target_user.id,
+                before_state=before_state,
+                after_state={
+                    "status": "offboarding",
+                    "date_of_exit": str(target_user.date_of_exit) if target_user.date_of_exit else None,
+                    "reason": reason,
+                },
+                ip_address=self.ip_address,
+            )
+        )
+
         self.db.commit()
         self.db.refresh(target_user)
         invalidate_session_cache()
@@ -325,7 +286,9 @@ class EmployeeDirectoryService:
 
     def delete_employee(self, employee_id: UUID) -> dict[str, Any]:
         """
-        Delete employee record from DB (Super Admin only).
+        Soft-delete an employee record (Super Admin only) — sets status=terminated
+        and preserves the row for audit history (§1 schema note: user-facing tables
+        are soft-deletable, never hard-deleted).
         """
         user_role = (self.current_user.role or "").lower()
         if user_role != "super_admin":
@@ -335,12 +298,30 @@ class EmployeeDirectoryService:
         if not target_user:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
+        before_state = {"status": target_user.status.value}
+
         # Reassign direct reports manager_id to None
         self.db.query(User).filter(User.manager_id == employee_id).update({"manager_id": None})
         # If managing department, clear manager_id
         self.db.query(Department).filter(Department.manager_id == employee_id).update({"manager_id": None})
 
-        self.db.delete(target_user)
+        target_user.status = UserStatus.terminated
+        if not target_user.date_of_exit:
+            target_user.date_of_exit = date.today()
+
+        self.db.add(
+            AuditLog(
+                id=uuid_lib.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="employee.deleted",
+                entity_type="user",
+                entity_id=target_user.id,
+                before_state=before_state,
+                after_state={"status": "terminated"},
+                ip_address=self.ip_address,
+            )
+        )
+
         self.db.commit()
         invalidate_session_cache()
 

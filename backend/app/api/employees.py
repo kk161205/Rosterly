@@ -1,9 +1,10 @@
 """
 Employee Directory & Profile API routes — project doc §5.3 & §5.4.
 """
+from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
@@ -96,6 +97,7 @@ def get_employee_profile_detail(
 def update_employee(
     employee_id: UUID,
     payload: EmployeeProfileUpdateRequest,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EmployeeProfileResponse:
@@ -104,9 +106,10 @@ def update_employee(
     Applies field-level permission checks:
     - Self may only update 'phone'. Attempting to update restricted fields or address returns 400 Bad Request.
     - HR Admin / Super Admin may update all fields including role_id, status, department_id, manager_id.
-    - Manager, IT Admin, Auditor are denied (403).
+    - Manager, IT Admin, Auditor editing someone else's profile are denied (403).
     """
-    service = EmployeeProfileService(db=db, current_user=current_user)
+    ip_address = request.client.host if request.client else None
+    service = EmployeeProfileService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.patch_employee_profile(employee_id=employee_id, payload=payload)
     return EmployeeProfileResponse.model_validate(data)
 
@@ -213,26 +216,32 @@ def get_employee_lifecycle(
 @router.post("/{employee_id}/offboard", response_model=EmployeeListItem)
 def offboard_employee(
     employee_id: UUID,
+    request: Request,
+    exit_date: date | None = Query(None, description="Employee's last working day"),
+    reason: str | None = Query(None, description="Reason for offboarding"),
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EmployeeListItem:
     """
     Initiate offboarding transition for an employee (Super Admin or HR Admin only).
     """
-    service = EmployeeDirectoryService(db=db, current_user=current_user)
-    data = service.offboard_employee(employee_id=employee_id)
+    ip_address = request.client.host if request.client else None
+    service = EmployeeDirectoryService(db=db, current_user=current_user, ip_address=ip_address)
+    data = service.offboard_employee(employee_id=employee_id, exit_date=exit_date, reason=reason)
     return EmployeeListItem.model_validate(data)
 
 
 @router.delete("/{employee_id}", response_model=EmployeeActionResponse)
 def delete_employee(
     employee_id: UUID,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EmployeeActionResponse:
     """
-    Delete employee record permanently from database (Super Admin only).
+    Soft-delete employee record (Super Admin only) — see EmployeeDirectoryService.delete_employee.
     """
-    service = EmployeeDirectoryService(db=db, current_user=current_user)
+    ip_address = request.client.host if request.client else None
+    service = EmployeeDirectoryService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.delete_employee(employee_id=employee_id)
     return EmployeeActionResponse.model_validate(data)

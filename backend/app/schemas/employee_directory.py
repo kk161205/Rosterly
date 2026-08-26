@@ -50,17 +50,6 @@ class EmployeeFiltersMetaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class EmployeeUpdateRequest(BaseModel):
-    full_name: Optional[str] = None
-    designation: Optional[str] = None
-    department_id: Optional[UUID] = None
-    role_name: Optional[str] = None
-    phone: Optional[str] = None
-    location: Optional[str] = None
-    status: Optional[str] = None
-    manager_id: Optional[UUID] = None
-
-
 class EmployeeActionResponse(BaseModel):
     success: bool
     message: str

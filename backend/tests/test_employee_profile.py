@@ -5,7 +5,7 @@ Verifies 100% of allowed and denied permission matrix cells across all 6 endpoin
 import datetime
 import io
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +16,10 @@ from app.main import app
 from app.models.assets import Asset, AssetAssignment, AssetCategory
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.lifecycle import Document, DocumentType
+from app.models.system import AuditLog
+from app.schemas.employee_profile import EmployeeProfileUpdateRequest
+from app.services.employee_directory_service import EmployeeDirectoryService
+from app.services.employee_profile_service import EmployeeProfileService
 
 client = TestClient(app)
 
@@ -1123,3 +1127,156 @@ def test_get_assets_auditor_allowed():
         assert res.status_code == 200
     finally:
         app.dependency_overrides.clear()
+
+
+# ============================================================================
+# 7. Soft delete, offboard exit_date/reason, and session revocation on
+#    role/status change — coverage added for the 5.1-5.5 review fix pass.
+# ============================================================================
+
+def make_current_user(role: str, user_id=None, role_id=None, department_id=None) -> CurrentUser:
+    return CurrentUser(
+        user_id=user_id or uuid.uuid4(),
+        role=role,
+        session_id=uuid.uuid4(),
+        role_id=role_id or uuid.uuid4(),
+        department_id=department_id,
+        full_name=f"{role} user",
+        email=f"{role}@example.com",
+    )
+
+
+def make_target_user(**overrides) -> User:
+    defaults = dict(
+        id=uuid.uuid4(),
+        employee_code="RST-2001",
+        full_name="Target Employee",
+        email="target@example.com",
+        password_hash="hashed",
+        role_id=uuid.uuid4(),
+        department_id=uuid.uuid4(),
+        manager_id=None,
+        designation="Engineer",
+        phone="+1000000000",
+        status=UserStatus.active,
+        date_of_exit=None,
+    )
+    defaults.update(overrides)
+    return User(**defaults)
+
+
+def test_delete_employee_soft_deletes_not_hard_deletes():
+    admin = make_current_user("super_admin")
+    target = make_target_user()
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = target
+    mock_db.query.return_value.filter.return_value.update.return_value = None
+
+    service = EmployeeDirectoryService(db=mock_db, current_user=admin, ip_address="203.0.113.5")
+    result = service.delete_employee(employee_id=target.id)
+
+    assert result["success"] is True
+    mock_db.delete.assert_not_called()  # never hard-deleted
+    assert target.status == UserStatus.terminated  # soft-deleted via status instead
+    assert target.date_of_exit is not None
+
+    audit_calls = [c.args[0] for c in mock_db.add.call_args_list if isinstance(c.args[0], AuditLog)]
+    assert len(audit_calls) == 1
+    assert audit_calls[0].action == "employee.deleted"
+    assert audit_calls[0].ip_address == "203.0.113.5"
+
+
+def test_offboard_employee_stores_exit_date_and_reason():
+    hr = make_current_user("hr_admin")
+    target = make_target_user(status=UserStatus.active)
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = target
+
+    service = EmployeeDirectoryService(db=mock_db, current_user=hr, ip_address="10.0.0.1")
+    exit_date = datetime.date(2026, 9, 1)
+    result = service.offboard_employee(employee_id=target.id, exit_date=exit_date, reason="Resigned")
+
+    assert result["status"] == "offboarding"
+    assert target.date_of_exit == exit_date
+
+    audit_calls = [c.args[0] for c in mock_db.add.call_args_list if isinstance(c.args[0], AuditLog)]
+    assert len(audit_calls) == 1
+    assert audit_calls[0].after_state["reason"] == "Resigned"
+    assert audit_calls[0].after_state["date_of_exit"] == str(exit_date)
+
+
+def test_manager_can_edit_own_phone():
+    manager_id = uuid.uuid4()
+    manager = make_current_user("manager", user_id=manager_id)
+    target = make_target_user(id=manager_id, phone="+1000000000")
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = target
+
+    service = EmployeeProfileService(db=mock_db, current_user=manager)
+    with patch.object(
+        EmployeeProfileService, "get_employee_profile", return_value={"id": manager_id, "phone": "+1999999999"}
+    ):
+        result = service.patch_employee_profile(
+            employee_id=manager_id,
+            payload=EmployeeProfileUpdateRequest(phone="+1999999999"),
+        )
+
+    assert target.phone == "+1999999999"
+    assert result["phone"] == "+1999999999"
+
+
+def test_manager_still_forbidden_from_editing_others():
+    manager = make_current_user("manager")
+    other_id = uuid.uuid4()
+
+    service = EmployeeProfileService(db=MagicMock(), current_user=manager)
+    with pytest.raises(Exception) as exc_info:
+        service.patch_employee_profile(
+            employee_id=other_id,
+            payload=EmployeeProfileUpdateRequest(designation="New Title"),
+        )
+    assert getattr(exc_info.value, "status_code", None) == 403
+
+
+def test_role_change_triggers_full_session_revocation():
+    hr = make_current_user("hr_admin")
+    target = make_target_user()
+    new_role_id = uuid.uuid4()
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.side_effect = [target, MagicMock(id=new_role_id)]
+
+    service = EmployeeProfileService(db=mock_db, current_user=hr)
+    with patch(
+        "app.services.employee_profile_service.logout_all_user_sessions"
+    ) as mock_logout_all, patch.object(
+        EmployeeProfileService, "get_employee_profile", return_value={"id": target.id}
+    ):
+        service.patch_employee_profile(
+            employee_id=target.id,
+            payload=EmployeeProfileUpdateRequest(role_id=new_role_id),
+        )
+        mock_logout_all.assert_called_once_with(mock_db, target.id)
+
+
+def test_phone_only_change_does_not_revoke_sessions():
+    hr = make_current_user("hr_admin")
+    target = make_target_user()
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = target
+
+    service = EmployeeProfileService(db=mock_db, current_user=hr)
+    with patch(
+        "app.services.employee_profile_service.logout_all_user_sessions"
+    ) as mock_logout_all, patch.object(
+        EmployeeProfileService, "get_employee_profile", return_value={"id": target.id}
+    ):
+        service.patch_employee_profile(
+            employee_id=target.id,
+            payload=EmployeeProfileUpdateRequest(phone="+1888888888"),
+        )
+        mock_logout_all.assert_not_called()

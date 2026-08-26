@@ -25,7 +25,9 @@ from app.models.lifecycle import (
     Document,
     DocumentType,
 )
+from app.models.system import AuditLog
 from app.schemas.employee_profile import EmployeeProfileUpdateRequest
+from app.services.auth_service import logout_all_user_sessions
 
 # Canonical absolute upload directory root (independent of CWD)
 UPLOAD_BASE_DIR = os.path.abspath(
@@ -36,9 +38,10 @@ UPLOAD_BASE_DIR = os.path.abspath(
 class EmployeeProfileService:
     """Service providing fine-grained ABAC for Employee Profile Detail (§5.4)."""
 
-    def __init__(self, db: Session, current_user: CurrentUser):
+    def __init__(self, db: Session, current_user: CurrentUser, ip_address: str | None = None):
         self.db = db
         self.current_user = current_user
+        self.ip_address = ip_address or "unknown"
 
     def get_employee_profile(self, employee_id: UUID) -> dict[str, Any]:
         """
@@ -130,24 +133,36 @@ class EmployeeProfileService:
         - HR Admin / Super Admin -> Can update full_name, designation, department_id, role_id, status, manager_id, phone
         """
         user_role = (self.current_user.role or "").lower()
-        if user_role in ("manager", "it_admin", "auditor"):
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message=f"Role '{user_role}' is not permitted to update employee profiles.",
-            )
-
         is_self = str(self.current_user.user_id) == str(employee_id)
-        if user_role == "employee" and not is_self:
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="Employees may only update their own profile.",
-            )
+
+        # Role gating only applies to editing SOMEONE ELSE's profile — self-editing
+        # your own limited fields (phone) is always allowed regardless of role,
+        # matching the doc's "Self (limited fields)" access row independently of
+        # the "HR Admin/Super Admin (full)" row.
+        if not is_self:
+            if user_role in ("manager", "it_admin", "auditor"):
+                raise AppError(
+                    status_code=403,
+                    code="forbidden",
+                    message=f"Role '{user_role}' is not permitted to update employee profiles.",
+                )
+            if user_role == "employee":
+                raise AppError(
+                    status_code=403,
+                    code="forbidden",
+                    message="Employees may only update their own profile.",
+                )
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
+
+        # Snapshot before any HR/Admin fields change, so we can audit-log and
+        # detect whether a session-revoking field (role_id/status) actually changed.
+        before_role_id = target_user.role_id
+        before_status = target_user.status
+        before_department_id = target_user.department_id
+        before_manager_id = target_user.manager_id
 
         set_fields = payload.model_dump(exclude_unset=True)
 
@@ -252,9 +267,44 @@ class EmployeeProfileService:
                 else:
                     target_user.manager_id = None
 
+        role_changed = target_user.role_id != before_role_id
+        status_changed = target_user.status != before_status
+        department_changed = target_user.department_id != before_department_id
+        manager_changed = target_user.manager_id != before_manager_id
+
+        if role_changed or status_changed or department_changed or manager_changed:
+            self.db.add(
+                AuditLog(
+                    id=uuid.uuid4(),
+                    actor_id=self.current_user.user_id,
+                    action="employee.profile_updated",
+                    entity_type="user",
+                    entity_id=target_user.id,
+                    before_state={
+                        "role_id": str(before_role_id) if before_role_id else None,
+                        "status": before_status.value if hasattr(before_status, "value") else str(before_status),
+                        "department_id": str(before_department_id) if before_department_id else None,
+                        "manager_id": str(before_manager_id) if before_manager_id else None,
+                    },
+                    after_state={
+                        "role_id": str(target_user.role_id) if target_user.role_id else None,
+                        "status": target_user.status.value if hasattr(target_user.status, "value") else str(target_user.status),
+                        "department_id": str(target_user.department_id) if target_user.department_id else None,
+                        "manager_id": str(target_user.manager_id) if target_user.manager_id else None,
+                    },
+                    ip_address=self.ip_address,
+                )
+            )
+
         self.db.commit()
         self.db.refresh(target_user)
-        invalidate_session_cache()
+
+        # Doc §2.4: role/status changes force full re-authentication, not just a
+        # cache clear — a demoted or deactivated user's existing session is killed.
+        if role_changed or status_changed:
+            logout_all_user_sessions(self.db, target_user.id)
+        else:
+            invalidate_session_cache()
 
         return self.get_employee_profile(employee_id=employee_id)
 
