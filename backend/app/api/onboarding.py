@@ -3,7 +3,7 @@ Onboarding Workflow API routes — project doc §5.5.
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
@@ -25,6 +25,7 @@ router = APIRouter()
 @router.post("/", response_model=ChecklistResponse, status_code=status.HTTP_201_CREATED)
 def create_onboarding_checklist(
     payload: OnboardingCreateRequest,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChecklistResponse:
@@ -32,7 +33,8 @@ def create_onboarding_checklist(
     POST /onboarding — Kick off onboarding checklist for an employee (PRD §5.5).
     Allowed roles: hr_admin, super_admin only.
     """
-    service = OnboardingService(db=db, current_user=current_user)
+    ip_address = request.client.host if request.client else None
+    service = OnboardingService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.create_onboarding_checklist(employee_id=payload.employee_id)
     return ChecklistResponse.model_validate(data)
 
@@ -57,6 +59,7 @@ def update_checklist_item(
     checklist_id: UUID,
     item_id: UUID,
     payload: ChecklistItemUpdateRequest,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChecklistItemResponse:
@@ -65,7 +68,8 @@ def update_checklist_item(
     Allowed roles: matching owner_role_id user, hr_admin, super_admin.
     Cascading completion: marking the final item 'done' auto-completes the parent checklist.
     """
-    service = OnboardingService(db=db, current_user=current_user)
+    ip_address = request.client.host if request.client else None
+    service = OnboardingService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.update_checklist_item(
         checklist_id=checklist_id, item_id=item_id, new_status=payload.status
     )

@@ -142,6 +142,8 @@ def test_post_onboarding_dispatches_notifications_and_audit_logs():
     assert "New Hire" in notifications[0].message
     assert len(audit_logs) >= 1
     assert audit_logs[0].action == "onboarding.checklist_created"
+    # Real request IP threaded through, not the old hardcoded placeholder.
+    assert audit_logs[0].ip_address != "127.0.0.1"
 
 
 @pytest.mark.parametrize("denied_role", ["it_admin", "manager", "employee", "auditor"])

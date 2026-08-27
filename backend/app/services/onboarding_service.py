@@ -7,8 +7,7 @@ import uuid
 from typing import Any, Optional
 from uuid import UUID
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session, aliased, joinedload
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
 from app.core.security import CurrentUser
@@ -26,9 +25,10 @@ from app.models.system import AuditLog, Notification, NotificationChannel
 class OnboardingService:
     """Service providing core business logic for Onboarding Workflow (§5.5)."""
 
-    def __init__(self, db: Session, current_user: CurrentUser):
+    def __init__(self, db: Session, current_user: CurrentUser, ip_address: str | None = None):
         self.db = db
         self.current_user = current_user
+        self.ip_address = ip_address or "unknown"
 
     def _format_checklist_response(self, checklist: Checklist) -> dict[str, Any]:
         """Helper to format a Checklist ORM object into response structure with progress stats."""
@@ -125,9 +125,8 @@ class OnboardingService:
         # Determine owner roles for default items
         hr_role = self.db.query(Role).filter(Role.name == "hr_admin").first()
         it_role = self.db.query(Role).filter(Role.name == "it_admin").first()
-        any_role = self.db.query(Role).first()
 
-        fallback_role_id = self.current_user.role_id or (any_role.id if any_role else uuid.uuid4())
+        fallback_role_id = self.current_user.role_id or uuid.uuid4()
         hr_role_id = hr_role.id if hr_role else fallback_role_id
         it_role_id = it_role.id if it_role else fallback_role_id
 
@@ -167,17 +166,18 @@ class OnboardingService:
             checklist.items.append(item)
             self.db.add(item)
 
-        # Dispatch real DB notifications for IT Admins
-        it_users = (
-            self.db.query(User)
-            .join(Role, User.role_id == Role.id)
-            .filter(Role.name == "it_admin")
-            .all()
-        )
-        for it_user in it_users:
+        # Dispatch real DB notifications to IT Admin and HR Admin — "Facilities" has
+        # no seed role in this system (RBAC §3.1 only has 6 roles), so facilities-
+        # owned tasks are attributed to hr_admin (see the template above) and HR is
+        # notified alongside IT rather than the un-modelled "Facilities" recipient.
+        notify_roles = self.db.query(User).join(Role, User.role_id == Role.id).filter(
+            Role.name.in_(["it_admin", "hr_admin"]),
+            User.id != self.current_user.user_id,
+        ).all()
+        for recipient in notify_roles:
             notification = Notification(
                 id=uuid.uuid4(),
-                user_id=it_user.id,
+                user_id=recipient.id,
                 type="onboarding_assigned",
                 title="New Onboarding Checklist Created",
                 message=f"Onboarding checklist created for {target_user.full_name}.",
@@ -196,7 +196,7 @@ class OnboardingService:
             entity_type="checklist",
             entity_id=checklist.id,
             after_state={"employee_id": str(employee_id), "type": "onboarding"},
-            ip_address="127.0.0.1",
+            ip_address=self.ip_address,
         )
         self.db.add(audit_log)
 
@@ -355,7 +355,7 @@ class OnboardingService:
                 "checklist_id": str(checklist_id),
                 "checklist_completed": all_done,
             },
-            ip_address="127.0.0.1",
+            ip_address=self.ip_address,
         )
         self.db.add(audit_log)
 

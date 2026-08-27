@@ -13,7 +13,6 @@ from app.models.assets import (
     MaintenanceTicket,
 )
 from app.models.auth import User, UserStatus
-from app.models.leave_attendance import LeaveRequest, LeaveStatus
 from app.models.lifecycle import (
     Checklist,
     ChecklistItem,
@@ -197,6 +196,7 @@ class DashboardService:
         pending_tasks_list = [
             TaskChecklistItem(
                 id=item.id,
+                checklist_id=item.checklist_id,
                 task_name=item.task_name,
                 status=str(item.status.value) if hasattr(item.status, "value") else str(item.status),
                 created_at=item.created_at,
@@ -294,25 +294,12 @@ class DashboardService:
             or 0
         )
 
-        # Additional pending leave requests for direct reports / department
-        pending_leaves_count = 0
-        if dept_id or user_id:
-            sub_filters = []
-            if user_id:
-                sub_filters.append(LeaveRequest.approver_id == user_id)
-                sub_filters.append(User.manager_id == user_id)
-            if dept_id:
-                sub_filters.append(User.department_id == dept_id)
-
-            pending_leaves_count = (
-                self.db.query(func.count(LeaveRequest.id))
-                .join(User, LeaveRequest.employee_id == User.id)
-                .filter(and_(LeaveRequest.status == LeaveStatus.pending, or_(*sub_filters)))
-                .scalar()
-                or 0
-            )
-
-        total_pending_approvals = req_approvals_count + pending_leaves_count
+        # NOTE: this count is intentionally scoped to RequestApproval only, matching
+        # the doc §5.2 "Pending Approvals" widget below it exactly. Leave & Attendance
+        # (P3, §5.20) approvals are a separate, not-yet-built concept and were
+        # previously being folded in here, which made this KPI number disagree with
+        # the list underneath it — removed rather than silently left mismatched.
+        total_pending_approvals = req_approvals_count
 
         # 2. Team Members & Headcount
         team_members_list = []
@@ -479,6 +466,7 @@ class DashboardService:
         pending_action_items = [
             TaskChecklistItem(
                 id=item.id,
+                checklist_id=item.checklist_id,
                 task_name=item.task_name,
                 status=str(item.status.value) if hasattr(item.status, "value") else str(item.status),
                 created_at=item.created_at,
@@ -619,6 +607,7 @@ class DashboardService:
         pending_action_items = [
             TaskChecklistItem(
                 id=item.id,
+                checklist_id=item.checklist_id,
                 task_name=item.task_name,
                 status=str(item.status.value) if hasattr(item.status, "value") else str(item.status),
                 created_at=item.created_at,
