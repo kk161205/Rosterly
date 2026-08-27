@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { ShieldCheck, Loader2, AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
+import { ShieldCheck, AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/common/CommonUI'
 
 interface MFAFormProps {
   mfaSessionId: string
@@ -21,14 +22,13 @@ export const MFAForm: React.FC<MFAFormProps> = ({
   const [resendMessage, setResendMessage] = useState<string | null>(null)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Resend cooldown timer
+  // Resend cooldown timer — one interval for the form's lifetime, not recreated every tick
   useEffect(() => {
-    if (resendCooldown <= 0) return
     const timer = setInterval(() => {
-      setResendCooldown((prev) => prev - 1)
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0))
     }, 1000)
     return () => clearInterval(timer)
-  }, [resendCooldown])
+  }, [])
 
   // Focus first input box on mount
   useEffect(() => {
@@ -145,20 +145,16 @@ export const MFAForm: React.FC<MFAFormProps> = ({
       </div>
 
       {/* Verify Primary Action */}
-      <button
+      <Button
         type="submit"
+        variant="primary"
+        size="lg"
+        isLoading={isLoading}
         disabled={isLoading || !isComplete}
-        className="w-full flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        className="w-full"
       >
-        {isLoading ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Verifying code…</span>
-          </>
-        ) : (
-          <span>Verify & Continue</span>
-        )}
-      </button>
+        {isLoading ? 'Verifying code…' : 'Verify & Continue'}
+      </Button>
 
       {/* Footer Navigation & Resend Controls */}
       <div className="flex items-center justify-between text-body-sm pt-2">

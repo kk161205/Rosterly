@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Eye, EyeOff, Loader2, Lock, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
+import { Eye, EyeOff, Lock, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
+import { Button } from '@/components/common/CommonUI'
 
 interface ResetPasswordFormProps {
   token: string
@@ -76,13 +77,9 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
               Your password has been updated. All active sessions have been invalidated for security.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onBackToLogin}
-            className="w-full flex items-center justify-center gap-1.5 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent hover:bg-accent/90 transition-colors cursor-pointer"
-          >
-            <span>Proceed to Login</span>
-          </button>
+          <Button type="button" variant="primary" size="lg" onClick={onBackToLogin} className="w-full">
+            Proceed to Login
+          </Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -172,20 +169,16 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={isLoading}
             disabled={isLoading || !password || !confirmPassword}
-            className="w-full flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer mt-2"
+            className="w-full mt-2"
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Resetting password…</span>
-              </>
-            ) : (
-              <span>Reset Password</span>
-            )}
-          </button>
+            {isLoading ? 'Resetting password…' : 'Reset Password'}
+          </Button>
 
           <div className="pt-2 text-center">
             <button

@@ -18,22 +18,19 @@ export const AccountLockoutNotice: React.FC<AccountLockoutNoticeProps> = ({
     setSecondsLeft(remainingSeconds)
   }, [remainingSeconds])
 
+  // One interval for the notice's lifetime, not recreated every tick.
   useEffect(() => {
-    if (secondsLeft <= 0) {
-      onLockoutExpired()
-      return
-    }
     const timer = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          onLockoutExpired()
-          return 0
-        }
-        return prev - 1
-      })
+      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0))
     }, 1000)
     return () => clearInterval(timer)
+  }, [])
+
+  // Fires exactly once, the moment the countdown reaches zero.
+  useEffect(() => {
+    if (secondsLeft === 0) {
+      onLockoutExpired()
+    }
   }, [secondsLeft, onLockoutExpired])
 
   const minutes = Math.floor(secondsLeft / 60)

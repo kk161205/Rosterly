@@ -93,7 +93,7 @@ describe('LoginPage Component (PRD §5.1)', () => {
         email: 'admin@rosterly.com',
         password: 'SecurePass123!',
       })
-      expect(localStorage.getItem('rosterly_access_token')).toBe('fake-access-token')
+      expect(sessionStorage.getItem('rosterly_access_token')).toBe('fake-access-token')
     })
   })
 

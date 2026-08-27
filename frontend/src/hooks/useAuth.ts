@@ -4,8 +4,7 @@ import { authService } from '@/services/authService'
 import { AuthStep, LoginResponse } from '@/types/auth'
 import { authStorage } from '@/utils/authStorage'
 
-const MAX_FAILED_ATTEMPTS = 5
-const LOCKOUT_DURATION_SECONDS = 15 * 60 // 15 minutes
+const LOCKOUT_DURATION_SECONDS = 15 * 60 // 15 minutes — matches the backend's fixed lockout window
 
 export function useAuth() {
   const navigate = useNavigate()
@@ -13,22 +12,9 @@ export function useAuth() {
   const [mfaSessionId, setMfaSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [failedAttempts, setFailedAttempts] = useState<number>(0)
   const [lockoutEndTime, setLockoutEndTime] = useState<number | null>(null)
 
   const clearError = useCallback(() => setErrorMessage(null), [])
-
-  const handleFailedAttempt = useCallback(() => {
-    setFailedAttempts((prev) => {
-      const next = prev + 1
-      if (next >= MAX_FAILED_ATTEMPTS) {
-        const lockUntil = Date.now() + LOCKOUT_DURATION_SECONDS * 1000
-        setLockoutEndTime(lockUntil)
-        setCurrentStep('lockout')
-      }
-      return next
-    })
-  }, [])
 
   const handleLoginSubmit = async (email: string, pass: string) => {
     setIsLoading(true)
@@ -39,20 +25,26 @@ export function useAuth() {
       if (response.mfa_required && response.mfa_session_id) {
         setMfaSessionId(response.mfa_session_id)
         setCurrentStep('mfa')
-        setFailedAttempts(0)
       } else if (response.access_token) {
         authStorage.setAccessToken(response.access_token)
         if (response.refresh_token) {
           authStorage.setRefreshToken(response.refresh_token)
         }
-        setFailedAttempts(0)
         navigate('/dashboard')
       }
     } catch (err: unknown) {
-      handleFailedAttempt()
-      const axiosError = err as { response?: { data?: { error?: { message?: string } } } }
+      // Lockout is entirely server-driven — the backend is the source of truth on
+      // whether an account is locked (5 failed attempts in 15 min), not a client
+      // counter that resets on refresh and can drift from real server state.
+      const axiosError = err as { response?: { data?: { error?: { code?: string; message?: string } } } }
+      const errorCode = axiosError.response?.data?.error?.code
       const serverMsg = axiosError.response?.data?.error?.message
-      setErrorMessage(serverMsg || 'Invalid email or password')
+      if (errorCode === 'account_locked') {
+        setLockoutEndTime(Date.now() + LOCKOUT_DURATION_SECONDS * 1000)
+        setCurrentStep('lockout')
+      } else {
+        setErrorMessage(serverMsg || 'Invalid email or password')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -110,7 +102,6 @@ export function useAuth() {
   }
 
   const handleLockoutExpired = useCallback(() => {
-    setFailedAttempts(0)
     setLockoutEndTime(null)
     setCurrentStep('login')
     setErrorMessage(null)
@@ -129,7 +120,6 @@ export function useAuth() {
     isLoading,
     errorMessage,
     clearError,
-    failedAttempts,
     remainingLockoutSeconds: getRemainingLockoutSeconds(),
     handleLoginSubmit,
     handleMfaSubmit,

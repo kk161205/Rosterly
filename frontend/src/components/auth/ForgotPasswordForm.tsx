@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Loader2, KeyRound, CheckCircle2, AlertCircle, Mail } from 'lucide-react'
+import { ArrowLeft, KeyRound, CheckCircle2, AlertCircle, Mail } from 'lucide-react'
+import { Button } from '@/components/common/CommonUI'
 
 interface ForgotPasswordFormProps {
   onSubmit: (email: string) => Promise<void>
@@ -75,14 +76,9 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
               If an active account exists for <span className="font-medium text-on-surface">{email}</span>, password reset instructions have been sent.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onBackToLogin}
-            className="w-full flex items-center justify-center gap-1.5 rounded-md bg-accent px-4 py-2.5 text-body-sm font-medium text-on-accent hover:bg-accent/90 transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Return to Login</span>
-          </button>
+          <Button type="button" variant="primary" onClick={onBackToLogin} className="w-full" icon={<ArrowLeft className="h-4 w-4" />}>
+            Return to Login
+          </Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -133,20 +129,16 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
             )}
           </div>
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={isLoading}
             disabled={isLoading || !email}
-            className="w-full flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-body-md font-medium text-on-accent shadow-sm transition-all duration-150 hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer mt-2"
+            className="w-full mt-2"
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Sending reset link…</span>
-              </>
-            ) : (
-              <span>Send Reset Instructions</span>
-            )}
-          </button>
+            {isLoading ? 'Sending reset link…' : 'Send Reset Instructions'}
+          </Button>
 
           <div className="pt-2 text-center">
             <button
