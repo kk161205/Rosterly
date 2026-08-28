@@ -1,6 +1,6 @@
 import React from 'react'
 import { OnboardingChecklist } from '@/types/onboarding'
-import { CheckCircle2, Clock, ShieldAlert, Award, Layers } from 'lucide-react'
+import { Layers } from 'lucide-react'
 
 interface OnboardingProgressGaugeProps {
   checklist: OnboardingChecklist

@@ -73,11 +73,14 @@ describe('OnboardingWorkflowPage Component (§5.5)', () => {
           created_at: '2026-08-20T10:00:00Z',
         },
         {
+          // "Facilities" has no seed role (RBAC §3.1) — the real backend attributes
+          // workspace/access tasks to hr_admin, distinguished on the frontend by a
+          // task-name keyword match (see OnboardingTaskBoard.tsx).
           id: 'item-3',
           checklist_id: 'chk-101',
           task_name: 'Issue Building Access Keycard',
-          owner_role_id: 'role-facilities',
-          owner_role_name: 'facilities',
+          owner_role_id: 'role-hr-admin',
+          owner_role_name: 'hr_admin',
           status: 'pending',
           sort_order: 3,
           created_at: '2026-08-20T10:00:00Z',
@@ -86,8 +89,8 @@ describe('OnboardingWorkflowPage Component (§5.5)', () => {
           id: 'item-4',
           checklist_id: 'chk-101',
           task_name: 'Schedule Team 1:1 Intro',
-          owner_role_id: 'role-manager',
-          owner_role_name: 'manager',
+          owner_role_id: 'role-hr-admin',
+          owner_role_name: 'hr_admin',
           status: 'pending',
           sort_order: 4,
           created_at: '2026-08-20T10:00:00Z',
@@ -136,10 +139,10 @@ describe('OnboardingWorkflowPage Component (§5.5)', () => {
     )
 
     await waitFor(() => {
+      // Exactly the three columns the doc (§5.5) specifies — HR/IT/Facilities.
       expect(screen.getByText('HR & Legal Compliance')).toBeInTheDocument()
       expect(screen.getByText('IT & Access Provisioning')).toBeInTheDocument()
       expect(screen.getByText('Facilities & Workplace')).toBeInTheDocument()
-      expect(screen.getByText('Manager & Team Sync')).toBeInTheDocument()
     })
   })
 

@@ -9,9 +9,16 @@ import {
   UserCheck,
   Laptop,
   KeyRound,
-  Users,
-  ChevronRight,
 } from 'lucide-react'
+
+// "Facilities" has no distinct role in RBAC (§3.1 only has 6 seed roles) — the
+// backend's fixed onboarding template (onboarding_service.py) attributes
+// workspace/physical-access tasks to hr_admin rather than a separate owner.
+// This keyword match is how the Lifecycle tab (employee_profile_service.py)
+// already distinguishes them for display; mirrored here for the same reason.
+const FACILITIES_KEYWORDS = ['workspace', 'access', 'badge', 'keycard']
+const isFacilitiesTask = (taskName: string) =>
+  FACILITIES_KEYWORDS.some((kw) => taskName.toLowerCase().includes(kw))
 
 interface OnboardingTaskBoardProps {
   items: ChecklistItem[]
@@ -56,23 +63,15 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
       badgeBg: 'bg-amber-100 text-amber-800',
       accentColor: 'border-l-amber-500',
     },
-    {
-      roleKey: 'manager',
-      title: 'Manager & Team Sync',
-      subtitle: '1:1 Intro, Mentorship & Goals',
-      icon: Users,
-      headerBg: 'bg-emerald-50 text-emerald-900 border-emerald-200',
-      badgeBg: 'bg-emerald-100 text-emerald-800',
-      accentColor: 'border-l-emerald-500',
-    },
   ]
 
-  // Role authorization check for a specific task item
+  // Role authorization check for a specific task item — matches the backend's
+  // "owner_role_id match, or hr_admin/super_admin" rule (onboarding_service.py).
   const canModifyTask = (taskRoleName?: string): boolean => {
     if (currentRole === 'super_admin') return true
     if (!taskRoleName) return true
     if (currentRole === taskRoleName) return true
-    if (currentRole === 'hr_admin' && (taskRoleName === 'hr_admin' || taskRoleName === 'facilities')) return true
+    if (currentRole === 'hr_admin' && taskRoleName === 'hr_admin') return true
     return false
   }
 
@@ -80,9 +79,12 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 select-none">
       {columns.map((col) => {
         const Icon = col.icon
-        const colItems = items.filter(
-          (item) => item.owner_role_name === col.roleKey || (!item.owner_role_name && col.roleKey === 'hr_admin')
-        )
+        const colItems = items.filter((item) => {
+          const isHrOwned = item.owner_role_name === 'hr_admin' || !item.owner_role_name
+          if (col.roleKey === 'facilities') return isHrOwned && isFacilitiesTask(item.task_name)
+          if (col.roleKey === 'hr_admin') return isHrOwned && !isFacilitiesTask(item.task_name)
+          return item.owner_role_name === col.roleKey
+        })
         const completedCount = colItems.filter((i) => i.status === 'done').length
 
         return (
@@ -123,9 +125,10 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
                   return (
                     <div
                       key={item.id}
+                      onClick={() => onSelectItem?.(item)}
                       className={`group bg-surface-container-lowest border border-outline-variant/60 rounded-lg p-3 shadow-2xs hover:shadow-xs transition-all border-l-4 ${
                         col.accentColor
-                      } ${isDone ? 'opacity-75 bg-slate-50/70' : ''}`}
+                      } ${isDone ? 'opacity-75 bg-slate-50/70' : ''} ${onSelectItem ? 'cursor-pointer' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <span className="font-body text-xs font-semibold text-on-surface leading-snug flex-1">
@@ -168,12 +171,10 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
                             {item.status !== 'done' ? (
                               <button
                                 disabled={isUpdating}
-                                onClick={() =>
-                                  onUpdateStatus(
-                                    item.id,
-                                    item.status === 'pending' ? 'in_progress' : 'done'
-                                  )
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onUpdateStatus(item.id, item.status === 'pending' ? 'in_progress' : 'done')
+                                }}
                                 className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-accent text-on-accent hover:bg-accent/90 transition-colors cursor-pointer disabled:opacity-50"
                               >
                                 {item.status === 'pending' ? 'Start Task' : 'Mark Done'}
@@ -181,7 +182,10 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
                             ) : (
                               <button
                                 disabled={isUpdating}
-                                onClick={() => onUpdateStatus(item.id, 'in_progress')}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onUpdateStatus(item.id, 'in_progress')
+                                }}
                                 className="text-[10px] font-mono text-on-surface-variant hover:text-on-surface underline cursor-pointer"
                               >
                                 Reopen

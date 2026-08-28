@@ -21,8 +21,6 @@ import {
   AlertCircle,
   RefreshCw,
   Eye,
-  ShieldCheck,
-  Sparkles,
   Users,
 } from 'lucide-react'
 
@@ -64,6 +62,9 @@ export const OnboardingWorkflowPage: React.FC = () => {
       if (profileResult.status === 'fulfilled') {
         setUserProfile(profileResult.value)
         authStorage.setUser(profileResult.value)
+        if (profileResult.value.role) {
+          setCurrentRole(profileResult.value.role as UserRole)
+        }
       }
 
       if (listResult.status === 'fulfilled') {
@@ -108,8 +109,6 @@ export const OnboardingWorkflowPage: React.FC = () => {
   return (
     <AppLayout
       currentRole={currentRole}
-      baseRole={userProfile?.role as UserRole | undefined}
-      onRoleChange={(r) => setCurrentRole(r)}
       userName={userProfile?.full_name}
       userEmail={userProfile?.email || ''}
       isLoading={isLoading && checklists.length === 0}
@@ -140,19 +139,6 @@ export const OnboardingWorkflowPage: React.FC = () => {
               <span>Start Onboarding</span>
             </button>
           </div>
-        </div>
-
-        {/* Dynamic Testing Role Notification Pill */}
-        <div className="p-3.5 rounded-xl bg-primary-container/10 border border-primary-container/30 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-accent flex-shrink-0" />
-            <span className="font-body text-on-surface">
-              Current Active Role Gating: <strong className="font-mono uppercase text-accent">{currentRole}</strong>. Task completion controls interactively enforce this role's authority.
-            </span>
-          </div>
-          <span className="text-[11px] font-mono text-on-surface-variant bg-white px-2 py-0.5 rounded border border-outline-variant/40">
-            RBAC Enforced
-          </span>
         </div>
 
         {/* Top Metric Summary Cards */}
@@ -328,6 +314,7 @@ export const OnboardingWorkflowPage: React.FC = () => {
                 items={activeChecklist.items}
                 currentRole={currentRole}
                 onUpdateStatus={handleUpdateItemStatus}
+                onSelectItem={() => setIsDetailDrawerOpen(true)}
                 isUpdating={isUpdatingStatus}
               />
             </div>

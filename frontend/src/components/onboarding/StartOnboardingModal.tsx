@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { onboardingService } from '@/services/onboardingService'
-import { AISuggestionResponse, OnboardingCreateRequest } from '@/types/onboarding'
-import { X, Sparkles, Plus, Trash2, Calendar, User, Briefcase, CheckCircle } from 'lucide-react'
+import { AISuggestionResponse } from '@/types/onboarding'
+import { X, Sparkles, Calendar, User, Briefcase } from 'lucide-react'
 
 interface StartOnboardingModalProps {
   isOpen: boolean
@@ -14,13 +14,12 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [employees, setEmployees] = useState<Array<{ id: string; name: string; designation: string; department: string }>>([])
+  const [employees, setEmployees] = useState<
+    Array<{ id: string; name: string; designation: string; department: string; date_of_joining?: string | null }>
+  >([])
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
-  const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0])
-  const [customTasks, setCustomTasks] = useState<string[]>([])
-  const [newTaskInput, setNewTaskInput] = useState('')
-  
-  // AI Suggestion State
+
+  // AI Suggestion State (advisory only — see onboardingService.suggestChecklistWithAI)
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestionResponse | null>(null)
 
@@ -50,24 +49,11 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
         selectedEmployee.designation
       )
       setAiSuggestion(res)
-      // Pre-populate custom tasks from AI recommended items
-      const tasks = res.recommended_tasks.map((t) => t.task_name)
-      setCustomTasks(tasks)
     } catch {
       setErrorMsg('Failed to generate AI recommendations')
     } finally {
       setIsGeneratingAI(false)
     }
-  }
-
-  const handleAddTask = () => {
-    if (!newTaskInput.trim()) return
-    setCustomTasks([...customTasks, newTaskInput.trim()])
-    setNewTaskInput('')
-  }
-
-  const handleRemoveTask = (index: number) => {
-    setCustomTasks(customTasks.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,12 +66,7 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
     setIsSubmitting(true)
     setErrorMsg('')
     try {
-      const payload: OnboardingCreateRequest = {
-        employee_id: selectedEmployeeId,
-        joining_date: joiningDate,
-        custom_tasks: customTasks,
-      }
-      await onboardingService.createOnboarding(payload)
+      await onboardingService.createOnboarding({ employee_id: selectedEmployeeId })
       onSuccess()
       onClose()
     } catch {
@@ -153,12 +134,11 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
                 Date of Joining
               </label>
               <div className="relative">
-                <input
-                  type="date"
-                  value={joiningDate}
-                  onChange={(e) => setJoiningDate(e.target.value)}
-                  className="w-full h-10 px-3 pr-9 rounded-md border border-outline-variant bg-surface text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none font-mono"
-                />
+                <div className="w-full h-10 px-3 pr-9 rounded-md border border-outline-variant bg-surface-container-low text-sm font-mono flex items-center text-on-surface-variant">
+                  {selectedEmployee?.date_of_joining
+                    ? new Date(selectedEmployee.date_of_joining).toLocaleDateString()
+                    : '—'}
+                </div>
                 <Calendar className="w-4 h-4 text-on-surface-variant absolute right-3 top-3 pointer-events-none" />
               </div>
             </div>
@@ -234,51 +214,16 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
             )}
           </div>
 
-          {/* Custom / Additional Tasks List */}
+          {/* Fixed Checklist Template Notice */}
           <div>
             <label className="block text-xs font-mono font-semibold text-on-surface mb-1.5 uppercase">
-              Checklist Tasks ({4 + customTasks.length} total)
+              Checklist Tasks (5 total)
             </label>
-            <p className="text-[11px] text-on-surface-variant mb-2">
-              Default template includes standard Contract, Laptop, Keycard, and Manager sync tasks.
+            <p className="text-[11px] text-on-surface-variant">
+              Phase 1 onboarding always uses the standard fixed template: Contract & ID, Email/SSO
+              provisioning, Hardware issuance, Workspace access, and Team orientation. The AI panel
+              above is advisory guidance only — custom tasks aren't yet supported by the backend.
             </p>
-
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={newTaskInput}
-                onChange={(e) => setNewTaskInput(e.target.value)}
-                placeholder="Add custom task (e.g., Issue AWS SSO credentials)..."
-                className="flex-1 h-9 px-3 rounded-md border border-outline-variant bg-surface text-xs focus:border-accent outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleAddTask}
-                className="px-3 py-1.5 rounded-md bg-secondary text-on-secondary text-xs font-medium hover:bg-secondary/90 flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Task
-              </button>
-            </div>
-
-            {customTasks.length > 0 && (
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {customTasks.map((task, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-2 rounded border border-outline-variant/40 bg-surface text-xs"
-                  >
-                    <span className="font-body text-on-surface">• {task}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTask(index)}
-                      className="text-error hover:text-error/80 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Footer Actions */}

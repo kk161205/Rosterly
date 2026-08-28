@@ -3,13 +3,8 @@ import { OnboardingChecklist, ChecklistItemStatus } from '@/types/onboarding'
 import { UserRole } from '@/types/dashboard'
 import {
   X,
-  UserCheck,
   Calendar,
   Building,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  ShieldCheck,
   Lock,
 } from 'lucide-react'
 
@@ -36,7 +31,7 @@ export const OnboardingDetailDrawer: React.FC<OnboardingDetailDrawerProps> = ({
     if (currentRole === 'super_admin') return true
     if (!taskRoleName) return true
     if (currentRole === taskRoleName) return true
-    if (currentRole === 'hr_admin' && (taskRoleName === 'hr_admin' || taskRoleName === 'facilities')) return true
+    if (currentRole === 'hr_admin' && taskRoleName === 'hr_admin') return true
     return false
   }
 
