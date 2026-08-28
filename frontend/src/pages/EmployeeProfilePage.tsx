@@ -19,6 +19,7 @@ import { LifecycleTab } from '@/components/profile/LifecycleTab'
 import { EditProfileModal } from '@/components/profile/EditProfileModal'
 import { StartOffboardingModal } from '@/components/profile/StartOffboardingModal'
 import { profileService } from '@/services/profileService'
+import { employeeService } from '@/services/employeeService'
 import { authStorage } from '@/utils/authStorage'
 import { UserRole } from '@/types/dashboard'
 import {
@@ -33,13 +34,15 @@ import {
 type ActiveTab = 'overview' | 'documents' | 'assets' | 'lifecycle'
 
 export const EmployeeProfilePage: React.FC = () => {
-  const { id = 'emp-101' } = useParams<{ id: string }>()
+  const { id: routeId } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const cachedUser = authStorage.getUser()
 
-  // Dynamic user role state (stored in authStorage or default to employee)
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
-    return authStorage.getUserRole() || 'employee'
-  })
+  // The `/profile` route (viewing your own profile) carries no :id param at all —
+  // resolve it to the real authenticated user's id rather than a placeholder.
+  const id = routeId || cachedUser?.id
+
+  const currentRole: UserRole = authStorage.getUserRole() || 'employee'
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview')
   const [profile, setProfile] = useState<EmployeeProfile | null>(null)
@@ -61,6 +64,11 @@ export const EmployeeProfilePage: React.FC = () => {
   }
 
   const loadData = async () => {
+    if (!id) {
+      setError('No employee selected. Please sign in again.')
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     setError(null)
     try {
@@ -85,13 +93,7 @@ export const EmployeeProfilePage: React.FC = () => {
     loadData()
   }, [id])
 
-  const handleRoleChange = (newRole: UserRole) => {
-    setCurrentRole(newRole)
-    authStorage.setUserRole(newRole)
-    showToast(`Role switched to ${newRole.toUpperCase()} mode`)
-  }
-
-  const isSelf = profile ? profile.id === 'emp-101' : false
+  const isSelf = !!(profile && cachedUser && profile.id === cachedUser.id)
 
   const handleSaveProfile = async (updates: ProfileUpdatePayload) => {
     if (!profile) return
@@ -102,64 +104,11 @@ export const EmployeeProfilePage: React.FC = () => {
 
   const handleStartOffboarding = async (reason: string, exitDate: string) => {
     if (!profile) return
-    const updated = await profileService.updateEmployeeProfile(profile.id, {
-      status: 'offboarding',
-    })
-    setProfile(updated)
-
-    // Update lifecycle to offboarding mode
-    setLifecycle({
-      id: `chk-off-${Date.now()}`,
-      type: 'offboarding',
-      status: 'active',
-      progress_percentage: 15,
-      total_items: 5,
-      completed_items: 1,
-      items: [
-        {
-          id: 'off-1',
-          title: `Initiate Offboarding: ${reason}`,
-          category: 'hr',
-          owner_role: 'hr_admin',
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        },
-        {
-          id: 'off-2',
-          title: 'Laptop & Hardware Reclamation',
-          category: 'it',
-          owner_role: 'it_admin',
-          status: 'pending',
-          due_date: exitDate,
-        },
-        {
-          id: 'off-3',
-          title: 'Building Pass & Physical Keycard Revocation',
-          category: 'facilities',
-          owner_role: 'facilities',
-          status: 'pending',
-          due_date: exitDate,
-        },
-        {
-          id: 'off-4',
-          title: 'System Single Sign-On (SSO) Session Revocation',
-          category: 'it',
-          owner_role: 'it_admin',
-          status: 'pending',
-          due_date: exitDate,
-        },
-        {
-          id: 'off-5',
-          title: 'Final Payroll & Severance Clearance',
-          category: 'hr',
-          owner_role: 'hr_admin',
-          status: 'pending',
-          due_date: exitDate,
-        },
-      ],
-    })
-
+    // Goes through the dedicated offboard endpoint (which stores exit_date/reason
+    // and writes the audit log) rather than a generic status PATCH.
+    await employeeService.offboardEmployee(profile.id, exitDate, reason)
     showToast(`Offboarding process initiated (Exit Date: ${exitDate})`)
+    await loadData()
   }
 
   const handleUploadDocument = async (
@@ -195,7 +144,7 @@ export const EmployeeProfilePage: React.FC = () => {
   ]
 
   return (
-    <AppLayout currentRole={currentRole} onRoleChange={handleRoleChange} userName={profile?.full_name} userEmail={profile?.email}>
+    <AppLayout currentRole={currentRole} userName={profile?.full_name} userEmail={profile?.email}>
       <div className="space-y-6 pb-12">
         {/* Navigation Breadcrumb / Back Link */}
         <div className="flex items-center justify-between">

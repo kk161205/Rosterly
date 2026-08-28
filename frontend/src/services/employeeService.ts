@@ -59,10 +59,16 @@ export const employeeService = {
   },
 
   /**
-   * Initiates employee offboarding transition (Admin).
+   * Initiates employee offboarding transition (Admin) — exit_date/reason are
+   * stored server-side (date_of_exit + audit log), per doc §5.3.
    */
-  async offboardEmployee(employeeId: string): Promise<Employee> {
-    const response = await apiClient.post<Employee>(`/employees/${employeeId}/offboard`)
+  async offboardEmployee(employeeId: string, exitDate?: string, reason?: string): Promise<Employee> {
+    const params = new URLSearchParams()
+    if (exitDate) params.append('exit_date', exitDate)
+    if (reason) params.append('reason', reason)
+    const response = await apiClient.post<Employee>(
+      `/employees/${employeeId}/offboard?${params.toString()}`
+    )
     return response.data
   },
 

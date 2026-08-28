@@ -22,9 +22,20 @@ vi.mock('@/services/profileService', () => ({
 vi.mock('@/utils/authStorage', () => ({
   authStorage: {
     getUserRole: vi.fn().mockReturnValue('employee'),
-    setUserRole: vi.fn(),
+    getUser: vi.fn().mockReturnValue({
+      id: 'emp-101',
+      email: 'alex.vance@rosterly.io',
+      full_name: 'Alex Vance',
+      role: 'employee',
+    }),
     getAccessToken: vi.fn().mockReturnValue('mock-token'),
     getRefreshToken: vi.fn().mockReturnValue('mock-refresh-token'),
+  },
+}))
+
+vi.mock('@/services/employeeService', () => ({
+  employeeService: {
+    offboardEmployee: vi.fn().mockResolvedValue({}),
   },
 }))
 
