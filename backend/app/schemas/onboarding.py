@@ -22,6 +22,7 @@ class ChecklistItemResponse(BaseModel):
     status: ChecklistItemStatus
     completed_by: Optional[UUID] = None
     completed_by_name: Optional[str] = None
+    asset_assignment_id: Optional[UUID] = None
     completed_at: Optional[datetime] = None
     sort_order: int
     created_at: datetime
