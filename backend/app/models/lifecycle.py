@@ -65,6 +65,7 @@ class ChecklistItem(Base):
     owner_role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=False)
     status = Column(Enum(ChecklistItemStatus, name="checklist_item_status_enum", native_enum=False), default=ChecklistItemStatus.pending, nullable=False)
     completed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    asset_assignment_id = Column(UUID(as_uuid=True), ForeignKey("asset_assignments.id", ondelete="SET NULL"), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     sort_order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -72,6 +73,7 @@ class ChecklistItem(Base):
     checklist = relationship("Checklist", back_populates="items")
     owner_role = relationship("Role", foreign_keys=[owner_role_id])
     completer = relationship("User", foreign_keys=[completed_by])
+    asset_assignment = relationship("AssetAssignment", foreign_keys=[asset_assignment_id])
 
 
 class Document(Base):
