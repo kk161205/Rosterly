@@ -6,6 +6,15 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { Employee, EmployeePaginatedResponse } from '@/types/employee'
+import { StatusBadge, SelectDropdown } from '@/components/common/CommonUI'
+
+const STATUS_VARIANT: Record<Employee['status'], 'success' | 'info' | 'warning' | 'neutral'> = {
+  active: 'success',
+  onboarding: 'info',
+  offboarding: 'warning',
+  terminated: 'neutral',
+  inactive: 'neutral',
+}
 
 interface EmployeeListViewProps {
   data: EmployeePaginatedResponse
@@ -24,47 +33,6 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   const totalPages = Math.ceil(total / page_size) || 1
   const startItem = total === 0 ? 0 : (page - 1) * page_size + 1
   const endItem = Math.min(page * page_size, total)
-
-  const getStatusBadge = (status: Employee['status']) => {
-    switch (status) {
-      case 'active':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Active
-          </span>
-        )
-      case 'onboarding':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-accent-container/40 text-on-accent-container border border-accent/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-            Onboarding
-          </span>
-        )
-      case 'offboarding':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-amber-50 text-amber-800 border border-amber-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            Offboarding
-          </span>
-        )
-      case 'terminated':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-surface-container text-on-surface-variant border border-outline-variant">
-            <span className="w-1.5 h-1.5 rounded-full bg-outline" />
-            Terminated
-          </span>
-        )
-      case 'inactive':
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-caps font-mono font-medium bg-surface-container text-on-surface-variant border border-outline-variant">
-            <span className="w-1.5 h-1.5 rounded-full bg-outline" />
-            Inactive
-          </span>
-        )
-    }
-  }
 
   const getInitials = (name: string) => {
     return name
@@ -151,7 +119,9 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                 </td>
 
                 {/* Status Column */}
-                <td className="py-3.5 px-4">{getStatusBadge(emp.status)}</td>
+                <td className="py-3.5 px-4">
+                  <StatusBadge status={emp.status} variant={STATUS_VARIANT[emp.status] || 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -170,15 +140,15 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono text-outline">Per page:</span>
-            <select
-              value={page_size}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="px-2 py-1 text-xs font-mono rounded border border-outline-variant bg-surface-container-lowest text-on-surface focus:outline-none focus:border-accent"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
+            <SelectDropdown
+              value={String(page_size)}
+              onChange={(val) => onPageSizeChange(Number(val))}
+              options={[
+                { value: '10', label: '10' },
+                { value: '20', label: '20' },
+                { value: '50', label: '50' },
+              ]}
+            />
           </div>
         </div>
 

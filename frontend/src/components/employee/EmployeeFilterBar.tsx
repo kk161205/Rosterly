@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   LayoutList,
   Network,
@@ -8,7 +8,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { Department, EmployeeQueryFilters, FilterOption } from '@/types/employee'
-import { SearchInput, SelectDropdown, SelectOption } from '@/components/common/CommonUI'
+import { SearchInput, SelectDropdown, SelectOption, Card, Button } from '@/components/common/CommonUI'
 
 interface EmployeeFilterBarProps {
   filters: EmployeeQueryFilters
@@ -35,6 +35,28 @@ export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
   onViewModeChange,
   totalCount = 0,
 }) => {
+  // Debounce the free-text search so it doesn't fire an API call per keystroke.
+  const [searchInput, setSearchInput] = useState(filters.search || '')
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  useEffect(() => {
+    setSearchInput(filters.search || '')
+  }, [filters.search])
+
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      onFilterChange({ search: value, page: 1 })
+    }, 300)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
+
   const isFiltered = Boolean(
     filters.search ||
       (filters.department_id && filters.department_id !== 'all') ||
@@ -75,7 +97,7 @@ export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
   ]
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-5 shadow-sm space-y-4">
+    <Card elevated className="space-y-4">
       {/* Top Header & View Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/60 pb-4">
         <div>
@@ -127,8 +149,8 @@ export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
         {/* Full-Text Search Input */}
         <div className="lg:col-span-4">
           <SearchInput
-            value={filters.search || ''}
-            onChange={(e) => onFilterChange({ search: e.target.value, page: 1 })}
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search by name, email, designation..."
             shortcut=""
           />
@@ -173,18 +195,20 @@ export const EmployeeFilterBar: React.FC<EmployeeFilterBarProps> = ({
         {/* Reset Filter Action */}
         <div className="lg:col-span-1 flex justify-end">
           {isFiltered && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onResetFilters}
-              className="px-2.5 py-2 text-xs font-mono font-medium text-error hover:bg-error-container/40 rounded border border-error/20 transition-colors inline-flex items-center gap-1 cursor-pointer"
+              icon={<RotateCcw className="w-3.5 h-3.5" />}
+              className="text-error hover:bg-error-container/40 border border-error/20"
               title="Reset Filters"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset</span>
-            </button>
+              Reset
+            </Button>
           )}
         </div>
       </div>
-    </div>
+    </Card>
   )
 }

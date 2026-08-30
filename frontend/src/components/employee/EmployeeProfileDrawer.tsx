@@ -18,11 +18,27 @@ import {
   AlertCircle,
   Save,
   RotateCcw,
-  Loader2,
   ExternalLink,
 } from 'lucide-react'
 import { Employee, Department, EmployeeUpdatePayload } from '@/types/employee'
 import { employeeService } from '@/services/employeeService'
+import { Button, StatusBadge, SelectDropdown } from '@/components/common/CommonUI'
+
+const STATUS_LABEL: Record<Employee['status'], string> = {
+  active: 'Active Employee',
+  onboarding: 'Onboarding In-Progress',
+  offboarding: 'Offboarding In-Progress',
+  terminated: 'Terminated / Departed',
+  inactive: 'Inactive / Departed',
+}
+
+const STATUS_VARIANT: Record<Employee['status'], 'success' | 'info' | 'warning' | 'neutral'> = {
+  active: 'success',
+  onboarding: 'info',
+  offboarding: 'warning',
+  terminated: 'neutral',
+  inactive: 'neutral',
+}
 
 interface EmployeeProfileDrawerProps {
   employee: Employee | null
@@ -101,9 +117,9 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
   const role = (currentUserRole || 'employee').toLowerCase()
   const isSuperAdmin = role === 'super_admin'
   const isHrAdmin = role === 'hr_admin'
-  const isManager = role === 'manager'
 
-  const canEdit = isSuperAdmin || isHrAdmin || isManager
+  // Manager access to §5.4 is read-only + approval actions only — not edit.
+  const canEdit = isSuperAdmin || isHrAdmin
   const canOffboard = (isSuperAdmin || isHrAdmin) && employee.status !== 'offboarding' && employee.status !== 'terminated'
   const canDelete = isSuperAdmin
 
@@ -163,47 +179,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
     }
   }
 
-  const getStatusBadge = (status: Employee['status']) => {
-    switch (status) {
-      case 'active':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-caps font-mono font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Active Employee
-          </span>
-        )
-      case 'onboarding':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-caps font-mono font-medium bg-accent-container/40 text-on-accent-container border border-accent/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-            Onboarding In-Progress
-          </span>
-        )
-      case 'offboarding':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-caps font-mono font-medium bg-amber-50 text-amber-800 border border-amber-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            Offboarding In-Progress
-          </span>
-        )
-      case 'terminated':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-caps font-mono font-medium bg-surface-container text-on-surface-variant border border-outline-variant">
-            <span className="w-1.5 h-1.5 rounded-full bg-outline" />
-            Terminated / Departed
-          </span>
-        )
-      case 'inactive':
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-caps font-mono font-medium bg-surface-container text-on-surface-variant border border-outline-variant">
-            <span className="w-1.5 h-1.5 rounded-full bg-outline" />
-            Inactive / Departed
-          </span>
-        )
-    }
-  }
-
   const drawerElement = (
     <div className="fixed inset-0 z-50 overflow-hidden flex justify-end animate-fade-in">
       {/* Click Backdrop */}
@@ -234,15 +209,16 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
 
             <div className="flex items-center gap-2">
               {canEdit && !isEditing && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setIsEditing(true)}
-                  className="px-3 py-1.5 text-xs font-sans font-semibold rounded-lg border border-outline-variant hover:border-accent bg-surface-container-lowest hover:bg-surface-container text-on-surface transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  icon={<Edit3 className="w-3.5 h-3.5 text-accent" />}
                   title="Edit details"
                 >
-                  <Edit3 className="w-3.5 h-3.5 text-accent" />
-                  <span>Edit Details</span>
-                </button>
+                  Edit Details
+                </Button>
               )}
               <button
                 type="button"
@@ -292,24 +268,26 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                   {employee.designation}
                 </p>
                 <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                  {getStatusBadge(employee.status)}
+                  <StatusBadge status={STATUS_LABEL[employee.status]} variant={STATUS_VARIANT[employee.status] || 'neutral'} />
                 </div>
               </div>
             </div>
 
             {/* Side Action Button */}
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={() => {
                 onClose()
                 navigate(`/employees/${employee.id}`)
               }}
-              className="px-3.5 py-2 text-xs font-sans font-semibold rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-xs flex-shrink-0"
+              className="bg-primary hover:bg-primary-container flex-shrink-0"
               title="Open full employee profile page"
             >
-              <span>Full Profile</span>
+              Full Profile
               <ExternalLink className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -349,35 +327,33 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                   <label className="block text-xs font-mono text-on-surface-variant uppercase mb-1">
                     Department
                   </label>
-                  <select
+                  <SelectDropdown
                     value={formData.department_id || ''}
-                    onChange={(e) => setFormData({ ...formData, department_id: e.target.value || null })}
-                    className="w-full px-3 py-2 text-body-sm bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-accent text-on-surface"
-                  >
-                    <option value="">Unassigned</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setFormData({ ...formData, department_id: val || null })}
+                    placeholder="Unassigned"
+                    options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                    containerClassName="w-full"
+                    className="w-full justify-between"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-mono text-on-surface-variant uppercase mb-1">
                     Status
                   </label>
-                  <select
+                  <SelectDropdown
                     value={formData.status || 'active'}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 text-body-sm bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-accent text-on-surface capitalize"
-                  >
-                    <option value="active">Active</option>
-                    <option value="onboarding">Onboarding</option>
-                    <option value="offboarding">Offboarding</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="terminated">Terminated</option>
-                  </select>
+                    onChange={(val) => setFormData({ ...formData, status: val })}
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'onboarding', label: 'Onboarding' },
+                      { value: 'offboarding', label: 'Offboarding' },
+                      { value: 'inactive', label: 'Inactive' },
+                      { value: 'terminated', label: 'Terminated' },
+                    ]}
+                    containerClassName="w-full"
+                    className="w-full justify-between"
+                  />
                 </div>
               </div>
 
@@ -386,18 +362,20 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                   <label className="block text-xs font-mono text-on-surface-variant uppercase mb-1">
                     System Access Role
                   </label>
-                  <select
+                  <SelectDropdown
                     value={formData.role_name || 'employee'}
-                    onChange={(e) => setFormData({ ...formData, role_name: e.target.value })}
-                    className="w-full px-3 py-2 text-body-sm bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-accent text-on-surface capitalize"
-                  >
-                    <option value="employee">Employee</option>
-                    <option value="manager">Manager</option>
-                    <option value="hr_admin">HR Admin</option>
-                    <option value="it_admin">IT Admin</option>
-                    <option value="auditor">Auditor</option>
-                    {isSuperAdmin && <option value="super_admin">Super Admin</option>}
-                  </select>
+                    onChange={(val) => setFormData({ ...formData, role_name: val })}
+                    options={[
+                      { value: 'employee', label: 'Employee' },
+                      { value: 'manager', label: 'Manager' },
+                      { value: 'hr_admin', label: 'HR Admin' },
+                      { value: 'it_admin', label: 'IT Admin' },
+                      { value: 'auditor', label: 'Auditor' },
+                      ...(isSuperAdmin ? [{ value: 'super_admin', label: 'Super Admin' }] : []),
+                    ]}
+                    containerClassName="w-full"
+                    className="w-full justify-between"
+                  />
                 </div>
               )}
 
@@ -522,31 +500,29 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
         <div className="p-4 border-t border-outline-variant bg-surface-container-low/60 flex items-center justify-between gap-2.5 flex-wrap">
           {isEditing ? (
             <div className="flex items-center gap-2.5 w-full">
-              <button
+              <Button
                 type="submit"
                 form="edit-employee-form"
+                variant="primary"
+                isLoading={isSaving}
                 disabled={isSaving}
-                className="flex-1 py-2 px-4 rounded-lg bg-primary hover:bg-primary-container text-on-primary text-xs font-sans font-semibold text-center transition-colors shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                icon={!isSaving ? <Save className="w-3.5 h-3.5" /> : undefined}
+                className="flex-1 bg-primary hover:bg-primary-container"
               >
-                {isSaving ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                <span>{isSaving ? 'Saving Changes...' : 'Save Changes'}</span>
-              </button>
-              <button
+                {isSaving ? 'Saving Changes...' : 'Save Changes'}
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => {
                   setIsEditing(false)
                   setSaveError(null)
                 }}
                 disabled={isSaving}
-                className="py-2 px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface-variant text-xs font-sans font-semibold hover:bg-surface-container transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                icon={<RotateCcw className="w-3.5 h-3.5" />}
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Cancel</span>
-              </button>
+                Cancel
+              </Button>
             </div>
           ) : (
             <>
@@ -563,27 +539,28 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
               {/* Administrative Actions */}
               <div className="flex items-center gap-2">
                 {canOffboard && (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => setShowOffboardConfirm(true)}
-                    className="py-2 px-3.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant hover:border-outline text-xs font-sans font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    icon={<UserMinus className="w-3.5 h-3.5 text-secondary" />}
                     title="Initiate Offboarding Process"
                   >
-                    <UserMinus className="w-3.5 h-3.5 text-secondary" />
-                    <span>Initiate Offboarding</span>
-                  </button>
+                    Initiate Offboarding
+                  </Button>
                 )}
 
                 {canDelete && (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="py-2 px-3.5 rounded-lg bg-error-container/40 hover:bg-error-container text-on-error-container border border-error/20 hover:border-error/40 text-xs font-sans font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    icon={<Trash2 className="w-3.5 h-3.5 text-error" />}
+                    className="bg-error-container/40 hover:bg-error-container text-on-error-container border border-error/20"
                     title="Permanently Delete Employee Record"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-error" />
-                    <span>Delete Record</span>
-                  </button>
+                    Delete Record
+                  </Button>
                 )}
               </div>
             </>
@@ -614,23 +591,19 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowOffboardConfirm(false)}
-                disabled={isOffboarding}
-                className="px-4 py-2 text-xs font-sans font-semibold rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
-              >
+              <Button type="button" variant="outline" onClick={() => setShowOffboardConfirm(false)} disabled={isOffboarding}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="primary"
+                isLoading={isOffboarding}
                 onClick={handleConfirmOffboard}
                 disabled={isOffboarding}
-                className="px-4 py-2 text-xs font-sans font-semibold rounded-lg bg-primary hover:bg-primary-container text-on-primary transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                className="bg-primary hover:bg-primary-container"
               >
-                {isOffboarding && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Confirm Offboarding</span>
-              </button>
+                Confirm Offboarding
+              </Button>
             </div>
           </div>
         </div>
@@ -664,23 +637,12 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={isDeleting}
-                className="px-4 py-2 text-xs font-sans font-semibold rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
-              >
+              <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}
-                className="px-4 py-2 text-xs font-sans font-semibold rounded-lg bg-error text-on-error hover:bg-error/90 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
-              >
-                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Yes, Delete Employee</span>
-              </button>
+              </Button>
+              <Button type="button" variant="danger" isLoading={isDeleting} onClick={handleConfirmDelete} disabled={isDeleting}>
+                Yes, Delete Employee
+              </Button>
             </div>
           </div>
         </div>

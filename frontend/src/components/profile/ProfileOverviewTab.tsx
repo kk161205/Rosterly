@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { EmployeeProfile } from '@/types/profile'
 import { UserRole } from '@/types/dashboard'
+import { Button } from '@/components/common/CommonUI'
 
 interface ProfileOverviewTabProps {
   profile: EmployeeProfile
@@ -42,13 +43,15 @@ export const ProfileOverviewTab: React.FC<ProfileOverviewTabProps> = ({
                 Personal & Contact Details
               </h2>
               {canEdit && (
-                <button
+                <Button
                   onClick={onEditClick}
-                  className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-medium transition-colors"
+                  variant="ghost"
+                  size="sm"
+                  icon={<Edit2 className="w-3.5 h-3.5" />}
+                  className="text-accent hover:text-accent/80"
                 >
-                  <Edit2 className="w-3.5 h-3.5" />
                   Edit
-                </button>
+                </Button>
               )}
             </div>
 

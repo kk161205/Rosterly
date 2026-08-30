@@ -8,12 +8,22 @@ import {
   Edit3,
   UserX,
   Shield,
-  CheckCircle2,
   AlertTriangle,
-  Clock,
 } from 'lucide-react'
-import { EmployeeProfile, EmploymentStatus } from '@/types/profile'
+import { EmployeeProfile } from '@/types/profile'
 import { UserRole } from '@/types/dashboard'
+import { Card, Button, StatusBadge } from '@/components/common/CommonUI'
+
+const STATUS_VARIANT: Record<string, 'success' | 'info' | 'warning' | 'error' | 'neutral'> = {
+  active: 'success',
+  onboarding: 'info',
+  offboarding: 'warning',
+  terminated: 'error',
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  offboarding: 'Offboarding In Progress',
+}
 
 interface ProfileHeaderCardProps {
   profile: EmployeeProfile
@@ -60,47 +70,8 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   const canEdit = isSelf || ['hr_admin', 'super_admin'].includes(currentUserRole)
   const canOffboard = ['hr_admin', 'super_admin'].includes(currentUserRole) && profile.status !== 'offboarding' && profile.status !== 'terminated'
 
-  const getStatusBadge = (status: EmploymentStatus) => {
-    switch (status) {
-      case 'active':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-tertiary-fixed text-on-tertiary-fixed-variant border border-tertiary-container/30">
-            <CheckCircle2 className="w-3.5 h-3.5 text-tertiary" />
-            Active
-          </span>
-        )
-      case 'onboarding':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-accent-container text-on-accent-container border border-accent/30">
-            <Clock className="w-3.5 h-3.5 text-accent" />
-            Onboarding
-          </span>
-        )
-      case 'offboarding':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-amber-100 text-amber-900 border border-amber-300">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-            Offboarding In Progress
-          </span>
-        )
-      case 'terminated':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-error-container text-on-error-container border border-error/20">
-            <UserX className="w-3.5 h-3.5 text-error" />
-            Terminated
-          </span>
-        )
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-surface-container-high text-on-surface-variant">
-            {status}
-          </span>
-        )
-    }
-  }
-
   return (
-    <div className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm transition-all">
+    <Card elevated className="w-full transition-all">
       {/* Offboarding Banner Alert if active offboarding */}
       {profile.status === 'offboarding' && (
         <div className="mb-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-md flex items-center justify-between text-amber-900 text-xs font-body">
@@ -141,7 +112,10 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
               <span className="px-2 py-0.5 rounded text-[11px] font-mono text-outline bg-surface-container border border-outline-variant/60">
                 {profile.employee_code}
               </span>
-              {getStatusBadge(profile.status)}
+              <StatusBadge
+                status={STATUS_LABEL[profile.status] || profile.status}
+                variant={STATUS_VARIANT[profile.status] || 'neutral'}
+              />
             </div>
 
             <p className="text-xs md:text-sm font-body text-on-surface-variant flex items-center gap-2">
@@ -178,23 +152,25 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
         {/* Header Action Toolbar */}
         <div className="flex items-center gap-3 self-start lg:self-center flex-wrap">
           {canEdit && (
-            <button
+            <Button
               onClick={onEditClick}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-sm text-xs font-medium text-accent border border-accent/40 bg-accent-container/30 hover:bg-accent-container hover:text-on-accent-container transition-colors shadow-xs"
+              variant="outline"
+              icon={<Edit3 className="w-4 h-4" />}
+              className="text-accent border-accent/40 bg-accent-container/30 hover:bg-accent-container hover:text-on-accent-container"
             >
-              <Edit3 className="w-4 h-4" />
               Edit Profile
-            </button>
+            </Button>
           )}
 
           {canOffboard && (
-            <button
+            <Button
               onClick={onOffboardClick}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-sm text-xs font-medium text-error bg-error-container/40 border border-error/30 hover:bg-error-container hover:text-on-error-container transition-colors shadow-xs"
+              variant="ghost"
+              icon={<UserX className="w-4 h-4" />}
+              className="text-error bg-error-container/40 border border-error/30 hover:bg-error-container hover:text-on-error-container"
             >
-              <UserX className="w-4 h-4" />
               Start Offboarding
-            </button>
+            </Button>
           )}
 
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container text-on-surface-variant text-[11px] font-mono border border-outline-variant/60">
@@ -203,6 +179,6 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   )
 }

@@ -14,6 +14,21 @@ import {
   MaintenanceTicketItem,
   AuditEventItem,
 } from '@/types/dashboard'
+import { Card, Button, StatusBadge } from '@/components/common/CommonUI'
+
+const PRIORITY_VARIANT: Record<string, 'info' | 'warning' | 'error'> = {
+  low: 'info',
+  medium: 'warning',
+  high: 'error',
+  critical: 'error',
+}
+
+const TICKET_STATUS_VARIANT: Record<string, 'error' | 'warning' | 'success' | 'neutral'> = {
+  open: 'error',
+  in_progress: 'warning',
+  resolved: 'success',
+  closed: 'neutral',
+}
 
 interface RoleWidgetProps {
   role: UserRole
@@ -24,7 +39,7 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
   if (role === 'employee' && widgets.my_assigned_assets) {
     const assets = widgets.my_assigned_assets as AssignedAssetItem[]
     return (
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm">
+      <Card elevated>
         <div className="flex items-center justify-between pb-4 border-b border-outline-variant/80 mb-4">
           <div>
             <h2 className="text-title-md font-sans font-semibold text-on-surface">
@@ -74,14 +89,14 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
             ))}
           </div>
         )}
-      </div>
+      </Card>
     )
   }
 
   if (role === 'manager' && widgets.pending_approvals) {
     const approvals = widgets.pending_approvals as PendingApprovalItem[]
     return (
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm">
+      <Card elevated>
         <div className="flex items-center justify-between pb-4 border-b border-outline-variant/80 mb-4">
           <div>
             <h2 className="text-title-md font-sans font-semibold text-on-surface">
@@ -116,9 +131,7 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
                       <h3 className="text-body-md font-sans font-semibold text-on-surface">
                         {item.title}
                       </h3>
-                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-error-container text-on-error-container font-semibold">
-                        {item.priority}
-                      </span>
+                      <StatusBadge status={item.priority} variant={PRIORITY_VARIANT[item.priority] || 'neutral'} dot={false} />
                     </div>
                     <p className="text-body-sm text-on-surface-variant mt-0.5">
                       Requester: <strong>{item.requester_name}</strong> • Type: {item.request_type}
@@ -127,31 +140,25 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-center">
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 text-xs font-mono font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer"
-                  >
+                  <Button type="button" variant="primary" size="sm" className="bg-emerald-600 hover:bg-emerald-700">
                     Approve
-                  </button>
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 text-xs font-mono font-medium rounded border border-outline-variant text-on-surface-variant hover:bg-surface-container-high transition-colors cursor-pointer"
-                  >
+                  </Button>
+                  <Button type="button" variant="outline" size="sm">
                     Reject
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Card>
     )
   }
 
   if (role === 'hr_admin' && widgets.active_onboardings) {
     const onboardings = widgets.active_onboardings as OnboardingOffboardingItem[]
     return (
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm">
+      <Card elevated>
         <div className="flex items-center justify-between pb-4 border-b border-outline-variant/80 mb-4">
           <div>
             <h2 className="text-title-md font-sans font-semibold text-on-surface">
@@ -181,9 +188,7 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
                   <span className="text-[11px] font-mono text-tertiary bg-tertiary-container/30 px-2 py-0.5 rounded">
                     {hire.department || 'General'}
                   </span>
-                  <span className="text-[10px] font-mono uppercase text-accent font-semibold">
-                    {hire.status.replace('_', ' ')}
-                  </span>
+                  <StatusBadge status={hire.status} variant={hire.status === 'completed' ? 'success' : 'warning'} dot={false} />
                 </div>
                 <h3 className="text-body-md font-sans font-semibold text-on-surface">
                   {hire.employee_name}
@@ -196,14 +201,14 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
             ))}
           </div>
         )}
-      </div>
+      </Card>
     )
   }
 
   if (role === 'it_admin' && widgets.open_maintenance_tickets) {
     const tickets = widgets.open_maintenance_tickets as MaintenanceTicketItem[]
     return (
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm">
+      <Card elevated>
         <div className="flex items-center justify-between pb-4 border-b border-outline-variant/80 mb-4">
           <div>
             <h2 className="text-title-md font-sans font-semibold text-on-surface">
@@ -238,9 +243,7 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
                       <h3 className="text-body-md font-sans font-semibold text-on-surface">
                         {tkt.asset_name}
                       </h3>
-                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-error/10 text-error font-bold">
-                        {tkt.priority}
-                      </span>
+                      <StatusBadge status={tkt.priority} variant={PRIORITY_VARIANT[tkt.priority] || 'neutral'} dot={false} />
                     </div>
                     <p className="text-body-sm text-on-surface-variant mt-0.5">
                       Issue: {tkt.issue_description}
@@ -248,14 +251,14 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
                   </div>
                 </div>
 
-                <span className="px-2.5 py-1 text-[11px] font-mono font-medium rounded bg-surface-container text-on-surface-variant border border-outline-variant self-end sm:self-center uppercase">
-                  {tkt.status}
+                <span className="self-end sm:self-center">
+                  <StatusBadge status={tkt.status} variant={TICKET_STATUS_VARIANT[tkt.status] || 'neutral'} />
                 </span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Card>
     )
   }
 
@@ -264,7 +267,7 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
     const auditFeed = (widgets.audit_events_feed || []) as AuditEventItem[]
 
     return (
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm space-y-6">
+      <Card elevated className="space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-outline-variant/80">
           <div>
             <h2 className="text-title-md font-sans font-semibold text-on-surface">
@@ -326,7 +329,7 @@ export const RoleWidget: React.FC<RoleWidgetProps> = ({ role, widgets }) => {
             </div>
           </div>
         )}
-      </div>
+      </Card>
     )
   }
 

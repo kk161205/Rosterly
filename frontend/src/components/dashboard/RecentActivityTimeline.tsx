@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { ActivityTimelineItem } from '@/types/dashboard'
+import { Card } from '@/components/common/CommonUI'
 
 interface RecentActivityTimelineProps {
   activities: ActivityTimelineItem[]
@@ -53,7 +54,7 @@ export const RecentActivityTimeline: React.FC<RecentActivityTimelineProps> = ({
   }
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 flex flex-col justify-between shadow-sm">
+    <Card elevated className="flex flex-col justify-between">
       {/* Timeline Header */}
       <div className="flex items-center justify-between pb-4 border-b border-outline-variant/80">
         <div>
@@ -138,6 +139,6 @@ export const RecentActivityTimeline: React.FC<RecentActivityTimelineProps> = ({
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
-    </div>
+    </Card>
   )
 }

@@ -144,8 +144,6 @@ export const EmployeeDirectoryPage: React.FC = () => {
   return (
     <AppLayout
       currentRole={currentRole}
-      baseRole={userProfile?.role as UserRole | undefined}
-      onRoleChange={(r) => setCurrentRole(r)}
       userName={userProfile?.full_name}
       userEmail={userProfile?.email || ''}
       isLoading={isLoading && employeeData.items.length === 0}

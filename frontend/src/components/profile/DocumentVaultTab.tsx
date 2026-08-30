@@ -11,6 +11,7 @@ import {
 import { DocumentItem, DocumentCategory } from '@/types/profile'
 import { UserRole } from '@/types/dashboard'
 import { profileService } from '@/services/profileService'
+import { SelectDropdown, StatusBadge } from '@/components/common/CommonUI'
 
 interface DocumentVaultTabProps {
   documents: DocumentItem[]
@@ -101,17 +102,19 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
               <label className="block text-xs font-medium text-on-surface mb-1">
                 Document Category
               </label>
-              <select
+              <SelectDropdown
                 value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value as DocumentCategory)}
-                className="w-full px-3 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-sm text-on-surface focus:outline-none focus:border-accent"
-              >
-                <option value="contract">Contract & Offer Letter</option>
-                <option value="identity">Identity Verification (Passport/DL)</option>
-                <option value="tax">Tax & Financial Forms</option>
-                <option value="certification">Professional Certification</option>
-                <option value="other">General / Other</option>
-              </select>
+                onChange={(val) => setSelectedCategory(val as DocumentCategory)}
+                containerClassName="w-full"
+                className="w-full justify-between"
+                options={[
+                  { value: 'contract', label: 'Contract & Offer Letter' },
+                  { value: 'identity', label: 'Identity Verification (Passport/DL)' },
+                  { value: 'tax', label: 'Tax & Financial Forms' },
+                  { value: 'certification', label: 'Professional Certification' },
+                  { value: 'other', label: 'General / Other' },
+                ]}
+              />
             </div>
 
             <div className="flex items-end">
@@ -237,16 +240,11 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {doc.is_confidential ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-amber-100 text-amber-900 border border-amber-300">
-                          <Lock className="w-3 h-3 text-amber-700" />
-                          Confidential
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-surface-container text-outline">
-                          Standard
-                        </span>
-                      )}
+                      <StatusBadge
+                        status={doc.is_confidential ? 'Confidential' : 'Standard'}
+                        variant={doc.is_confidential ? 'warning' : 'neutral'}
+                        dot={false}
+                      />
                     </td>
                     <td className="px-6 py-4 text-on-surface-variant">
                       {new Date(doc.uploaded_at).toLocaleDateString()}

@@ -7,8 +7,15 @@ import {
   UserCheck,
   Sparkles,
   Layers,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
 } from 'lucide-react'
 import { OrgChartNode, Employee } from '@/types/employee'
+
+const ZOOM_MIN = 0.6
+const ZOOM_MAX = 1.4
+const ZOOM_STEP = 0.1
 
 interface EmployeeOrgChartViewProps {
   nodes: OrgChartNode[]
@@ -22,6 +29,11 @@ export const EmployeeOrgChartView: React.FC<EmployeeOrgChartViewProps> = ({
   rawEmployees,
 }) => {
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({})
+  const [zoom, setZoom] = useState(1)
+
+  const zoomIn = () => setZoom((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100))
+  const zoomOut = () => setZoom((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100))
+  const zoomReset = () => setZoom(1)
 
   const toggleCollapse = (id: string) => {
     setCollapsedNodes((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -254,37 +266,73 @@ export const EmployeeOrgChartView: React.FC<EmployeeOrgChartViewProps> = ({
           </div>
         </div>
 
-        {/* Global Expand/Collapse Actions */}
-        <div className="flex items-center bg-surface-container-low p-1 rounded-lg border border-outline-variant text-xs">
-          <button
-            type="button"
-            onClick={expandAll}
-            className="px-3 py-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer font-medium"
-          >
-            Expand All
-          </button>
-          <button
-            type="button"
-            onClick={collapseAll}
-            className="px-3 py-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer font-medium border-l border-outline-variant/60"
-          >
-            Collapse All
-          </button>
+        <div className="flex items-center gap-2">
+          {/* Zoom Controls */}
+          <div className="flex items-center bg-surface-container-low p-1 rounded-lg border border-outline-variant text-xs">
+            <button
+              type="button"
+              onClick={zoomOut}
+              disabled={zoom <= ZOOM_MIN}
+              title="Zoom out"
+              className="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="px-2 font-mono text-on-surface-variant tabular-nums">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              onClick={zoomIn}
+              disabled={zoom >= ZOOM_MAX}
+              title="Zoom in"
+              className="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={zoomReset}
+              title="Reset zoom"
+              className="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer border-l border-outline-variant/60"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Global Expand/Collapse Actions */}
+          <div className="flex items-center bg-surface-container-low p-1 rounded-lg border border-outline-variant text-xs">
+            <button
+              type="button"
+              onClick={expandAll}
+              className="px-3 py-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer font-medium"
+            >
+              Expand All
+            </button>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="px-3 py-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer font-medium border-l border-outline-variant/60"
+            >
+              Collapse All
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Hierarchical Tree Body */}
-      <div className="space-y-8 min-h-[400px]">
-        {nodes.length === 0 ? (
-          <div className="py-20 text-center text-on-surface-variant text-body-md font-body bg-surface-container-low/20 rounded-xl border border-dashed border-outline-variant">
-            No reporting hierarchy records found matching the current filters.
-          </div>
-        ) : (
-          nodes.map((rootNode) => renderManagerSection(rootNode, 0))
-        )}
+      <div className="space-y-8 min-h-[400px] overflow-auto">
+        <div
+          style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 150ms ease' }}
+        >
+          {nodes.length === 0 ? (
+            <div className="py-20 text-center text-on-surface-variant text-body-md font-body bg-surface-container-low/20 rounded-xl border border-dashed border-outline-variant">
+              No reporting hierarchy records found matching the current filters.
+            </div>
+          ) : (
+            <div className="space-y-8">{nodes.map((rootNode) => renderManagerSection(rootNode, 0))}</div>
+          )}
+        </div>
       </div>
 
-      {/* Footer Summary */}
       {/* Footer Summary */}
       <div className="pt-4 border-t border-outline-variant/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono text-on-surface-variant">
         <span>

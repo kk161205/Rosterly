@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { AlertTriangle, X, UserX, Loader2 } from 'lucide-react'
+import { AlertTriangle, X, UserX } from 'lucide-react'
 import { EmployeeProfile } from '@/types/profile'
+import { Button, SelectDropdown } from '@/components/common/CommonUI'
 
 interface StartOffboardingModalProps {
   isOpen: boolean
@@ -20,17 +21,19 @@ export const StartOffboardingModal: React.FC<StartOffboardingModalProps> = ({
     new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   if (!isOpen) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setErrorMsg(null)
     try {
       await onConfirm(reason, exitDate)
       onClose()
     } catch (err) {
-      console.error(err)
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to initiate offboarding. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -54,6 +57,11 @@ export const StartOffboardingModal: React.FC<StartOffboardingModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {errorMsg && (
+            <div className="p-3 rounded-sm bg-error-container/60 border border-error/30 text-on-error-container text-xs">
+              {errorMsg}
+            </div>
+          )}
           <p className="text-xs font-body text-on-surface-variant leading-relaxed">
             You are initiating the formal offboarding workflow for{' '}
             <strong className="text-on-surface">{profile.full_name}</strong> ({profile.employee_code}).
@@ -77,39 +85,34 @@ export const StartOffboardingModal: React.FC<StartOffboardingModalProps> = ({
             <label className="block text-xs font-medium text-on-surface mb-1">
               Primary Reason for Departure
             </label>
-            <select
+            <SelectDropdown
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-sm text-on-surface focus:outline-none focus:border-amber-500"
-            >
-              <option value="Resignation / Career Change">Resignation / Career Change</option>
-              <option value="Contract Expiration">Contract Expiration</option>
-              <option value="Role Redundancy">Role Redundancy</option>
-              <option value="Performance Termination">Performance Termination</option>
-              <option value="Mutual Separation">Mutual Separation</option>
-            </select>
+              onChange={setReason}
+              containerClassName="w-full"
+              className="w-full justify-between"
+              options={[
+                { value: 'Resignation / Career Change', label: 'Resignation / Career Change' },
+                { value: 'Contract Expiration', label: 'Contract Expiration' },
+                { value: 'Role Redundancy', label: 'Role Redundancy' },
+                { value: 'Performance Termination', label: 'Performance Termination' },
+                { value: 'Mutual Separation', label: 'Mutual Separation' },
+              ]}
+            />
           </div>
 
           <div className="pt-4 flex items-center justify-end gap-3 border-t border-outline-variant">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-container rounded-sm border border-outline-variant/60"
-            >
+            <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              isLoading={isSubmitting}
               disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-sm shadow-xs disabled:opacity-50"
+              icon={!isSubmitting ? <UserX className="w-4 h-4" /> : undefined}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <UserX className="w-4 h-4" />
-              )}
               Confirm & Start Offboarding
-            </button>
+            </Button>
           </div>
         </form>
       </div>

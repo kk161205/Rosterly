@@ -17,6 +17,7 @@ import {
   Minus,
 } from 'lucide-react'
 import { DashboardMetricCard } from '@/types/dashboard'
+import { Card } from '@/components/common/CommonUI'
 
 interface MetricRibbonProps {
   cards: DashboardMetricCard[]
@@ -77,9 +78,10 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card) => (
-        <div
+        <Card
           key={card.id}
-          className="bg-surface-container-lowest border border-outline-variant rounded-lg p-5 flex flex-col justify-between hover:bg-surface-container-low transition-all duration-200 shadow-sm group"
+          elevated
+          className="flex flex-col justify-between hover:bg-surface-container-low transition-all duration-200 group"
         >
           {/* Card Header: Icon & Badge */}
           <div className="flex items-center justify-between mb-3">
@@ -123,7 +125,7 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
               <span className="truncate">{card.change}</span>
             </div>
           )}
-        </div>
+        </Card>
       ))}
     </div>
   )
