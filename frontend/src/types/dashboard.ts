@@ -29,8 +29,9 @@ export interface PendingApprovalItem {
 
 export interface TaskChecklistItem {
   id: string
+  checklist_id: string
   task_name: string
-  status: 'pending' | 'in_progress' | 'completed'
+  status: 'pending' | 'in_progress' | 'done'
   created_at: string
   category?: string
   due_date?: string

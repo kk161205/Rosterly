@@ -8,6 +8,7 @@ import { RoleWidget } from '@/components/dashboard/RoleWidget'
 import { FullPageDashboardSkeleton } from '@/components/dashboard/DashboardSkeletons'
 import { dashboardService } from '@/services/dashboardService'
 import { authService } from '@/services/authService'
+import { onboardingService } from '@/services/onboardingService'
 import { UserRole, DashboardResponse, DashboardMetricCard } from '@/types/dashboard'
 import { UserProfile } from '@/types/auth'
 import { authStorage } from '@/utils/authStorage'
@@ -58,12 +59,17 @@ export const DashboardPage: React.FC = () => {
     fetchDashboardData()
   }, [fetchDashboardData])
 
-  const handleRoleChange = (newRole: UserRole) => {
-    setCurrentRole(newRole)
-  }
-
   const handleRefresh = () => {
     fetchDashboardData(true)
+  }
+
+  const handleCompleteTask = async (checklistId: string, taskId: string) => {
+    try {
+      await onboardingService.updateChecklistItem(checklistId, taskId, 'done')
+      fetchDashboardData(true)
+    } catch {
+      setError('Failed to update task status. Please retry.')
+    }
   }
 
   const handlePrimaryAction = () => {
@@ -81,8 +87,6 @@ export const DashboardPage: React.FC = () => {
   return (
     <AppLayout
       currentRole={effectiveRole}
-      baseRole={(userProfile?.role || dashboardData?.role) as UserRole | undefined}
-      onRoleChange={handleRoleChange}
       unreadAlertsCount={unreadAlertsCount}
       userName={userProfile?.full_name}
       userEmail={userProfile?.email || ''}
@@ -132,6 +136,7 @@ export const DashboardPage: React.FC = () => {
             <div className="lg:col-span-7">
               <ActionItemsChecklist
                 tasks={dashboardData?.widgets?.pending_action_items || []}
+                onCompleteTask={handleCompleteTask}
               />
             </div>
 

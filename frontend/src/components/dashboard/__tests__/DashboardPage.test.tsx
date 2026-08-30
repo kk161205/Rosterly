@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { dashboardService } from '@/services/dashboardService'
 import { authService } from '@/services/authService'
+import { onboardingService } from '@/services/onboardingService'
 import { DashboardResponse } from '@/types/dashboard'
 
 vi.mock('@/services/authService', () => ({
@@ -16,6 +17,12 @@ vi.mock('@/services/dashboardService', () => ({
   dashboardService: {
     getDashboardSummary: vi.fn(),
     getMetricRibbonCards: vi.fn(),
+  },
+}))
+
+vi.mock('@/services/onboardingService', () => ({
+  onboardingService: {
+    updateChecklistItem: vi.fn().mockResolvedValue({}),
   },
 }))
 
@@ -52,6 +59,7 @@ describe('DashboardPage Component (PRD §5.2)', () => {
       pending_action_items: [
         {
           id: '33333333-3333-3333-3333-333333333333',
+          checklist_id: '55555555-5555-5555-5555-555555555555',
           task_name: 'Verify Laptop Serial Number',
           status: 'pending',
           created_at: '2026-08-12T00:00:00Z',
@@ -155,7 +163,9 @@ describe('DashboardPage Component (PRD §5.2)', () => {
   })
 
   it('allows toggling checklist items from pending to completed', async () => {
-    vi.mocked(dashboardService.getDashboardSummary).mockResolvedValueOnce(mockEmployeeData)
+    // mockResolvedValue (not -Once): the completion handler refetches the summary
+    // after persisting the change, so the mock must keep answering consistently.
+    vi.mocked(dashboardService.getDashboardSummary).mockResolvedValue(mockEmployeeData)
 
     render(
       <MemoryRouter>
@@ -173,5 +183,11 @@ describe('DashboardPage Component (PRD §5.2)', () => {
     await waitFor(() => {
       expect(screen.getByText('Completed')).toBeInTheDocument()
     })
+
+    expect(onboardingService.updateChecklistItem).toHaveBeenCalledWith(
+      '55555555-5555-5555-5555-555555555555',
+      '33333333-3333-3333-3333-333333333333',
+      'done'
+    )
   })
 })

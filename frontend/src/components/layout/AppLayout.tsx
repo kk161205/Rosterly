@@ -6,8 +6,6 @@ import { SlowLoadingBanner } from '@/components/dashboard/DashboardSkeletons'
 
 interface AppLayoutProps {
   currentRole: UserRole
-  baseRole?: UserRole
-  onRoleChange: (role: UserRole) => void
   unreadAlertsCount?: number
   userName?: string
   userEmail?: string
@@ -17,8 +15,6 @@ interface AppLayoutProps {
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   currentRole,
-  baseRole,
-  onRoleChange,
   unreadAlertsCount = 0,
   userName,
   userEmail,
@@ -52,9 +48,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       {/* Main Workspace Layout with Independent Scrolling */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         <Header
-          currentRole={currentRole}
-          baseRole={baseRole}
-          onRoleChange={onRoleChange}
           unreadCount={unreadAlertsCount}
           userName={userName}
           userEmail={userEmail}

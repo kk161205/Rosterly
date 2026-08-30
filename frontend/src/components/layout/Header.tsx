@@ -1,47 +1,18 @@
 import React from 'react'
-import { Bell, Shield } from 'lucide-react'
-import { UserRole } from '@/types/dashboard'
-import { SearchInput, SelectDropdown } from '@/components/common/CommonUI'
+import { Bell } from 'lucide-react'
+import { SearchInput } from '@/components/common/CommonUI'
 
 interface HeaderProps {
-  currentRole: UserRole
-  baseRole?: UserRole
-  onRoleChange: (role: UserRole) => void
   unreadCount?: number
   userName?: string
   userEmail?: string
 }
 
-const ALLOWED_ROLE_SWITCHES: Record<UserRole, UserRole[]> = {
-  super_admin: ['super_admin', 'it_admin', 'hr_admin', 'manager', 'employee', 'auditor'],
-  hr_admin: ['hr_admin', 'manager', 'employee'],
-  it_admin: ['it_admin', 'manager', 'employee'],
-  manager: ['manager', 'employee'],
-  auditor: ['auditor', 'employee'],
-  employee: ['employee'],
-}
-
 export const Header: React.FC<HeaderProps> = ({
-  currentRole,
-  baseRole,
-  onRoleChange,
   unreadCount = 0,
   userName,
   userEmail = '',
 }) => {
-  const allRoles: { value: UserRole; label: string }[] = [
-    { value: 'employee', label: 'Employee View' },
-    { value: 'manager', label: 'Manager View' },
-    { value: 'hr_admin', label: 'HR Admin View' },
-    { value: 'it_admin', label: 'IT Admin View' },
-    { value: 'super_admin', label: 'Super Admin View' },
-    { value: 'auditor', label: 'Auditor View' },
-  ]
-
-  const effectiveBase = baseRole || currentRole
-  const allowedKeys = ALLOWED_ROLE_SWITCHES[effectiveBase] || [currentRole]
-  const availableRoles = allRoles.filter((r) => allowedKeys.includes(r.value))
-
   const initialLetter = userName ? userName.charAt(0).toUpperCase() : ''
 
   return (
@@ -53,15 +24,6 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Header Right Actions */}
       <div className="flex items-center gap-4">
-        {/* Role Context Switcher via CommonUI */}
-        <SelectDropdown
-          label="Role"
-          icon={<Shield className="w-3.5 h-3.5" />}
-          value={currentRole}
-          onChange={(val) => onRoleChange(val as UserRole)}
-          options={availableRoles}
-        />
-
         {/* Notifications Icon Badge */}
         <button
           className="relative p-2 rounded-md text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors cursor-pointer"

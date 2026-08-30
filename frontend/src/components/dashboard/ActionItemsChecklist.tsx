@@ -8,10 +8,11 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { TaskChecklistItem } from '@/types/dashboard'
+import { Card } from '@/components/common/CommonUI'
 
 interface ActionItemsChecklistProps {
   tasks: TaskChecklistItem[]
-  onCompleteTask?: (taskId: string) => void
+  onCompleteTask?: (checklistId: string, taskId: string) => void
   title?: string
   subtitle?: string
 }
@@ -29,31 +30,24 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
     setTaskList(initialTasks)
   }, [initialTasks])
 
-  const handleToggle = (taskId: string) => {
+  const handleToggle = (task: TaskChecklistItem) => {
+    if (task.status === 'done') return // completion isn't reversible from this widget
     setTaskList((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const nextStatus = t.status === 'completed' ? 'pending' : 'completed'
-          return { ...t, status: nextStatus }
-        }
-        return t
-      })
+      prev.map((t) => (t.id === task.id ? { ...t, status: 'done' } : t))
     )
-    if (onCompleteTask) {
-      onCompleteTask(taskId)
-    }
+    onCompleteTask?.(task.checklist_id, task.id)
   }
 
   const filteredTasks = taskList.filter((t) => {
-    if (filter === 'pending') return t.status !== 'completed'
-    if (filter === 'completed') return t.status === 'completed'
+    if (filter === 'pending') return t.status !== 'done'
+    if (filter === 'completed') return t.status === 'done'
     return true
   })
 
-  const pendingCount = taskList.filter((t) => t.status !== 'completed').length
+  const pendingCount = taskList.filter((t) => t.status !== 'done').length
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 flex flex-col justify-between shadow-sm">
+    <Card elevated className="flex flex-col justify-between">
       {/* Header & Filter Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-outline-variant/80">
         <div>
@@ -107,11 +101,11 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
           </div>
         ) : (
           filteredTasks.map((task) => {
-            const isDone = task.status === 'completed'
+            const isDone = task.status === 'done'
             return (
               <div
                 key={task.id}
-                onClick={() => handleToggle(task.id)}
+                onClick={() => handleToggle(task)}
                 className={`p-3.5 rounded-md border transition-all cursor-pointer flex items-start justify-between gap-3 group ${
                   isDone
                     ? 'bg-surface-container-low/50 border-outline-variant/40 opacity-70'
@@ -160,7 +154,7 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleToggle(task.id)
+                    handleToggle(task)
                   }}
                   className={`text-xs font-mono font-medium px-2.5 py-1 rounded border transition-colors ${
                     isDone
@@ -189,6 +183,6 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
-    </div>
+    </Card>
   )
 }
