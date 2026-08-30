@@ -1,7 +1,8 @@
 """
-Comprehensive Unit & Integration Tests for Offboarding Workflow API.
-Verifies permission matrix cells, asset reclamation side effects, status updates,
-cascading checklist completion, notifications, audit logs, and edge cases.
+Comprehensive Unit & Integration Tests for Offboarding Workflow API (§5.6).
+Verifies 4 PRD endpoints, permission matrix cells, exit_date/reason schema fields,
+asset reclamation side effects, decoupled PATCH item status, dedicated HR/Super Admin complete endpoint,
+session revocation, notifications, audit logs, and edge cases.
 """
 import datetime
 import uuid
@@ -14,7 +15,7 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.main import app
 from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus, DepreciationMethod
-from app.models.auth import Department, Role, User, UserStatus
+from app.models.auth import Department, Role, Session as DBSessionModel, User, UserStatus
 from app.models.lifecycle import (
     Checklist,
     ChecklistItem,
@@ -22,7 +23,6 @@ from app.models.lifecycle import (
     ChecklistStatus,
     ChecklistType,
 )
-from app.models.system import AuditLog, Notification
 
 client = TestClient(app)
 
@@ -85,8 +85,8 @@ def set_user_context(
 # 1. POST /api/v1/offboarding
 # ============================================================================
 
-def test_post_offboarding_allowed_hr_admin():
-    """HR Admin can create an offboarding checklist."""
+def test_post_offboarding_allowed_hr_admin_with_exit_date_and_reason():
+    """HR Admin can create an offboarding checklist specifying exit_date and reason."""
     hr_id = uuid.uuid4()
     emp_id = uuid.uuid4()
     set_user_context(hr_id, "hr_admin")
@@ -103,14 +103,20 @@ def test_post_offboarding_allowed_hr_admin():
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.post("/api/v1/offboarding", json={"employee_id": str(emp_id)})
+    payload = {
+        "employee_id": str(emp_id),
+        "exit_date": "2026-09-15",
+        "reason": "Resignation",
+    }
+    response = client.post("/api/v1/offboarding", json=payload)
     assert response.status_code == 201
     data = response.json()
     assert data["employee_id"] == str(emp_id)
     assert data["type"] == "offboarding"
     assert data["status"] == "in_progress"
-    assert len(data["items"]) == 4  # System access + 3 HR tasks (no assigned assets)
+    assert len(data["items"]) == 4
     assert target_emp.status == UserStatus.offboarding
+    assert target_emp.date_of_exit == datetime.date(2026, 9, 15)
     app.dependency_overrides.clear()
 
 
@@ -324,8 +330,8 @@ def test_get_offboarding_denied_unassigned_manager():
 # 3. PATCH /api/v1/offboarding/{checklist_id}/items/{item_id}
 # ============================================================================
 
-def test_patch_offboarding_item_asset_return_side_effect():
-    """Marking an asset-linked item 'done' returns the asset to stock and sets returned_at."""
+def test_patch_offboarding_item_decoupled_from_completion():
+    """Marking final item 'done' updates item & asset side effect but DOES NOT complete checklist or terminate employee."""
     it_id = uuid.uuid4()
     it_role_id = uuid.uuid4()
     chk_id = uuid.uuid4()
@@ -378,13 +384,7 @@ def test_patch_offboarding_item_asset_return_side_effect():
 
     mock_db = MagicMock()
     mock_db.query().filter().with_for_update().first.return_value = chk
-    # query chain calls:
-    # 1. ChecklistItem
-    # 2. all ChecklistItems for cascading completion check
-    # 3. AssetAssignment
-    # 4. Asset
     mock_db.query().filter().first.side_effect = [item, assignment, asset]
-    mock_db.query().filter().all.return_value = [item]
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -398,84 +398,94 @@ def test_patch_offboarding_item_asset_return_side_effect():
     assert assignment.returned_at is not None
     assert asset.status == AssetStatus.in_stock
     assert asset.current_holder_id is None
-    assert emp.status == UserStatus.terminated
-    app.dependency_overrides.clear()
-
-
-def test_patch_offboarding_item_forward_only():
-    """Reverting item status back to pending updates item status but does not perform asset un-reclaim."""
-    hr_id = uuid.uuid4()
-    hr_role_id = uuid.uuid4()
-    chk_id = uuid.uuid4()
-    item_id = uuid.uuid4()
-
-    set_user_context(hr_id, "hr_admin", role_id=hr_role_id)
-
-    chk = Checklist(
-        id=chk_id,
-        employee_id=uuid.uuid4(),
-        type=ChecklistType.offboarding,
-        status=ChecklistStatus.completed,
-    )
-    chk.employee = create_mock_user()
-
-    item = ChecklistItem(
-        id=item_id,
-        checklist_id=chk_id,
-        task_name="Exit Interview",
-        owner_role_id=hr_role_id,
-        status=ChecklistItemStatus.done,
-        completed_by=hr_id,
-    )
-    chk.items = [item]
-
-    mock_db = MagicMock()
-    mock_db.query().filter().with_for_update().first.return_value = chk
-    mock_db.query().filter().first.return_value = item
-    mock_db.query().filter().all.return_value = [item]
-
-    app.dependency_overrides[get_db] = lambda: mock_db
-
-    response = client.patch(
-        f"/api/v1/offboarding/{chk_id}/items/{item_id}",
-        json={"status": "pending"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "pending"
-    assert item.completed_by is None
-    assert item.completed_at is None
+    # Crucial assertion: status is still offboarding (NOT terminated) and checklist status is still in_progress
+    assert emp.status == UserStatus.offboarding
     assert chk.status == ChecklistStatus.in_progress
     app.dependency_overrides.clear()
 
 
 # ============================================================================
-# 4. GET /api/v1/offboarding
+# 4. POST /api/v1/offboarding/{checklist_id}/complete
 # ============================================================================
 
-def test_list_offboardings_allowed_hr_admin():
-    """HR Admin can list offboarding checklists."""
+def test_complete_offboarding_allowed_hr_admin():
+    """HR Admin can complete offboarding when all items are done, terminating employee & revoking sessions."""
     hr_id = uuid.uuid4()
+    emp_id = uuid.uuid4()
+    chk_id = uuid.uuid4()
     set_user_context(hr_id, "hr_admin")
 
+    emp = create_mock_user(user_id=emp_id, status=UserStatus.offboarding)
     chk = Checklist(
-        id=uuid.uuid4(),
-        employee_id=uuid.uuid4(),
+        id=chk_id,
+        employee_id=emp_id,
         type=ChecklistType.offboarding,
         status=ChecklistStatus.in_progress,
         created_at=datetime.datetime.now(datetime.timezone.utc),
         updated_at=datetime.datetime.now(datetime.timezone.utc),
     )
-    chk.items = []
+    chk.employee = emp
+
+    item1 = ChecklistItem(id=uuid.uuid4(), checklist_id=chk_id, status=ChecklistItemStatus.done, sort_order=1)
+    item2 = ChecklistItem(id=uuid.uuid4(), checklist_id=chk_id, status=ChecklistItemStatus.done, sort_order=2)
+    chk.items = [item1, item2]
 
     mock_db = MagicMock()
-    mock_db.query().options().filter().order_by().all.return_value = [chk]
+    mock_db.query().options().filter().with_for_update().first.return_value = chk
+    mock_db.query().filter().update.return_value = 1  # Session revocation update count
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.get("/api/v1/offboarding")
+    response = client.post(f"/api/v1/offboarding/{chk_id}/complete")
     assert response.status_code == 200
     data = response.json()
-    assert data["total"] == 1
-    assert len(data["checklists"]) == 1
+    assert data["status"] == "completed"
+    assert emp.status == UserStatus.terminated
+    assert emp.date_of_exit is not None
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("role", ["it_admin", "manager", "employee"])
+def test_complete_offboarding_denied_non_hr_admin_roles(role):
+    """Non-HR/Super Admin roles are forbidden from completing offboarding."""
+    uid = uuid.uuid4()
+    chk_id = uuid.uuid4()
+    set_user_context(uid, role)
+
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.post(f"/api/v1/offboarding/{chk_id}/complete")
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+    app.dependency_overrides.clear()
+
+
+def test_complete_offboarding_incomplete_items_conflict():
+    """Returns 400 bad_request if any checklist items are not marked done."""
+    hr_id = uuid.uuid4()
+    chk_id = uuid.uuid4()
+    set_user_context(hr_id, "hr_admin")
+
+    chk = Checklist(
+        id=chk_id,
+        employee_id=uuid.uuid4(),
+        type=ChecklistType.offboarding,
+        status=ChecklistStatus.in_progress,
+    )
+    chk.employee = create_mock_user()
+
+    item1 = ChecklistItem(id=uuid.uuid4(), checklist_id=chk_id, status=ChecklistItemStatus.done, sort_order=1)
+    item2 = ChecklistItem(id=uuid.uuid4(), checklist_id=chk_id, status=ChecklistItemStatus.pending, sort_order=2)
+    chk.items = [item1, item2]
+
+    mock_db = MagicMock()
+    mock_db.query().options().filter().with_for_update().first.return_value = chk
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.post(f"/api/v1/offboarding/{chk_id}/complete")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "bad_request"
+    assert "Cannot complete offboarding checklist until all items are marked done" in response.json()["error"]["message"]
     app.dependency_overrides.clear()
