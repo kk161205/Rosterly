@@ -17,6 +17,7 @@ from app.schemas.employee_profile import (
     EmployeeProfileResponse,
     EmployeeProfileUpdateRequest,
 )
+from app.schemas.offboarding import OffboardingCreateRequest
 from app.schemas.onboarding import (
     ChecklistListResponse,
     ChecklistItemResponse,
@@ -43,6 +44,7 @@ __all__ = [
     "AssetAssignmentItem",
     "EmployeeAssetsResponse",
     "OnboardingCreateRequest",
+    "OffboardingCreateRequest",
     "ChecklistItemResponse",
     "ChecklistResponse",
     "ChecklistItemUpdateRequest",
