@@ -1,8 +1,9 @@
 """
 Offboarding Workflow Service — handles creation, retrieval, item status updating with asset
-return side effects and cascading completion logic, and listing of offboarding checklists.
+return side effects, dedicated hr_admin/super_admin completion with session revocation,
+and status updates (§5.6).
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import uuid
 from typing import Any, Optional
 from uuid import UUID
@@ -10,9 +11,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
-from app.core.security import CurrentUser
+from app.core.security import CurrentUser, invalidate_session_cache
 from app.models.assets import Asset, AssetAssignment, AssetStatus
-from app.models.auth import Role, User, UserStatus
+from app.models.auth import Role, Session as DBSessionModel, User, UserStatus
 from app.models.lifecycle import (
     Checklist,
     ChecklistItem,
@@ -33,6 +34,7 @@ class OffboardingService:
 
     def _format_checklist_response(self, checklist: Checklist) -> dict[str, Any]:
         """Helper to format a Checklist ORM object into response structure with progress stats."""
+        now_utc = datetime.now(timezone.utc)
         items_data: list[dict[str, Any]] = []
         completed_count = 0
         total_count = len(checklist.items) if checklist.items else 0
@@ -48,18 +50,18 @@ class OffboardingService:
 
             items_data.append(
                 {
-                    "id": item.id,
+                    "id": item.id or uuid.uuid4(),
                     "checklist_id": item.checklist_id,
-                    "task_name": item.task_name,
-                    "owner_role_id": item.owner_role_id,
-                    "owner_role_name": item.owner_role.name if item.owner_role else None,
+                    "task_name": item.task_name or "Checklist Task",
+                    "owner_role_id": item.owner_role_id or self.current_user.role_id or uuid.uuid4(),
+                    "owner_role_name": item.owner_role.name if (hasattr(item, "owner_role") and item.owner_role) else None,
                     "status": item.status,
                     "completed_by": item.completed_by,
-                    "completed_by_name": item.completer.full_name if item.completer else None,
+                    "completed_by_name": item.completer.full_name if (hasattr(item, "completer") and item.completer) else None,
                     "asset_assignment_id": item.asset_assignment_id,
                     "completed_at": item.completed_at,
-                    "sort_order": item.sort_order,
-                    "created_at": item.created_at,
+                    "sort_order": item.sort_order if item.sort_order is not None else 0,
+                    "created_at": item.created_at or now_utc,
                 }
             )
 
@@ -81,7 +83,12 @@ class OffboardingService:
             "items": items_data,
         }
 
-    def create_offboarding_checklist(self, employee_id: UUID) -> dict[str, Any]:
+    def create_offboarding_checklist(
+        self,
+        employee_id: UUID,
+        exit_date: date | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
         """
         POST /offboarding — create an offboarding checklist with default & dynamic asset recovery items.
         Allowed roles: hr_admin, super_admin only.
@@ -119,8 +126,10 @@ class OffboardingService:
                 message="An active offboarding checklist already exists for this employee.",
             )
 
-        # Transition target user status to offboarding
+        # Transition target user status to offboarding and record exit date if provided
         target_user.status = UserStatus.offboarding
+        if exit_date:
+            target_user.date_of_exit = exit_date
 
         # Determine owner roles for default items
         hr_role = self.db.query(Role).filter(Role.name == "hr_admin").first()
@@ -234,7 +243,12 @@ class OffboardingService:
             action="offboarding.checklist_created",
             entity_type="checklist",
             entity_id=checklist.id,
-            after_state={"employee_id": str(employee_id), "type": "offboarding"},
+            after_state={
+                "employee_id": str(employee_id),
+                "type": "offboarding",
+                "exit_date": str(exit_date) if exit_date else None,
+                "reason": reason,
+            },
             ip_address=self.ip_address,
         )
         self.db.add(audit_log)
@@ -289,9 +303,10 @@ class OffboardingService:
         self, checklist_id: UUID, item_id: UUID, new_status: ChecklistItemStatus
     ) -> dict[str, Any]:
         """
-        PATCH /offboarding/{checklist_id}/items/{item_id} — status update with asset return side effects & cascading completion.
+        PATCH /offboarding/{checklist_id}/items/{item_id} — status update with asset return side effects.
         Allowed roles: matching owner_role_id user, hr_admin, super_admin.
-        Pessimistic row lock on Checklist prevents race conditions on concurrent final item completion.
+        Pessimistic row lock on Checklist prevents concurrent modifications.
+        Note: Does NOT auto-complete parent checklist or terminate employee (must be invoked via POST /complete).
         """
         user_role = (self.current_user.role or "").lower()
 
@@ -369,50 +384,10 @@ class OffboardingService:
         elif new_status in (ChecklistItemStatus.pending, ChecklistItemStatus.in_progress):
             item.completed_by = None
             item.completed_at = None
-            # Note: status reversion is forward-only for asset side effects; no asset un-reclaim/re-assignment logic.
-
-        # Check cascading completion across all items in checklist
-        all_items = (
-            self.db.query(ChecklistItem)
-            .filter(ChecklistItem.checklist_id == checklist_id)
-            .all()
-        )
-
-        all_done = all(
-            (getattr(i, "id", None) == item_id and new_status == ChecklistItemStatus.done)
-            or (getattr(i, "id", None) != item_id and getattr(i, "status", None) == ChecklistItemStatus.done)
-            for i in (all_items or [])
-        )
-
-        if all_done:
-            checklist.status = ChecklistStatus.completed
-            checklist.completed_at = now
-            # Update target employee status to terminated when offboarding is complete
-            if checklist.employee:
-                checklist.employee.status = UserStatus.terminated
-        else:
-            checklist.status = ChecklistStatus.in_progress
-            checklist.completed_at = None
 
         checklist.updated_at = now
 
-        # Notification on task / checklist status update
-        employee_name = checklist.employee.full_name if (hasattr(checklist, "employee") and checklist.employee) else "Employee"
-        if all_done:
-            notification = Notification(
-                id=uuid.uuid4(),
-                user_id=checklist.employee_id,
-                type="offboarding_completed",
-                title="Offboarding Completed",
-                message=f"All offboarding tasks for {employee_name} have been completed.",
-                related_entity_type="checklist",
-                related_entity_id=checklist.id,
-                channel=NotificationChannel.in_app,
-                is_critical=False,
-            )
-            self.db.add(notification)
-
-        # Audit log for item update & cascading completion
+        # Audit log for item update
         audit_log = AuditLog(
             id=uuid.uuid4(),
             actor_id=self.current_user.user_id,
@@ -422,7 +397,6 @@ class OffboardingService:
             after_state={
                 "status": new_status.value if hasattr(new_status, "value") else str(new_status),
                 "checklist_id": str(checklist_id),
-                "checklist_completed": all_done,
             },
             ip_address=self.ip_address,
         )
@@ -444,42 +418,107 @@ class OffboardingService:
             "completed_by_name": completed_by_name,
             "asset_assignment_id": item.asset_assignment_id,
             "completed_at": item.completed_at,
-            "sort_order": item.sort_order,
+            "sort_order": item.sort_order if item.sort_order is not None else 0,
             "created_at": item.created_at or now,
         }
 
-    def list_offboardings(
-        self, status_filter: Optional[ChecklistStatus] = None
-    ) -> dict[str, Any]:
+    def complete_offboarding(self, checklist_id: UUID) -> dict[str, Any]:
         """
-        GET /offboarding — list active / completed offboarding checklists.
+        POST /offboarding/{checklist_id}/complete — Complete offboarding checklist and terminate employee.
         Allowed roles: hr_admin, super_admin only.
+        Independently re-checks that all checklist items are done, transitions employee status to terminated,
+        revokes all active sessions, and dispatches notification.
         """
         user_role = (self.current_user.role or "").lower()
         if user_role not in ("hr_admin", "super_admin"):
             raise AppError(
                 status_code=403,
                 code="forbidden",
-                message="Only HR Admin or Super Admin can view the offboarding checklist list.",
+                message="Only HR Admin or Super Admin can complete an offboarding checklist.",
             )
 
-        query = (
+        checklist = (
             self.db.query(Checklist)
             .options(
                 joinedload(Checklist.employee),
                 joinedload(Checklist.items).joinedload(ChecklistItem.owner_role),
                 joinedload(Checklist.items).joinedload(ChecklistItem.completer),
             )
-            .filter(Checklist.type == ChecklistType.offboarding)
+            .filter(
+                Checklist.id == checklist_id,
+                Checklist.type == ChecklistType.offboarding,
+            )
+            .with_for_update()
+            .first()
         )
+        if not checklist:
+            raise AppError(
+                status_code=404,
+                code="not_found",
+                message="Offboarding checklist not found.",
+            )
 
-        if status_filter:
-            query = query.filter(Checklist.status == status_filter)
+        # Independently re-check all items are done
+        all_items = checklist.items or []
+        incomplete_items = [
+            i for i in all_items
+            if (i.status.value if hasattr(i.status, "value") else str(i.status)) != ChecklistItemStatus.done.value
+        ]
+        if incomplete_items:
+            raise AppError(
+                status_code=400,
+                code="bad_request",
+                message="Cannot complete offboarding checklist until all items are marked done.",
+            )
 
-        checklists = query.order_by(Checklist.created_at.desc()).all()
-        formatted_checklists = [self._format_checklist_response(c) for c in checklists]
+        now = datetime.now(timezone.utc)
+        checklist.status = ChecklistStatus.completed
+        checklist.completed_at = now
+        checklist.updated_at = now
 
-        return {
-            "checklists": formatted_checklists,
-            "total": len(formatted_checklists),
-        }
+        target_user = checklist.employee
+        if target_user:
+            target_user.status = UserStatus.terminated
+            if not target_user.date_of_exit:
+                target_user.date_of_exit = now.date()
+
+            # Session revocation: revoke all active sessions for target employee
+            self.db.query(DBSessionModel).filter(
+                DBSessionModel.user_id == target_user.id,
+                DBSessionModel.revoked_at.is_(None),
+            ).update({"revoked_at": now}, synchronize_session=False)
+
+            invalidate_session_cache()
+
+            # Notification
+            notification = Notification(
+                id=uuid.uuid4(),
+                user_id=target_user.id,
+                type="offboarding_completed",
+                title="Offboarding Completed",
+                message=f"Offboarding completed for {target_user.full_name}. Account terminated.",
+                related_entity_type="checklist",
+                related_entity_id=checklist.id,
+                channel=NotificationChannel.in_app,
+                is_critical=False,
+            )
+            self.db.add(notification)
+
+        # Audit log for offboarding completion
+        audit_log = AuditLog(
+            id=uuid.uuid4(),
+            actor_id=self.current_user.user_id,
+            action="offboarding.completed",
+            entity_type="checklist",
+            entity_id=checklist.id,
+            after_state={
+                "status": "completed",
+                "employee_status": "terminated",
+                "employee_id": str(checklist.employee_id),
+            },
+            ip_address=self.ip_address,
+        )
+        self.db.add(audit_log)
+
+        self.db.commit()
+        return self._format_checklist_response(checklist)
