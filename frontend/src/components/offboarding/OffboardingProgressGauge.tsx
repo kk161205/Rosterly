@@ -1,6 +1,6 @@
 import React from 'react'
 import { OffboardingChecklist } from '@/types/offboarding'
-import { Laptop, Lock, ShieldCheck, UserMinus } from 'lucide-react'
+import { Laptop, Lock, ShieldCheck } from 'lucide-react'
 
 interface OffboardingProgressGaugeProps {
   checklist: OffboardingChecklist

@@ -46,15 +46,15 @@ export const offboardingService = {
           try {
             const lifeResponse = await apiClient.get<OffboardingChecklist | null>(`/employees/${emp.id}/lifecycle`)
             if (lifeResponse.data && lifeResponse.data.type === 'offboarding') {
-              return {
+              const checklist: OffboardingChecklist = {
                 ...lifeResponse.data,
                 employee_name: emp.full_name,
                 employee_email: emp.email,
                 employee_designation: emp.designation,
-                department_name: emp.department_name,
-                exit_date: emp.date_of_exit,
-                avatar_url: emp.avatar_url,
+                department_name: emp.department_name || undefined,
+                avatar_url: emp.avatar_url || undefined,
               }
+              return checklist
             }
           } catch {
             return null
@@ -62,11 +62,12 @@ export const offboardingService = {
           return null
         })
 
-        const resolved = (await Promise.all(checklistPromises)).filter(
+        const resolvedList = await Promise.all(checklistPromises)
+        const validChecklists: OffboardingChecklist[] = resolvedList.filter(
           (c): c is OffboardingChecklist => c !== null
         )
 
-        let filtered = resolved
+        let filtered = validChecklists
         if (statusFilter && statusFilter !== 'all') {
           filtered = filtered.filter((c) => c.status === statusFilter)
         }

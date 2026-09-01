@@ -4,6 +4,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { EmployeeDirectoryPage } from '@/pages/EmployeeDirectoryPage'
 import { EmployeeProfilePage } from '@/pages/EmployeeProfilePage'
 import { OnboardingWorkflowPage } from '@/pages/OnboardingWorkflowPage'
+import { OffboardingWorkflowPage } from '@/pages/OffboardingWorkflowPage'
 import { authStorage } from '@/utils/authStorage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -33,6 +34,14 @@ function App() {
           element={
             <ProtectedRoute>
               <OnboardingWorkflowPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/offboarding"
+          element={
+            <ProtectedRoute>
+              <OffboardingWorkflowPage />
             </ProtectedRoute>
           }
         />
