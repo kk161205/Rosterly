@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
-from app.core.security import CurrentUser
+from app.core.security import CurrentUser, check_permission
 from app.models.auth import Role, User
 from app.models.lifecycle import (
     Checklist,
@@ -90,13 +90,13 @@ class OnboardingService:
         POST /onboarding — create an onboarding checklist with fixed default items (§5.5).
         Allowed roles: hr_admin, super_admin only.
         """
-        user_role = (self.current_user.role or "").lower()
-        if user_role not in ("hr_admin", "super_admin"):
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="Only HR Admin or Super Admin can create onboarding checklists.",
-            )
+        # RBAC (project doc §3.2 step 2): POST /onboarding (§5.5) is restricted to
+        # hr_admin/super_admin. Checklists are a lifecycle sub-resource of
+        # `employee` (schema §1.14 — checklists.employee_id) — mapped to
+        # (resource="employee", action="create") per the brief's guidance to fold
+        # checklist actions into the employee resource rather than inventing a
+        # `checklist` resource.
+        check_permission(self.current_user, "employee", "create", self.db)
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
@@ -226,6 +226,12 @@ class OnboardingService:
                 message="Checklist not found.",
             )
 
+        # NOT ported to check_permission(): this is an OR of a role-only clause
+        # (hr_admin/it_admin/super_admin) and a dynamic ABAC clause (the specific
+        # employee's assigned manager, §3.2 step 3) — the overall gate depends on
+        # more than the caller's role, so per step 2 of the brief it stays a
+        # dynamic check rather than being split. Its role-only allowed set also
+        # differs from every other "employee read" grant in this file (see report).
         user_role = (self.current_user.role or "").lower()
         is_hr_or_admin = user_role in ("hr_admin", "it_admin", "super_admin")
         is_assigned_manager = (
@@ -252,6 +258,11 @@ class OnboardingService:
         Allowed roles: matching owner_role_id user, hr_admin, super_admin.
         Pessimistic row lock on Checklist prevents race conditions on concurrent final item completion.
         """
+        # NOT ported to check_permission(): "matching owner_role_id OR
+        # hr_admin/super_admin" is the brief's own canonical example of a dynamic
+        # ABAC check (§3.2 step 3) — is_matching_role depends on this specific
+        # checklist item's owner_role_id, not just the caller's role — so the
+        # whole gate, including its role-only half, is left exactly as-is.
         user_role = (self.current_user.role or "").lower()
 
         # Pessimistic row locking on parent Checklist row
@@ -388,6 +399,11 @@ class OnboardingService:
         Allowed roles: hr_admin, super_admin only.
         """
         user_role = (self.current_user.role or "").lower()
+        # NOT ported to check_permission(): this would need (resource="employee",
+        # action="read"), but its allowed set (hr_admin, super_admin only) differs
+        # from both get_employee_profile's read grant (also includes employee,
+        # manager, auditor) and get_onboarding_checklist's role-only set (also
+        # includes it_admin). Left as the original hardcoded check; see report.
         if user_role not in ("hr_admin", "super_admin"):
             raise AppError(
                 status_code=403,

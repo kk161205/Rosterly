@@ -12,7 +12,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, aliased
 
 from app.core.errors import AppError
-from app.core.security import CurrentUser, invalidate_session_cache
+from app.core.security import CurrentUser, check_permission
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.system import AuditLog
 from app.schemas.employee_directory import EmployeeDirectoryResponse, EmployeeListItem
@@ -34,7 +34,7 @@ class EmployeeDirectoryService:
         role: str | None = None,
         view: str = "list",
         page: int = 1,
-        page_size: int = 20,
+        page_size: int = 25,
     ) -> dict[str, Any]:
         """
         Query sanitized employee records matching filters with ABAC row-level scoping.
@@ -104,9 +104,12 @@ class EmployeeDirectoryService:
         # Total matching records
         total = query.count()
 
-        # Tree view bypasses pagination to construct complete org hierarchy
+        # Tree view still respects the documented page_size cap (§7 rule 3) —
+        # it can't paginate a hierarchy meaningfully, but it must not return
+        # an unbounded array either, so very large orgs only render their
+        # first page_size employees in the chart.
         if view == "tree":
-            rows = query.order_by(User.full_name.asc()).all()
+            rows = query.order_by(User.full_name.asc()).limit(page_size).all()
             items = [
                 {
                     "id": r.id,
@@ -128,7 +131,7 @@ class EmployeeDirectoryService:
                 "items": items,
                 "total": total,
                 "page": 1,
-                "page_size": total or 1,
+                "page_size": page_size,
                 "pages": 1,
             }
 
@@ -226,73 +229,17 @@ class EmployeeDirectoryService:
             "roles": role_items,
         }
 
-    def offboard_employee(
-        self, employee_id: UUID, exit_date: date | None = None, reason: str | None = None
-    ) -> dict[str, Any]:
-        """
-        Initiate offboarding transition for an employee (§5.3 — exit_date/reason query params).
-        """
-        user_role = (self.current_user.role or "").lower()
-        if user_role not in ("super_admin", "hr_admin"):
-            raise AppError(status_code=403, code="forbidden", message="Only Super Admin or HR Admin can initiate offboarding.")
-
-        target_user = self.db.query(User).filter(User.id == employee_id).first()
-        if not target_user:
-            raise AppError(status_code=404, code="not_found", message="Employee not found.")
-
-        before_state = {"status": target_user.status.value, "date_of_exit": str(target_user.date_of_exit) if target_user.date_of_exit else None}
-
-        target_user.status = UserStatus.offboarding
-        target_user.date_of_exit = exit_date or target_user.date_of_exit
-
-        self.db.add(
-            AuditLog(
-                id=uuid_lib.uuid4(),
-                actor_id=self.current_user.user_id,
-                action="employee.offboarded",
-                entity_type="user",
-                entity_id=target_user.id,
-                before_state=before_state,
-                after_state={
-                    "status": "offboarding",
-                    "date_of_exit": str(target_user.date_of_exit) if target_user.date_of_exit else None,
-                    "reason": reason,
-                },
-                ip_address=self.ip_address,
-            )
-        )
-
-        self.db.commit()
-        self.db.refresh(target_user)
-        invalidate_session_cache()
-
-        dept_name = target_user.department.name if target_user.department else None
-        mgr_name = target_user.manager.full_name if target_user.manager else None
-
-        return {
-            "id": target_user.id,
-            "employee_code": target_user.employee_code,
-            "full_name": target_user.full_name,
-            "email": target_user.email,
-            "designation": target_user.designation,
-            "department_id": target_user.department_id,
-            "department_name": dept_name,
-            "manager_id": target_user.manager_id,
-            "manager_name": mgr_name,
-            "status": "offboarding",
-            "phone": target_user.phone,
-            "date_of_joining": target_user.date_of_joining,
-        }
-
     def delete_employee(self, employee_id: UUID) -> dict[str, Any]:
         """
         Soft-delete an employee record (Super Admin only) — sets status=terminated
         and preserves the row for audit history (§1 schema note: user-facing tables
         are soft-deletable, never hard-deleted).
         """
-        user_role = (self.current_user.role or "").lower()
-        if user_role != "super_admin":
-            raise AppError(status_code=403, code="forbidden", message="Only Super Admin can delete employee records.")
+        # RBAC (project doc §3.2 step 2): DELETE /employees/{id} (§5.3) is restricted
+        # to super_admin only. Mapped to (resource="employee", action="delete") —
+        # ported from the hardcoded role-string check to a real role_permissions
+        # lookup. No ABAC component here (not scoped by self/department).
+        check_permission(self.current_user, "employee", "delete", self.db)
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
@@ -323,6 +270,5 @@ class EmployeeDirectoryService:
         )
 
         self.db.commit()
-        invalidate_session_cache()
 
         return {"success": True, "message": f"Employee {target_user.full_name} was successfully deleted."}

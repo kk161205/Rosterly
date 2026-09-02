@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
 from app.core.errors import AppError
-from app.core.security import CurrentUser, invalidate_session_cache
+from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.lifecycle import (
@@ -50,12 +50,13 @@ class EmployeeProfileService:
         Denied roles: it_admin (403). Out-of-dept manager gets 403.
         """
         user_role = (self.current_user.role or "").lower()
-        if user_role == "it_admin":
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="IT Admin does not have permission to view employee profile details.",
-            )
+        # RBAC (project doc §3.2 step 2): GET /employees/{id} (§5.4) is granted to
+        # every role except it_admin at the coarse role level — mapped to
+        # (resource="employee", action="read"). "employee" role itself is included
+        # in this grant so it can pass this gate and reach the is_self check just
+        # below; the self/department scoping that follows is ABAC (§3.2 step 3)
+        # and is left unchanged.
+        check_permission(self.current_user, "employee", "read", self.db)
 
         is_self = str(self.current_user.user_id) == str(employee_id)
         if user_role == "employee" and not is_self:
@@ -138,20 +139,13 @@ class EmployeeProfileService:
         # Role gating only applies to editing SOMEONE ELSE's profile — self-editing
         # your own limited fields (phone) is always allowed regardless of role,
         # matching the doc's "Self (limited fields)" access row independently of
-        # the "HR Admin/Super Admin (full)" row.
+        # the "HR Admin/Super Admin (full)" row. This self-edit bypass is ABAC
+        # (§3.2 step 3); the not-self branch below is a pure role check (§3.2 step
+        # 2) mapped to (resource="employee", action="update"), granted only to
+        # hr_admin/super_admin — ported from the hardcoded role-string checks that
+        # used to deny manager/it_admin/auditor/employee individually here.
         if not is_self:
-            if user_role in ("manager", "it_admin", "auditor"):
-                raise AppError(
-                    status_code=403,
-                    code="forbidden",
-                    message=f"Role '{user_role}' is not permitted to update employee profiles.",
-                )
-            if user_role == "employee":
-                raise AppError(
-                    status_code=403,
-                    code="forbidden",
-                    message="Employees may only update their own profile.",
-                )
+            check_permission(self.current_user, "employee", "update", self.db)
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
@@ -299,12 +293,11 @@ class EmployeeProfileService:
         self.db.commit()
         self.db.refresh(target_user)
 
-        # Doc §2.4: role/status changes force full re-authentication, not just a
-        # cache clear — a demoted or deactivated user's existing session is killed.
+        # Doc §2.4: role/status changes force full re-authentication — a demoted
+        # or deactivated user's existing session is killed, not just left to the
+        # live per-request revocation check to catch on its next call.
         if role_changed or status_changed:
             logout_all_user_sessions(self.db, target_user.id)
-        else:
-            invalidate_session_cache()
 
         return self.get_employee_profile(employee_id=employee_id)
 
@@ -316,6 +309,12 @@ class EmployeeProfileService:
         Auditor receives non-confidential documents only (is_confidential == False).
         """
         user_role = (self.current_user.role or "").lower()
+        # NOT ported to check_permission(): this role-only gate would also need
+        # (resource="employee", action="read"), but its allowed set (excludes
+        # manager AND it_admin) differs from get_employee_profile's read grant
+        # (excludes it_admin only) — the doc's 5-action vocabulary has no way to
+        # distinguish "read the profile" from "read the document vault" under the
+        # same resource. Left as the original hardcoded check; see final report.
         if user_role in ("manager", "it_admin"):
             raise AppError(
                 status_code=403,
@@ -380,6 +379,11 @@ class EmployeeProfileService:
         Denied roles: manager (403), it_admin (403), auditor (403).
         """
         user_role = (self.current_user.role or "").lower()
+        # NOT ported to check_permission(): this would need (resource="employee",
+        # action="create"), but its allowed set (employee-self, hr_admin,
+        # super_admin) differs from the checklist-create grant used for
+        # POST /onboarding and POST /offboarding (hr_admin, super_admin only, no
+        # self-upload concept). Left as the original hardcoded check; see report.
         if user_role in ("manager", "it_admin", "auditor"):
             raise AppError(
                 status_code=403,
@@ -484,6 +488,10 @@ class EmployeeProfileService:
         Self cannot delete own documents.
         """
         user_role = (self.current_user.role or "").lower()
+        # NOT ported to check_permission(): this would need (resource="employee",
+        # action="delete"), but its allowed set (hr_admin, super_admin) differs
+        # from the account-deletion grant used by DELETE /employees/{id}
+        # (super_admin only). Left as the original hardcoded check; see report.
         if user_role not in ("hr_admin", "super_admin"):
             raise AppError(
                 status_code=403,

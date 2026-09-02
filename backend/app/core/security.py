@@ -23,7 +23,13 @@ from sqlalchemy.orm import Session as DBSession, joinedload
 from app.core.config import settings
 from app.core.errors import ForbiddenError, UnauthenticatedError
 from app.db.session import get_db
-from app.models.auth import Session as SessionModel, User as UserModel, UserStatus
+from app.models.auth import (
+    Permission,
+    RolePermission,
+    Session as SessionModel,
+    User as UserModel,
+    UserStatus,
+)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -110,11 +116,6 @@ def verify_password_reset_token(token: str) -> Optional[Tuple[str, str]]:
 import time
 from threading import Lock
 
-# In-memory short-TTL session cache to eliminate redundant remote DB round-trips
-_SESSION_CACHE: dict[str, tuple["CurrentUser", float]] = {}
-_SESSION_CACHE_LOCK = Lock()
-_SESSION_CACHE_TTL = 15.0  # 15 seconds TTL
-
 # MFA challenge binding — maps a one-time mfa_session_id to the specific user
 # who triggered it, so verify_mfa() can never complete a different user's login.
 # In-memory only (Phase 1); a multi-worker deployment would need this in Redis/DB.
@@ -196,29 +197,6 @@ def is_forgot_password_rate_limited(email: str) -> bool:
         return limited
 
 
-def invalidate_session_cache(
-    jti: Optional[str] = None,
-    user_id: Optional[uuid.UUID | str] = None,
-    session_id: Optional[uuid.UUID | str] = None,
-) -> None:
-    """Invalidates session cache on logout, token refresh, or revocation."""
-    with _SESSION_CACHE_LOCK:
-        if jti and jti in _SESSION_CACHE:
-            del _SESSION_CACHE[jti]
-        elif session_id:
-            sid_str = str(session_id)
-            keys = [k for k, (u, _) in _SESSION_CACHE.items() if str(u.session_id) == sid_str]
-            for k in keys:
-                del _SESSION_CACHE[k]
-        elif user_id:
-            uid_str = str(user_id)
-            keys = [k for k, (u, _) in _SESSION_CACHE.items() if str(u.user_id) == uid_str]
-            for k in keys:
-                del _SESSION_CACHE[k]
-        else:
-            _SESSION_CACHE.clear()
-
-
 class CurrentUser:
     """Populated from a validated, non-revoked session. Role is always the
     live DB value, never trusted from the JWT claim alone."""
@@ -261,17 +239,9 @@ def get_current_user(
     if not jti or not sub:
         raise UnauthenticatedError("Malformed token")
 
-    # Fast in-memory check to prevent redundant remote SSL queries for parallel requests
-    now_ts = time.time()
-    with _SESSION_CACHE_LOCK:
-        if jti in _SESSION_CACHE:
-            cached_user, cached_at = _SESSION_CACHE[jti]
-            if now_ts - cached_at < _SESSION_CACHE_TTL:
-                return cached_user
-            else:
-                del _SESSION_CACHE[jti]
-
-    # 1. Zero-trust check: Lookup session, user and live role in ONE single query
+    # 1. Zero-trust check: Lookup session, user and live role in ONE single query.
+    # No caching here — §2.2 requires revocation to take effect on the very next
+    # request, not after some TTL, so every request re-checks revoked_at live.
     session = (
         db.query(SessionModel)
         .options(joinedload(SessionModel.user).joinedload(UserModel.role))
@@ -305,7 +275,7 @@ def get_current_user(
         session.last_seen_at = now
         db.commit()
 
-    current_u = CurrentUser(
+    return CurrentUser(
         user_id=user.id,
         role=live_role,
         session_id=session.id,
@@ -315,18 +285,43 @@ def get_current_user(
         role_id=user.role_id,
     )
 
-    with _SESSION_CACHE_LOCK:
-        _SESSION_CACHE[jti] = (current_u, now_ts)
 
-    return current_u
+def check_permission(
+    current_user: CurrentUser,
+    resource: str,
+    action: str,
+    db: DBSession,
+) -> None:
+    """Role/permission check — project doc §3.2 step 2.
 
+    Queries `role_permissions` joined to `permissions` for the caller's live
+    `role_id` (never a cached/JWT-claimed role — `current_user.role_id` is
+    populated fresh per-request by get_current_user() above, per the
+    zero-trust model in §2). Raises ForbiddenError if no matching
+    (resource, action) grant exists for the caller's role.
 
-def require_role(*allowed_roles: str):
-    """Route-level role check — project doc §3.2 step 2."""
+    This replaces the old hardcoded `current_user.role in (...)` string
+    comparisons scattered across app/services/*.py (rules.md §1.2 — the
+    former require_role() dependency below was defined but never called
+    anywhere, i.e. dead code, and has been removed rather than left
+    alongside this real implementation).
 
-    def checker(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if current_user.role not in allowed_roles:
-            raise ForbiddenError("You do not have permission to access this resource")
-        return current_user
-
-    return checker
+    Only covers the RBAC/permission step. Attribute (ABAC) scoping — e.g.
+    "manager scoped to their own department", "user whose role matches this
+    specific checklist item's owner_role_id" — is a separate, later check
+    (§3.2 step 3) that callers apply themselves after this passes; it is
+    not expressible as a static (resource, action) grant and is therefore
+    out of scope for this helper by design.
+    """
+    grant = (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == current_user.role_id,
+            Permission.resource == resource,
+            Permission.action == action,
+        )
+        .first()
+    )
+    if grant is None:
+        raise ForbiddenError("You do not have permission to do this")

@@ -173,6 +173,9 @@ def test_get_employee_profile_it_admin_denied_403():
     set_user_context(it_id, "it_admin")
 
     mock_db = MagicMock()
+    # No (employee, read) role_permissions grant for it_admin — RBAC gate in
+    # EmployeeProfileService.get_employee_profile (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -281,6 +284,10 @@ def test_patch_employee_self_other_employee_denied_403():
     set_user_context(emp_self, "employee")
 
     mock_db = MagicMock()
+    # No (employee, update) role_permissions grant for employee (non-self) — RBAC
+    # gate in EmployeeProfileService.patch_employee_profile (check_permission)
+    # must deny before any write is attempted.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -326,6 +333,9 @@ def test_patch_employee_manager_denied_403():
     set_user_context(mgr_id, "manager")
 
     mock_db = MagicMock()
+    # No (employee, update) role_permissions grant for manager — RBAC gate in
+    # EmployeeProfileService.patch_employee_profile (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -341,6 +351,9 @@ def test_patch_employee_it_admin_denied_403():
     set_user_context(it_id, "it_admin")
 
     mock_db = MagicMock()
+    # No (employee, update) role_permissions grant for it_admin — RBAC gate in
+    # EmployeeProfileService.patch_employee_profile (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -356,6 +369,9 @@ def test_patch_employee_auditor_denied_403():
     set_user_context(auditor_id, "auditor")
 
     mock_db = MagicMock()
+    # No (employee, update) role_permissions grant for auditor — RBAC gate in
+    # EmployeeProfileService.patch_employee_profile (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -1187,26 +1203,6 @@ def test_delete_employee_soft_deletes_not_hard_deletes():
     assert audit_calls[0].ip_address == "203.0.113.5"
 
 
-def test_offboard_employee_stores_exit_date_and_reason():
-    hr = make_current_user("hr_admin")
-    target = make_target_user(status=UserStatus.active)
-
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = target
-
-    service = EmployeeDirectoryService(db=mock_db, current_user=hr, ip_address="10.0.0.1")
-    exit_date = datetime.date(2026, 9, 1)
-    result = service.offboard_employee(employee_id=target.id, exit_date=exit_date, reason="Resigned")
-
-    assert result["status"] == "offboarding"
-    assert target.date_of_exit == exit_date
-
-    audit_calls = [c.args[0] for c in mock_db.add.call_args_list if isinstance(c.args[0], AuditLog)]
-    assert len(audit_calls) == 1
-    assert audit_calls[0].after_state["reason"] == "Resigned"
-    assert audit_calls[0].after_state["date_of_exit"] == str(exit_date)
-
-
 def test_manager_can_edit_own_phone():
     manager_id = uuid.uuid4()
     manager = make_current_user("manager", user_id=manager_id)
@@ -1232,7 +1228,11 @@ def test_manager_still_forbidden_from_editing_others():
     manager = make_current_user("manager")
     other_id = uuid.uuid4()
 
-    service = EmployeeProfileService(db=MagicMock(), current_user=manager)
+    mock_db = MagicMock()
+    # No (employee, update) role_permissions grant for manager — RBAC gate in
+    # EmployeeProfileService.patch_employee_profile (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
+    service = EmployeeProfileService(db=mock_db, current_user=manager)
     with pytest.raises(Exception) as exc_info:
         service.patch_employee_profile(
             employee_id=other_id,

@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -39,7 +39,18 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=10)
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_password_policy(cls, value: str) -> str:
+        # Doc §7 rule 9: min 10 chars, at least one number and one letter,
+        # enforced server-side as the source of truth.
+        if not any(c.isalpha() for c in value):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in value):
+            raise ValueError("Password must contain at least one number")
+        return value
 
 
 class MessageResponse(BaseModel):
@@ -51,4 +62,6 @@ class CurrentUserResponse(BaseModel):
     email: str
     full_name: str
     role: str
+    permissions: list[str] = []
+    department_id: Optional[str] = None
 
