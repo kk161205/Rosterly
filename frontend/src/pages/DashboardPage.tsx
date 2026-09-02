@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader'
 import { MetricRibbon } from '@/components/dashboard/MetricRibbon'
@@ -15,6 +16,7 @@ import { authStorage } from '@/utils/authStorage'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 export const DashboardPage: React.FC = () => {
+  const navigate = useNavigate()
   const cachedUser = authStorage.getUser()
   const [currentRole, setCurrentRole] = useState<UserRole>((cachedUser?.role as UserRole) || 'employee')
   const [userProfile, setUserProfile] = useState<UserProfile | null>(cachedUser)
@@ -72,11 +74,15 @@ export const DashboardPage: React.FC = () => {
     }
   }
 
-  const handlePrimaryAction = () => {
-    // Action trigger modal or page redirection based on role
-  }
-
   const effectiveRole = (dashboardData?.role as UserRole) || currentRole
+
+  const handlePrimaryAction = () => {
+    // Only hr_admin's CTA has a real destination today — the rest are
+    // disabled in DashboardHeader until their pages exist (§5.10-§5.12, §5.17).
+    if (effectiveRole === 'hr_admin') {
+      navigate('/onboarding?start=1')
+    }
+  }
 
   const metricCards: DashboardMetricCard[] = dashboardData
     ? dashboardService.getMetricRibbonCards(dashboardData)

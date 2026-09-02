@@ -27,27 +27,27 @@ export const OffboardingProgressGauge: React.FC<OffboardingProgressGaugeProps> =
       label: 'Asset Reclamation',
       icon: Laptop,
       items: assetItems,
-      color: 'bg-indigo-600',
-      text: 'text-indigo-700',
-      bgLight: 'bg-indigo-50',
+      color: 'bg-accent',
+      text: 'text-accent',
+      bgLight: 'bg-accent-container',
     },
     {
       key: 'access',
       label: 'Access Revocation',
       icon: Lock,
       items: accessItems,
-      color: 'bg-rose-600',
-      text: 'text-rose-700',
-      bgLight: 'bg-rose-50',
+      color: 'bg-error',
+      text: 'text-error',
+      bgLight: 'bg-error-container',
     },
     {
       key: 'hr',
       label: 'Exit Clearance',
       icon: ShieldCheck,
       items: hrItems,
-      color: 'bg-amber-600',
-      text: 'text-amber-700',
-      bgLight: 'bg-amber-50',
+      color: 'bg-warning',
+      text: 'text-warning',
+      bgLight: 'bg-warning-container',
     },
   ]
 
@@ -87,8 +87,8 @@ export const OffboardingProgressGauge: React.FC<OffboardingProgressGaugeProps> =
               <span
                 className={`text-xs font-mono px-2 py-0.5 rounded-full font-semibold border ${
                   isCompleted
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                    : 'bg-amber-50 text-amber-800 border-amber-300'
+                    ? 'bg-success-container text-on-success-container border-success/30'
+                    : 'bg-warning-container text-on-warning-container border-warning/30'
                 }`}
               >
                 {isCompleted ? 'OFFBOARDING COMPLETED' : 'OFFBOARDING IN-PROGRESS'}
@@ -121,7 +121,7 @@ export const OffboardingProgressGauge: React.FC<OffboardingProgressGaugeProps> =
                 strokeWidth="4"
                 strokeDasharray={138.2}
                 strokeDashoffset={138.2 - (138.2 * percentage) / 100}
-                className={isCompleted ? 'text-emerald-600 transition-all duration-700' : 'text-amber-600 transition-all duration-700'}
+                className={isCompleted ? 'text-success transition-all duration-700' : 'text-warning transition-all duration-700'}
                 strokeLinecap="round"
                 fill="transparent"
               />

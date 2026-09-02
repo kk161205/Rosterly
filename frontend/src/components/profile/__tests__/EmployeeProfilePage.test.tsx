@@ -33,12 +33,6 @@ vi.mock('@/utils/authStorage', () => ({
   },
 }))
 
-vi.mock('@/services/employeeService', () => ({
-  employeeService: {
-    offboardEmployee: vi.fn().mockResolvedValue({}),
-  },
-}))
-
 describe('EmployeeProfilePage Component', () => {
   const mockProfile: EmployeeProfile = {
     id: 'emp-101',

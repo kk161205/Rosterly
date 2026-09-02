@@ -17,9 +17,7 @@ import { DocumentVaultTab } from '@/components/profile/DocumentVaultTab'
 import { AssignedAssetsTab } from '@/components/profile/AssignedAssetsTab'
 import { LifecycleTab } from '@/components/profile/LifecycleTab'
 import { EditProfileModal } from '@/components/profile/EditProfileModal'
-import { StartOffboardingModal } from '@/components/profile/StartOffboardingModal'
 import { profileService } from '@/services/profileService'
-import { employeeService } from '@/services/employeeService'
 import { authStorage } from '@/utils/authStorage'
 import { UserRole } from '@/types/dashboard'
 import {
@@ -56,7 +54,6 @@ export const EmployeeProfilePage: React.FC = () => {
 
   // Modals state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isOffboardModalOpen, setIsOffboardModalOpen] = useState(false)
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -72,16 +69,25 @@ export const EmployeeProfilePage: React.FC = () => {
     setIsLoading(true)
     setError(null)
     try {
-      const [profData, docsData, assetsData, lifeData] = await Promise.all([
+      // A caller with partial access (e.g. a manager viewing a direct report,
+      // who §5.4 correctly denies the documents endpoint to) must still see
+      // the tabs they ARE allowed — one denied tab shouldn't blank the page.
+      const [profResult, docsResult, assetsResult, lifeResult] = await Promise.allSettled([
         profileService.getEmployeeProfile(id),
         profileService.getEmployeeDocuments(id),
         profileService.getEmployeeAssets(id),
         profileService.getEmployeeLifecycle(id),
       ])
-      setProfile(profData)
-      setDocuments(docsData)
-      setAssets(assetsData)
-      setLifecycle(lifeData)
+
+      if (profResult.status === 'fulfilled') {
+        setProfile(profResult.value)
+      } else {
+        throw profResult.reason
+      }
+
+      setDocuments(docsResult.status === 'fulfilled' ? docsResult.value : [])
+      setAssets(assetsResult.status === 'fulfilled' ? assetsResult.value : { current: [], history: [] })
+      setLifecycle(lifeResult.status === 'fulfilled' ? lifeResult.value : null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load employee profile records.')
     } finally {
@@ -100,15 +106,6 @@ export const EmployeeProfilePage: React.FC = () => {
     const updated = await profileService.updateEmployeeProfile(profile.id, updates)
     setProfile(updated)
     showToast('Employee profile updated successfully')
-  }
-
-  const handleStartOffboarding = async (reason: string, exitDate: string) => {
-    if (!profile) return
-    // Goes through the dedicated offboard endpoint (which stores exit_date/reason
-    // and writes the audit log) rather than a generic status PATCH.
-    await employeeService.offboardEmployee(profile.id, exitDate, reason)
-    showToast(`Offboarding process initiated (Exit Date: ${exitDate})`)
-    await loadData()
   }
 
   const handleUploadDocument = async (
@@ -194,7 +191,7 @@ export const EmployeeProfilePage: React.FC = () => {
             currentUserRole={currentRole}
             isSelf={isSelf}
             onEditClick={() => setIsEditModalOpen(true)}
-            onOffboardClick={() => setIsOffboardModalOpen(true)}
+            onOffboardClick={() => navigate(`/offboarding?start=${profile.id}`)}
             isLoading={isLoading}
           />
         )}
@@ -278,15 +275,6 @@ export const EmployeeProfilePage: React.FC = () => {
         />
       )}
 
-      {/* Offboarding Confirmation Modal */}
-      {profile && (
-        <StartOffboardingModal
-          isOpen={isOffboardModalOpen}
-          onClose={() => setIsOffboardModalOpen(false)}
-          profile={profile}
-          onConfirm={handleStartOffboarding}
-        />
-      )}
     </AppLayout>
   )
 }

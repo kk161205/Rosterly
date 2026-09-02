@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { onboardingService } from '@/services/onboardingService'
 import { AISuggestionResponse } from '@/types/onboarding'
+import { StatusBadge } from '@/components/common/CommonUI'
 import { X, Sparkles, Calendar, User, Briefcase } from 'lucide-react'
 
 interface StartOnboardingModalProps {
@@ -157,20 +158,21 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
                   <strong>Role:</strong> {selectedEmployee.designation}
                 </span>
               </div>
-              <span className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <span className="text-[11px] font-mono text-on-success-container bg-success-container px-2 py-0.5 rounded border border-success/20">
                 Pre-filled from HR Record
               </span>
             </div>
           )}
 
           {/* AI Suggestion Generator Ribbon */}
-          <div className="p-4 rounded-lg bg-gradient-to-r from-indigo-900/10 via-primary-container/10 to-accent/10 border border-accent/30 space-y-3">
+          <div className="p-4 rounded-lg bg-gradient-to-r from-accent/10 via-primary-container/10 to-accent/10 border border-accent/30 space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Sparkles className="w-4 h-4 text-accent animate-pulse" />
                 <span className="font-sans font-bold text-xs text-primary">
                   AI Checklist Recommender
                 </span>
+                <StatusBadge status="Preview — Not Live AI Yet" variant="warning" dot={false} />
               </div>
               <button
                 type="button"
@@ -204,7 +206,7 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
                       <span className="font-medium text-on-surface">
                         • {task.task_name}
                       </span>
-                      <span className="font-mono text-[10px] uppercase text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-[10px] uppercase text-on-accent-container bg-accent-container px-1.5 py-0.5 rounded">
                         {task.owner_role_name}
                       </span>
                     </div>
@@ -222,7 +224,9 @@ export const StartOnboardingModal: React.FC<StartOnboardingModalProps> = ({
             <p className="text-[11px] text-on-surface-variant">
               Phase 1 onboarding always uses the standard fixed template: Contract & ID, Email/SSO
               provisioning, Hardware issuance, Workspace access, and Team orientation. The AI panel
-              above is advisory guidance only — custom tasks aren't yet supported by the backend.
+              above is a client-side preview of the recommendation format — it is not yet connected
+              to a live AI model (per doc §8.4.2, that integration is still in progress) and its
+              suggestions are advisory only; custom tasks aren't yet supported by the backend.
             </p>
           </div>
 

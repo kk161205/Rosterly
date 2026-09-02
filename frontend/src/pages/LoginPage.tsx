@@ -49,34 +49,34 @@ export const LoginPage: React.FC = () => {
         {/* Subtle Ambient Radial Glow Accents */}
         <div className="absolute -top-32 -right-32 h-[450px] w-[450px] rounded-full bg-accent/20 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-32 -left-32 h-[450px] w-[450px] rounded-full bg-tertiary-container/25 blur-3xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(#ffffff0d_1px,transparent_1px)] [background-size:28px_28px] pointer-events-none opacity-40" />
+        <div className="absolute inset-0 bg-[radial-gradient(var(--on-primary)0d_1px,transparent_1px)] [background-size:28px_28px] pointer-events-none opacity-40" />
 
         {/* Top Minimal Brand Tag */}
         <div className="relative z-10">
-          <span className="text-body-sm font-medium tracking-wide text-white/75 font-mono">
+          <span className="text-body-sm font-medium tracking-wide text-on-primary/75 font-mono">
             ROSTERLY ENTERPRISE
           </span>
         </div>
 
         {/* Central Hero Showcase */}
         <div className="relative z-10 my-auto max-w-lg space-y-6">
-          <h2 className="text-display-lg font-bold tracking-tight text-white leading-[1.15]">
+          <h2 className="text-display-lg font-bold tracking-tight text-on-primary leading-[1.15]">
             Unified Workforce & Asset Orchestration
           </h2>
-          <p className="text-body-md text-white/80 leading-relaxed">
+          <p className="text-body-md text-on-primary/80 leading-relaxed">
             Manage employee lifecycles, hardware inventory, and departmental approvals with zero-trust security.
           </p>
 
           <div className="pt-2 flex flex-col gap-3">
-            <div className="flex items-center gap-3 p-3.5 rounded-lg bg-white/[0.06] border border-white/10 backdrop-blur-sm">
+            <div className="flex items-center gap-3 p-3.5 rounded-lg bg-on-primary/[0.06] border border-on-primary/10 backdrop-blur-sm">
               <Laptop className="h-5 w-5 text-accent-container shrink-0" />
-              <span className="text-body-sm text-white/90 font-medium">
+              <span className="text-body-sm text-on-primary/90 font-medium">
                 Hardware tracking, software licenses & depreciation
               </span>
             </div>
-            <div className="flex items-center gap-3 p-3.5 rounded-lg bg-white/[0.06] border border-white/10 backdrop-blur-sm">
+            <div className="flex items-center gap-3 p-3.5 rounded-lg bg-on-primary/[0.06] border border-on-primary/10 backdrop-blur-sm">
               <Shield className="h-5 w-5 text-tertiary-container shrink-0" />
-              <span className="text-body-sm text-white/90 font-medium">
+              <span className="text-body-sm text-on-primary/90 font-medium">
                 Zero-trust session control & immediate role scoping
               </span>
             </div>
@@ -84,7 +84,7 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Bottom Minimal Info */}
-        <div className="relative z-10 pt-6 border-t border-white/10 flex items-center justify-between text-body-sm text-white/60">
+        <div className="relative z-10 pt-6 border-t border-on-primary/10 flex items-center justify-between text-body-sm text-on-primary/60">
           <span>Enterprise Platform</span>
           <span className="font-mono text-label-caps">v0.1.0</span>
         </div>

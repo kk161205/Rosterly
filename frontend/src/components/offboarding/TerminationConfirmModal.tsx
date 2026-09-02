@@ -98,22 +98,22 @@ export const TerminationConfirmModal: React.FC<TerminationConfirmModalProps> = (
 
           {/* Validation Status */}
           {canTerminate ? (
-            <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-950 space-y-1">
-              <div className="font-semibold flex items-center gap-1.5 text-emerald-800">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="p-3.5 rounded-lg bg-success-container border border-success/30 text-on-success-container space-y-1">
+              <div className="font-semibold flex items-center gap-1.5 text-on-success-container">
+                <CheckCircle2 className="w-4 h-4 text-success" />
                 <span>All {checklist.total_items} Checklist Tasks Completed</span>
               </div>
-              <p className="text-[11px] font-body text-emerald-900">
+              <p className="text-[11px] font-body text-on-success-container">
                 Hardware assets have been returned to inventory and identity deactivations verified.
               </p>
             </div>
           ) : (
-            <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 space-y-1">
-              <div className="font-semibold flex items-center gap-1.5 text-amber-800">
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
+            <div className="p-3.5 rounded-lg bg-warning-container border border-warning/30 text-on-warning-container space-y-1">
+              <div className="font-semibold flex items-center gap-1.5 text-on-warning-container">
+                <ShieldAlert className="w-4 h-4 text-warning" />
                 <span>{incompleteItems.length} Incomplete Task(s) Remaining</span>
               </div>
-              <p className="text-[11px] font-body text-amber-900">
+              <p className="text-[11px] font-body text-on-warning-container">
                 All checklist items must be marked done before final termination can be executed.
               </p>
             </div>
@@ -126,15 +126,15 @@ export const TerminationConfirmModal: React.FC<TerminationConfirmModalProps> = (
             </div>
             <ul className="space-y-1.5 text-on-surface-variant font-body pl-1">
               <li className="flex items-start gap-2">
-                <Lock className="w-3.5 h-3.5 text-rose-600 mt-0.5 flex-shrink-0" />
+                <Lock className="w-3.5 h-3.5 text-error mt-0.5 flex-shrink-0" />
                 <span>Immediate revocation of all active zero-trust user sessions across all devices.</span>
               </li>
               <li className="flex items-start gap-2">
-                <Lock className="w-3.5 h-3.5 text-rose-600 mt-0.5 flex-shrink-0" />
+                <Lock className="w-3.5 h-3.5 text-error mt-0.5 flex-shrink-0" />
                 <span>Transition employee account status to <strong>Terminated</strong> in directory.</span>
               </li>
               <li className="flex items-start gap-2">
-                <Lock className="w-3.5 h-3.5 text-rose-600 mt-0.5 flex-shrink-0" />
+                <Lock className="w-3.5 h-3.5 text-error mt-0.5 flex-shrink-0" />
                 <span>Append immutable audit log entry documenting completed offboarding.</span>
               </li>
             </ul>

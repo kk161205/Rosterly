@@ -22,6 +22,7 @@ import {
 import { UserRole } from '@/types/dashboard'
 import { UserProfile } from '@/types/auth'
 import { authStorage } from '@/utils/authStorage'
+import { Button } from '@/components/common/CommonUI'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 const DEFAULT_FILTERS: EmployeeQueryFilters = {
@@ -58,9 +59,12 @@ export const EmployeeDirectoryPage: React.FC = () => {
     setError(null)
 
     try {
+      // Doc §7 rule 3 caps every list endpoint at page_size=100 — the tree view
+      // still requests the documented max rather than sidestepping it, so very
+      // large orgs will only render their first 100 employees in the chart.
       const queryParams: EmployeeQueryFilters = {
         ...filters,
-        page_size: filters.view === 'tree' ? 1000 : filters.page_size,
+        page_size: filters.view === 'tree' ? 100 : filters.page_size,
       }
 
       const [profileResult, deptResult, filterMetaResult, empResult] = await Promise.allSettled([
@@ -170,14 +174,9 @@ export const EmployeeDirectoryPage: React.FC = () => {
               <AlertCircle className="w-5 h-5 text-error flex-shrink-0" />
               <span className="text-body-sm font-sans font-medium">{error}</span>
             </div>
-            <button
-              type="button"
-              onClick={loadData}
-              className="px-3 py-1.5 text-xs font-mono font-semibold rounded bg-error text-on-error hover:bg-error/90 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Retry Load</span>
-            </button>
+            <Button type="button" variant="danger" size="sm" onClick={loadData} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+              Retry Load
+            </Button>
           </div>
         )}
 

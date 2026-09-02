@@ -21,27 +21,27 @@ export const OffboardingWarningBanner: React.FC<OffboardingWarningBannerProps> =
 
   if (isCompleted) {
     return (
-      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-950 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+      <div className="rounded-xl border border-success/30 bg-success-container p-4 text-on-success-container flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-success text-on-success flex items-center justify-center flex-shrink-0">
             <UserCheck className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-xs uppercase font-bold tracking-wider text-emerald-800">
+              <span className="font-mono text-xs uppercase font-bold tracking-wider text-on-success-container">
                 Offboarding Finalized
               </span>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-200/70 text-emerald-900 font-semibold">
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-success/20 text-on-success-container font-semibold">
                 Account Terminated
               </span>
             </div>
-            <p className="text-xs font-body text-emerald-900 mt-0.5">
+            <p className="text-xs font-body text-on-success-container mt-0.5">
               All company assets returned, access credentials revoked, and active sessions terminated.
             </p>
           </div>
         </div>
         {checklist.completed_at && (
-          <div className="font-mono text-[11px] text-emerald-800 bg-emerald-200/50 px-3 py-1.5 rounded-md self-start md:self-auto border border-emerald-300">
+          <div className="font-mono text-[11px] text-on-success-container bg-success/20 px-3 py-1.5 rounded-md self-start md:self-auto border border-success/30">
             Completed: {new Date(checklist.completed_at).toLocaleDateString()}
           </div>
         )}
@@ -50,27 +50,27 @@ export const OffboardingWarningBanner: React.FC<OffboardingWarningBannerProps> =
   }
 
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-950 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
+    <div className="rounded-xl border border-warning/40 bg-warning-container p-4 text-on-warning-container flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
       <div className="flex items-start sm:items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+        <div className="w-10 h-10 rounded-lg bg-warning text-on-warning flex items-center justify-center flex-shrink-0 shadow-sm">
           <AlertTriangle className="w-5 h-5 animate-pulse" />
         </div>
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs uppercase font-bold tracking-wider text-amber-900">
+            <span className="font-mono text-xs uppercase font-bold tracking-wider text-on-warning-container">
               Active Offboarding In-Flight
             </span>
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-950 font-semibold">
+            <span className="w-2 h-2 rounded-full bg-warning animate-ping" />
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-warning/20 text-on-warning-container font-semibold">
               Exit: {checklist.exit_date || 'Scheduled'}
             </span>
             {checklist.reason && (
-              <span className="text-[11px] font-body text-amber-800 italic">
+              <span className="text-[11px] font-body text-on-warning-container italic">
                 "{checklist.reason}"
               </span>
             )}
           </div>
-          <p className="text-xs font-body text-amber-900 mt-1">
+          <p className="text-xs font-body text-on-warning-container mt-1">
             Reclamation and deprovisioning sequence is underway. Full account termination will occur once all tasks are completed.
           </p>
         </div>
@@ -78,16 +78,16 @@ export const OffboardingWarningBanner: React.FC<OffboardingWarningBannerProps> =
 
       {/* Quick Status Chips */}
       <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/70 border border-amber-300/80 text-[11px] font-mono text-amber-950 shadow-2xs">
-          <Laptop className="w-3.5 h-3.5 text-indigo-700" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/70 border border-warning/30 text-[11px] font-mono text-on-warning-container shadow-2xs">
+          <Laptop className="w-3.5 h-3.5 text-accent" />
           <span>{pendingAssets} Assets Pending</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/70 border border-amber-300/80 text-[11px] font-mono text-amber-950 shadow-2xs">
-          <Lock className="w-3.5 h-3.5 text-rose-700" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/70 border border-warning/30 text-[11px] font-mono text-on-warning-container shadow-2xs">
+          <Lock className="w-3.5 h-3.5 text-error" />
           <span>{pendingAccess} Access Tasks</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/70 border border-amber-300/80 text-[11px] font-mono text-amber-950 shadow-2xs">
-          <ShieldAlert className="w-3.5 h-3.5 text-amber-700" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/70 border border-warning/30 text-[11px] font-mono text-on-warning-container shadow-2xs">
+          <ShieldAlert className="w-3.5 h-3.5 text-warning" />
           <span>{pendingHR} HR Clearances</span>
         </div>
       </div>

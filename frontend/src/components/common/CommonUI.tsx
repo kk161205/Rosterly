@@ -7,28 +7,27 @@ export interface SearchInputProps extends React.InputHTMLAttributes<HTMLInputEle
   containerClassName?: string
 }
 
-export const SearchInput: React.FC<SearchInputProps> = ({
-  shortcut = 'Ctrl + K',
-  containerClassName = '',
-  className = '',
-  ...props
-}) => {
-  return (
-    <div className={`relative w-full ${containerClassName}`}>
-      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
-      <input
-        type="text"
-        className={`w-full pl-9 pr-14 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-md text-on-surface placeholder:text-outline focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all ${className}`}
-        {...props}
-      />
-      {shortcut && (
-        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-outline bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/60 pointer-events-none hidden sm:inline-block">
-          {shortcut}
-        </span>
-      )}
-    </div>
-  )
-}
+export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
+  ({ shortcut = 'Ctrl + K', containerClassName = '', className = '', ...props }, ref) => {
+    return (
+      <div className={`relative w-full ${containerClassName}`}>
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
+        <input
+          ref={ref}
+          type="text"
+          className={`w-full pl-9 pr-14 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-md text-on-surface placeholder:text-outline focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all ${className}`}
+          {...props}
+        />
+        {shortcut && (
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-outline bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/60 pointer-events-none hidden sm:inline-block">
+            {shortcut}
+          </span>
+        )}
+      </div>
+    )
+  }
+)
+SearchInput.displayName = 'SearchInput'
 
 // --- Rich Custom Select Dropdown Primitive ---
 export interface SelectOption {
@@ -252,18 +251,18 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   dot = true,
 }) => {
   const variantStyles = {
-    success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    warning: 'bg-amber-50 text-amber-800 border-amber-200',
-    error: 'bg-rose-50 text-rose-700 border-rose-200',
-    info: 'bg-sky-50 text-sky-700 border-sky-200',
+    success: 'bg-success-container text-on-success-container border-success/20',
+    warning: 'bg-warning-container text-on-warning-container border-warning/20',
+    error: 'bg-error-container text-on-error-container border-error/20',
+    info: 'bg-accent-container text-on-accent-container border-accent/20',
     neutral: 'bg-surface-container text-on-surface-variant border-outline-variant',
   }
 
   const dotColors = {
-    success: 'bg-emerald-500',
-    warning: 'bg-amber-500',
-    error: 'bg-rose-500',
-    info: 'bg-sky-500',
+    success: 'bg-success',
+    warning: 'bg-warning',
+    error: 'bg-error',
+    info: 'bg-accent',
     neutral: 'bg-outline',
   }
 

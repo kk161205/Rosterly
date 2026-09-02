@@ -36,7 +36,7 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
       case 'alert':
         return <Bell className="w-5 h-5 text-error" />
       case 'approval':
-        return <CheckCircle2 className="w-5 h-5 text-amber-600" />
+        return <CheckCircle2 className="w-5 h-5 text-warning" />
       case 'team':
         return <Users className="w-5 h-5 text-primary" />
       case 'onboarding':
@@ -46,11 +46,11 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
       case 'ticket':
         return <Wrench className="w-5 h-5 text-error" />
       case 'warranty':
-        return <ShieldAlert className="w-5 h-5 text-amber-600" />
+        return <ShieldAlert className="w-5 h-5 text-warning" />
       case 'stock':
         return <Package className="w-5 h-5 text-tertiary" />
       case 'health':
-        return <Activity className="w-5 h-5 text-emerald-600" />
+        return <Activity className="w-5 h-5 text-success" />
       case 'audit':
         return <ShieldCheck className="w-5 h-5 text-primary" />
       case 'users':
@@ -66,7 +66,7 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
       case 'tertiary':
         return 'bg-tertiary-container/30 text-tertiary border-tertiary/20'
       case 'warning':
-        return 'bg-amber-100 text-amber-900 border-amber-300'
+        return 'bg-warning-container text-on-warning-container border-warning/20'
       case 'error':
         return 'bg-error-container text-on-error-container border-error/20'
       case 'neutral':
@@ -114,7 +114,7 @@ export const MetricRibbon: React.FC<MetricRibbonProps> = ({ cards }) => {
           {card.change && (
             <div className="mt-3 pt-3 border-t border-outline-variant/60 flex items-center gap-1.5 text-body-sm font-body text-on-surface-variant">
               {card.changeType === 'positive' && (
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                <TrendingUp className="w-3.5 h-3.5 text-success flex-shrink-0" />
               )}
               {card.changeType === 'negative' && (
                 <TrendingDown className="w-3.5 h-3.5 text-error flex-shrink-0" />

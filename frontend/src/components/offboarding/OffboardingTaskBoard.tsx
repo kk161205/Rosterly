@@ -61,8 +61,8 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
       icon: Laptop,
       items: assetItems,
       roleTag: 'IT Admin',
-      accentColor: 'border-t-indigo-600',
-      badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      accentColor: 'border-t-accent',
+      badgeBg: 'bg-accent-container text-on-accent-container border-accent/20',
     },
     {
       id: 'access_revocation',
@@ -71,8 +71,8 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
       icon: Lock,
       items: accessItems,
       roleTag: 'IT Admin',
-      accentColor: 'border-t-rose-600',
-      badgeBg: 'bg-rose-50 text-rose-700 border-rose-200',
+      accentColor: 'border-t-error',
+      badgeBg: 'bg-error-container text-on-error-container border-error/20',
     },
     {
       id: 'exit_settlement',
@@ -81,8 +81,8 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
       icon: FileCheck2,
       items: hrItems,
       roleTag: 'HR Admin',
-      accentColor: 'border-t-amber-600',
-      badgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
+      accentColor: 'border-t-warning',
+      badgeBg: 'bg-warning-container text-on-warning-container border-warning/20',
     },
   ]
 
@@ -113,13 +113,13 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
         </div>
         <div className="flex items-center gap-2 text-xs font-mono text-on-surface-variant">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Done
+            <span className="w-2 h-2 rounded-full bg-success" /> Done
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-500" /> In Progress
+            <span className="w-2 h-2 rounded-full bg-warning" /> In Progress
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-slate-300" /> Pending
+            <span className="w-2 h-2 rounded-full bg-outline-variant" /> Pending
           </span>
         </div>
       </div>
@@ -178,10 +178,10 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
                         key={item.id}
                         className={`p-3.5 rounded-lg border transition-all space-y-3 ${
                           isDone
-                            ? 'bg-emerald-50/40 border-emerald-300/80 text-on-surface'
+                            ? 'bg-success-container/40 border-success/40 text-on-surface'
                             : isInProgress
-                            ? 'bg-amber-50/40 border-amber-300 text-on-surface shadow-2xs'
-                            : 'bg-white border-outline-variant/60 hover:border-outline-variant text-on-surface'
+                            ? 'bg-warning-container/40 border-warning/40 text-on-surface shadow-2xs'
+                            : 'bg-surface-container-lowest border-outline-variant/60 hover:border-outline-variant text-on-surface'
                         }`}
                       >
                         {/* Task Title & Status Pill */}
@@ -197,7 +197,7 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
 
                             {/* Asset Tag Notice if Asset Item */}
                             {item.asset_assignment_id && (
-                              <div className="inline-flex items-center gap-1 text-[11px] font-mono text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-200">
+                              <div className="inline-flex items-center gap-1 text-[11px] font-mono text-on-accent-container bg-accent-container/80 px-2 py-0.5 rounded border border-accent/20">
                                 <Tag className="w-3 h-3" />
                                 <span>Hardware Return to Stock</span>
                               </div>
@@ -207,11 +207,11 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
                           {/* Status Badge */}
                           <div className="flex-shrink-0">
                             {isDone ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-success-container text-on-success-container border border-success/30">
                                 <CheckCircle2 className="w-3 h-3" /> Done
                               </span>
                             ) : isInProgress ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-warning-container text-on-warning-container border border-warning/30">
                                 <Clock className="w-3 h-3" /> In Progress
                               </span>
                             ) : (
@@ -224,7 +224,7 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
 
                         {/* Audit / Completion Info */}
                         {isDone && item.completed_at && (
-                          <div className="pt-2 border-t border-emerald-200/60 text-[11px] font-mono text-emerald-800 flex items-center justify-between">
+                          <div className="pt-2 border-t border-success/20 text-[11px] font-mono text-on-success-container flex items-center justify-between">
                             <span>By: {item.completed_by_name || 'System Admin'}</span>
                             <span>{new Date(item.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
@@ -251,7 +251,7 @@ export const OffboardingTaskBoard: React.FC<OffboardingTaskBoardProps> = ({
                                   className={`px-2 py-1 rounded text-[11px] font-mono font-semibold transition-colors cursor-pointer ${
                                     isInProgress
                                       ? 'bg-surface-container hover:bg-surface-container-high text-on-surface'
-                                      : 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                                      : 'bg-warning-container hover:bg-warning-container/70 text-on-warning-container'
                                   }`}
                                 >
                                   {isInProgress ? 'Reset' : 'Start'}

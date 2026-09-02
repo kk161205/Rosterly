@@ -87,7 +87,7 @@ export const StartOffboardingModal: React.FC<StartOffboardingModalProps> = ({
         {/* Modal Header */}
         <div className="p-5 border-b border-outline-variant/40 flex items-center justify-between bg-surface-container-low/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-lg bg-warning/10 text-warning flex items-center justify-center font-bold">
               <UserMinus className="w-5 h-5" />
             </div>
             <div>
@@ -189,12 +189,12 @@ export const StartOffboardingModal: React.FC<StartOffboardingModalProps> = ({
           </div>
 
           {/* Security & Asset Notice */}
-          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-950 text-xs space-y-1">
+          <div className="p-3 rounded-lg bg-warning-container border border-warning/20 text-on-warning-container text-xs space-y-1">
             <div className="font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+              <AlertTriangle className="w-3.5 h-3.5 text-warning" />
               <span>Automated Checklist Provisions</span>
             </div>
-            <p className="text-[11px] font-body text-amber-900 leading-relaxed">
+            <p className="text-[11px] font-body text-on-warning-container leading-relaxed">
               Upon kickoff, all active hardware assigned to this employee will be dynamically populated into IT reclamation tasks. Setting target user status to offboarding will flag their account across administrative directories.
             </p>
           </div>
@@ -211,7 +211,7 @@ export const StartOffboardingModal: React.FC<StartOffboardingModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !selectedEmployeeId}
-              className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-mono font-semibold transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-warning hover:bg-warning/90 text-on-warning text-xs font-mono font-semibold transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>

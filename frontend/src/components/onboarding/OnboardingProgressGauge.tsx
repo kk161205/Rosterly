@@ -12,10 +12,10 @@ export const OnboardingProgressGauge: React.FC<OnboardingProgressGaugeProps> = (
 
   // Calculate breakdown per owner role
   const roles = [
-    { key: 'hr_admin', label: 'HR Tasks', color: 'bg-rose-500', bgLight: 'bg-rose-50', text: 'text-rose-700' },
-    { key: 'it_admin', label: 'IT Hardware & Access', color: 'bg-indigo-600', bgLight: 'bg-indigo-50', text: 'text-indigo-700' },
-    { key: 'facilities', label: 'Facilities Access', color: 'bg-amber-500', bgLight: 'bg-amber-50', text: 'text-amber-700' },
-    { key: 'manager', label: 'Manager Orientation', color: 'bg-emerald-600', bgLight: 'bg-emerald-50', text: 'text-emerald-700' },
+    { key: 'hr_admin', label: 'HR Tasks', color: 'bg-error', bgLight: 'bg-error-container', text: 'text-on-error-container' },
+    { key: 'it_admin', label: 'IT Hardware & Access', color: 'bg-accent', bgLight: 'bg-accent-container', text: 'text-on-accent-container' },
+    { key: 'facilities', label: 'Facilities Access', color: 'bg-warning', bgLight: 'bg-warning-container', text: 'text-on-warning-container' },
+    { key: 'manager', label: 'Manager Orientation', color: 'bg-success', bgLight: 'bg-success-container', text: 'text-on-success-container' },
   ]
 
   const roleStats = roles.map((r) => {
@@ -53,7 +53,7 @@ export const OnboardingProgressGauge: React.FC<OnboardingProgressGaugeProps> = (
               <span
                 className={`text-xs font-mono px-2 py-0.5 rounded-full font-semibold border ${
                   isCompleted
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                    ? 'bg-success-container text-on-success-container border-success/30'
                     : 'bg-accent-container/50 text-on-accent-container border-accent/30'
                 }`}
               >
@@ -87,7 +87,7 @@ export const OnboardingProgressGauge: React.FC<OnboardingProgressGaugeProps> = (
                 strokeWidth="4"
                 strokeDasharray={138.2}
                 strokeDashoffset={138.2 - (138.2 * percentage) / 100}
-                className={isCompleted ? 'text-emerald-600 transition-all duration-700' : 'text-accent transition-all duration-700'}
+                className={isCompleted ? 'text-success transition-all duration-700' : 'text-accent transition-all duration-700'}
                 strokeLinecap="round"
                 fill="transparent"
               />
@@ -118,7 +118,7 @@ export const OnboardingProgressGauge: React.FC<OnboardingProgressGaugeProps> = (
         <div className="h-3 w-full bg-surface-container-high rounded-full overflow-hidden flex p-0.5 border border-outline-variant/20">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              isCompleted ? 'bg-emerald-500' : 'bg-gradient-to-r from-accent to-indigo-600'
+              isCompleted ? 'bg-success' : 'bg-gradient-to-r from-accent to-accent/70'
             }`}
             style={{ width: `${percentage}%` }}
           />

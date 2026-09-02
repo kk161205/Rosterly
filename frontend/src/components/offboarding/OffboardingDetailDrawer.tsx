@@ -42,7 +42,7 @@ export const OffboardingDetailDrawer: React.FC<OffboardingDetailDrawerProps> = (
           {/* Header */}
           <div className="p-5 border-b border-outline-variant/40 bg-surface-container-low/40 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-lg bg-warning/10 text-warning flex items-center justify-center font-bold">
                 <UserMinus className="w-5 h-5" />
               </div>
               <div>
@@ -79,8 +79,8 @@ export const OffboardingDetailDrawer: React.FC<OffboardingDetailDrawerProps> = (
                 <span
                   className={`text-xs font-mono px-2 py-0.5 rounded-full font-semibold border ${
                     isCompleted
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                      : 'bg-amber-50 text-amber-800 border-amber-300'
+                      ? 'bg-success-container text-on-success-container border-success/30'
+                      : 'bg-warning-container text-on-warning-container border-warning/30'
                   }`}
                 >
                   {isCompleted ? 'COMPLETED' : 'IN-PROGRESS'}
@@ -127,9 +127,9 @@ export const OffboardingDetailDrawer: React.FC<OffboardingDetailDrawerProps> = (
                       key={item.id}
                       className={`p-3.5 rounded-lg border text-xs space-y-2 ${
                         isDone
-                          ? 'bg-emerald-50/30 border-emerald-300/60'
+                          ? 'bg-success-container/30 border-success/30'
                           : isInProgress
-                          ? 'bg-amber-50/30 border-amber-300/60'
+                          ? 'bg-warning-container/30 border-warning/30'
                           : 'bg-surface-container-low/30 border-outline-variant/50'
                       }`}
                     >
@@ -143,7 +143,7 @@ export const OffboardingDetailDrawer: React.FC<OffboardingDetailDrawerProps> = (
                               {item.task_name}
                             </span>
                             {item.asset_assignment_id && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 mt-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-on-accent-container bg-accent-container px-1.5 py-0.5 rounded border border-accent/20 mt-1">
                                 <Tag className="w-3 h-3" /> Hardware Return Link
                               </span>
                             )}
@@ -153,11 +153,11 @@ export const OffboardingDetailDrawer: React.FC<OffboardingDetailDrawerProps> = (
                         {/* Status Icon */}
                         <div className="flex-shrink-0">
                           {isDone ? (
-                            <span className="text-emerald-600 inline-flex items-center gap-1 font-mono font-semibold text-[11px]">
+                            <span className="text-success inline-flex items-center gap-1 font-mono font-semibold text-[11px]">
                               <CheckCircle2 className="w-4 h-4" /> Done
                             </span>
                           ) : isInProgress ? (
-                            <span className="text-amber-600 inline-flex items-center gap-1 font-mono font-semibold text-[11px]">
+                            <span className="text-warning inline-flex items-center gap-1 font-mono font-semibold text-[11px]">
                               <Clock className="w-4 h-4" /> Working
                             </span>
                           ) : (
@@ -172,7 +172,7 @@ export const OffboardingDetailDrawer: React.FC<OffboardingDetailDrawerProps> = (
                       <div className="pt-2 border-t border-outline-variant/30 flex items-center justify-between text-[11px] font-mono text-on-surface-variant">
                         <span>Role: {item.owner_role_name || 'Administrator'}</span>
                         {isDone && item.completed_at ? (
-                          <span className="text-emerald-800">
+                          <span className="text-on-success-container">
                             Cleared {new Date(item.completed_at).toLocaleDateString()}
                           </span>
                         ) : (

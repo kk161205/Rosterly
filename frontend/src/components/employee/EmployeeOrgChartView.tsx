@@ -11,11 +11,28 @@ import {
   ZoomOut,
   RotateCcw,
 } from 'lucide-react'
-import { OrgChartNode, Employee } from '@/types/employee'
+import { OrgChartNode, Employee, EmployeeStatus } from '@/types/employee'
+import { StatusBadge } from '@/components/common/CommonUI'
 
 const ZOOM_MIN = 0.6
 const ZOOM_MAX = 1.4
 const ZOOM_STEP = 0.1
+
+const STATUS_VARIANT: Record<EmployeeStatus, 'success' | 'info' | 'warning' | 'neutral'> = {
+  active: 'success',
+  onboarding: 'info',
+  offboarding: 'warning',
+  terminated: 'neutral',
+  inactive: 'neutral',
+}
+
+const STATUS_LABEL: Record<EmployeeStatus, string> = {
+  active: 'Active',
+  onboarding: 'Onboarding',
+  offboarding: 'Offboarding',
+  terminated: 'Terminated',
+  inactive: 'Inactive',
+}
 
 interface EmployeeOrgChartViewProps {
   nodes: OrgChartNode[]
@@ -132,10 +149,11 @@ export const EmployeeOrgChartView: React.FC<EmployeeOrgChartViewProps> = ({
                     <Building className="w-3 h-3 text-tertiary flex-shrink-0" />
                     {node.department_name || 'General'}
                   </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-1.5 py-0.5 rounded">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    Active
-                  </span>
+                  <StatusBadge
+                    status={STATUS_LABEL[node.status]}
+                    variant={STATUS_VARIANT[node.status] || 'neutral'}
+                    className="text-[11px] px-1.5 py-0.5"
+                  />
                 </div>
               </div>
             </div>
@@ -230,10 +248,16 @@ export const EmployeeOrgChartView: React.FC<EmployeeOrgChartViewProps> = ({
                           <p className="text-[11px] font-body text-on-surface-variant truncate mt-0.5">
                             {member.designation}
                           </p>
-                          <div className="flex items-center gap-1.5 mt-1">
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className="text-[10px] font-mono text-tertiary bg-tertiary-container/30 px-1.5 py-0.2 rounded truncate max-w-[130px]">
                               {member.department_name}
                             </span>
+                            <StatusBadge
+                              status={STATUS_LABEL[member.status]}
+                              variant={STATUS_VARIANT[member.status] || 'neutral'}
+                              dot={false}
+                              className="text-[10px] px-1.5 py-0.2"
+                            />
                           </div>
                         </div>
                       </div>
@@ -340,7 +364,7 @@ export const EmployeeOrgChartView: React.FC<EmployeeOrgChartViewProps> = ({
         </span>
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="w-2 h-2 rounded-full bg-success" />
             Active Employee
           </span>
           <span className="flex items-center gap-1.5">

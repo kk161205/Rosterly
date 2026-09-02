@@ -1,5 +1,6 @@
 import React from 'react'
 import { Users, RotateCcw } from 'lucide-react'
+import { Button } from '@/components/common/CommonUI'
 
 export const EmployeeTableSkeleton: React.FC = () => {
   return (
@@ -134,14 +135,9 @@ export const EmployeeEmptyState: React.FC<EmployeeEmptyStateProps> = ({ onResetF
         Try adjusting your full-text search keywords, clearing department filters, or resetting status chips to view matching team records.
       </p>
 
-      <button
-        type="button"
-        onClick={onResetFilters}
-        className="mt-5 px-4 py-2 text-xs font-mono font-semibold rounded bg-accent text-on-accent hover:bg-accent/90 transition-colors inline-flex items-center gap-2 cursor-pointer shadow-xs"
-      >
-        <RotateCcw className="w-3.5 h-3.5" />
-        <span>Reset Filters</span>
-      </button>
+      <Button type="button" variant="primary" size="md" onClick={onResetFilters} className="mt-5" icon={<RotateCcw className="w-3.5 h-3.5" />}>
+        Reset Filters
+      </Button>
     </div>
   )
 }

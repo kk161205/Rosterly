@@ -5,3 +5,11 @@
 /* Only add custom CSS here for things Tailwind + DESIGN.md tokens genuinely
    can't express. Default to utility classes using the generated tokens in
    tailwind.config.js — see rules.md §2 rule 2. */
+
+:root {
+  /* Tailwind's arbitrary-value utilities (e.g. bg-[radial-gradient(...)]) can't
+     reference a theme color by name — only this handful of tokens that are
+     genuinely needed inside such a function get a matching CSS variable, kept
+     in exact sync with tailwind.config.js / DESIGN.md rather than re-hardcoded. */
+  --on-primary: #ffffff;
+}
