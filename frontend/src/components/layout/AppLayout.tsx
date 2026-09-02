@@ -43,6 +43,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <Sidebar
         currentRole={currentRole}
         unreadAlertsCount={unreadAlertsCount}
+        userName={userName}
+        userEmail={userEmail}
       />
 
       {/* Main Workspace Layout with Independent Scrolling */}
