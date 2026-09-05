@@ -166,6 +166,10 @@ class AssetService:
         return f"AST-{current_year}-{int(seq_num):05d}"
 
     def create_asset(self, payload: AssetCreateRequest) -> AssetResponse:
+        """
+        POST /assets: Auto-generate sequential asset_tag server-side (AST-YYYY-XXXXX).
+        Validates depreciation_method and useful_life_months against strict enum and range bounds.
+        """
         if self.current_user.role not in ("it_admin", "super_admin"):
             raise ForbiddenError("Only IT Admins and Super Admins can create assets")
 
