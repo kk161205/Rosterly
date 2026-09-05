@@ -219,6 +219,9 @@ class AssetService:
         return self._format_asset_response(asset)
 
     def update_asset(self, asset_id: UUID, payload: AssetUpdateRequest) -> AssetResponse:
+        """
+        PATCH /assets/{id}: Update asset fields. Allows it_admin and super_admin to set status="retired".
+        """
         if self.current_user.role not in ("it_admin", "super_admin"):
             raise ForbiddenError("Only IT Admins and Super Admins can update assets")
 
