@@ -1,3 +1,10 @@
+from app.schemas.assets import (
+    AssetBulkUpdateRequest,
+    AssetCreateRequest,
+    AssetListResponse,
+    AssetResponse,
+    AssetUpdateRequest,
+)
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -49,6 +56,11 @@ __all__ = [
     "ChecklistResponse",
     "ChecklistItemUpdateRequest",
     "ChecklistListResponse",
+    "AssetCreateRequest",
+    "AssetUpdateRequest",
+    "AssetBulkUpdateRequest",
+    "AssetResponse",
+    "AssetListResponse",
 ]
 
 
