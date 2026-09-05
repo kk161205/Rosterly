@@ -2,9 +2,10 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import math
 from typing import Any
+import uuid
 from uuid import UUID
 
-from sqlalchemy import OR_, And, Column, String, func, text
+from sqlalchemy import Column, String, and_, func, or_, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
@@ -177,7 +178,9 @@ class AssetService:
         asset_tag = self._generate_next_asset_tag()
 
         # Initial current_value equals purchase_cost upon creation
+        now = datetime.now(timezone.utc)
         asset = Asset(
+            id=uuid.uuid4(),
             asset_tag=asset_tag,
             name=payload.name,
             category=payload.category,
@@ -191,6 +194,8 @@ class AssetService:
             warranty_expiry=payload.warranty_expiry,
             amc_expiry=payload.amc_expiry,
             status=AssetStatus.in_stock,
+            created_at=now,
+            updated_at=now,
         )
 
         self.db.add(asset)
