@@ -82,15 +82,14 @@ class AssetService:
         page_size: int = 20,
     ) -> AssetListResponse:
         role = self.current_user.role
-
-        if role == "employee":
-            raise ForbiddenError("Employees do not have permission to view asset inventory")
+        if role not in ("it_admin", "super_admin", "auditor", "manager"):
+            raise ForbiddenError("You do not have permission to view asset inventory")
 
         query = self.db.query(Asset).options(
             joinedload(Asset.current_holder).joinedload(User.department)
         )
 
-        # Department scoping for manager
+        # Department scoping for manager vs full catalog for it_admin/super_admin/auditor
         if role == "manager":
             if not self.current_user.department_id:
                 # Manager without department sees no assets

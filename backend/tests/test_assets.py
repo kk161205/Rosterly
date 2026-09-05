@@ -121,6 +121,16 @@ def test_get_assets_employee_denied():
     assert response.json()["error"]["code"] == "forbidden"
 
 
+def test_get_assets_hr_admin_denied():
+    """hr_admin role receives 403 Forbidden on GET /api/v1/assets (PRD §5.7)."""
+    hr_id = uuid.uuid4()
+    set_user_context(hr_id, "hr_admin")
+
+    response = client.get("/api/v1/assets")
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
 def test_get_assets_auditor_full_catalog():
     """Auditor GET returns full asset catalog."""
     auditor_id = uuid.uuid4()
@@ -327,6 +337,29 @@ def test_patch_bulk_assets_atomic_failure_missing_id():
     )
     assert response.status_code == 404
     assert "Assets not found" in response.json()["error"]["message"]
+
+
+def test_patch_asset_unauthorized_roles_denied():
+    """manager, employee, auditor, and hr_admin receive 403 Forbidden on PATCH /assets/{id}."""
+    asset_id = uuid.uuid4()
+    for role in ("manager", "employee", "auditor", "hr_admin"):
+        user_id = uuid.uuid4()
+        set_user_context(user_id, role)
+        response = client.patch(f"/api/v1/assets/{asset_id}", json={"status": "retired"})
+        assert response.status_code == 403, f"Role {role} should be denied PATCH /assets/{{id}}"
+
+
+def test_patch_bulk_unauthorized_roles_denied():
+    """manager, employee, auditor, and hr_admin receive 403 Forbidden on PATCH /assets/bulk."""
+    asset_id = uuid.uuid4()
+    for role in ("manager", "employee", "auditor", "hr_admin"):
+        user_id = uuid.uuid4()
+        set_user_context(user_id, role)
+        response = client.patch(
+            "/api/v1/assets/bulk",
+            json={"asset_ids": [str(asset_id)], "status": "retired"},
+        )
+        assert response.status_code == 403, f"Role {role} should be denied PATCH /assets/bulk"
 
 
 # ============================================================================
