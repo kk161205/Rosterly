@@ -17,9 +17,56 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.main import app
 from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus, DepreciationMethod, MaintenanceTicket
-from app.models.auth import Department, Role, User, UserStatus
+from app.models.auth import Department, Permission, Role, RolePermission, User, UserStatus
 
 client = TestClient(app)
+
+
+def create_rbac_mock_db(
+    allowed_grants: list[tuple[uuid.UUID, str, str]] | None = None,
+) -> tuple[MagicMock, MagicMock]:
+    """
+    Creates a mock DB session configured for strict RBAC checks and query chaining.
+    `allowed_grants` is a list of (role_id, resource, action) tuples that are granted.
+    For RolePermission queries matching any granted tuple, returns a real RolePermission instance.
+    Otherwise returns None (causing check_permission to raise 403 Forbidden).
+    For all other entity queries (e.g. Asset), returns a standard mock query chain.
+    """
+    mock_db = MagicMock()
+    entity_query = MagicMock()
+    entity_query.options.return_value = entity_query
+    entity_query.join.return_value = entity_query
+    entity_query.filter.return_value = entity_query
+    entity_query.order_by.return_value = entity_query
+    entity_query.offset.return_value = entity_query
+    entity_query.limit.return_value = entity_query
+
+    grants = set(allowed_grants or [])
+
+    def query_dispatcher(*entities):
+        if entities and entities[0] is RolePermission:
+            rp_query = MagicMock()
+            rp_query.join.return_value = rp_query
+
+            def rp_filter(*criteria):
+                filter_mock = MagicMock()
+                passed_vals = [getattr(c.right, "value", None) for c in criteria if hasattr(c, "right")]
+                if len(passed_vals) >= 3 and (passed_vals[0], passed_vals[1], passed_vals[2]) in grants:
+                    filter_mock.first.return_value = RolePermission(
+                        role_id=passed_vals[0],
+                        permission_id=uuid.uuid4(),
+                    )
+                else:
+                    filter_mock.first.return_value = None
+                return filter_mock
+
+            rp_query.filter.side_effect = rp_filter
+            return rp_query
+
+        return entity_query
+
+    mock_db.query.side_effect = query_dispatcher
+    return mock_db, entity_query
 
 
 def create_mock_user(
@@ -54,8 +101,9 @@ def create_mock_user(
 
 
 def set_user_context(
-    user_id: uuid.UUID, role: str, dept_id: uuid.UUID | None = None
+    user_id: uuid.UUID, role: str, dept_id: uuid.UUID | None = None, role_id: uuid.UUID | None = None
 ) -> CurrentUser:
+    rid = role_id or uuid.uuid4()
     curr_u = CurrentUser(
         user_id=user_id,
         role=role,
@@ -63,7 +111,7 @@ def set_user_context(
         department_id=dept_id,
         email=f"{role}@example.com",
         full_name=f"User {role}",
-        role_id=uuid.uuid4(),
+        role_id=rid,
     )
     app.dependency_overrides[get_current_user] = lambda: curr_u
     return curr_u
@@ -115,6 +163,8 @@ def test_get_assets_employee_denied():
     """Employee role receives 403 Forbidden on GET /api/v1/assets."""
     emp_id = uuid.uuid4()
     set_user_context(emp_id, "employee")
+    mock_db, _ = create_rbac_mock_db(allowed_grants=[])
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.get("/api/v1/assets")
     assert response.status_code == 403
@@ -125,6 +175,8 @@ def test_get_assets_hr_admin_denied():
     """hr_admin role receives 403 Forbidden on GET /api/v1/assets (PRD §5.7)."""
     hr_id = uuid.uuid4()
     set_user_context(hr_id, "hr_admin")
+    mock_db, _ = create_rbac_mock_db(allowed_grants=[])
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.get("/api/v1/assets")
     assert response.status_code == 403
@@ -134,19 +186,13 @@ def test_get_assets_hr_admin_denied():
 def test_get_assets_auditor_full_catalog():
     """Auditor GET returns full asset catalog."""
     auditor_id = uuid.uuid4()
-    set_user_context(auditor_id, "auditor")
+    curr_u = set_user_context(auditor_id, "auditor")
 
     asset1 = create_mock_asset(asset_tag="AST-2026-00001", name="Laptop A")
     asset2 = create_mock_asset(asset_tag="AST-2026-00002", name="Monitor B")
 
-    mock_db = MagicMock()
-    mock_query = mock_db.query.return_value
-    mock_query.options.return_value = mock_query
-    mock_query.filter.return_value = mock_query
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "read")])
     mock_query.count.return_value = 2
-    mock_query.order_by.return_value = mock_query
-    mock_query.offset.return_value = mock_query
-    mock_query.limit.return_value = mock_query
     mock_query.all.return_value = [asset1, asset2]
 
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -165,7 +211,7 @@ def test_get_assets_manager_department_scoped_inclusion_and_exclusion():
     other_dept_id = uuid.uuid4()
     mgr_id = uuid.uuid4()
 
-    set_user_context(mgr_id, "manager", dept_id=mgr_dept_id)
+    curr_u = set_user_context(mgr_id, "manager", dept_id=mgr_dept_id)
 
     dept_user = create_mock_user(full_name="Alice Dept", dept_id=mgr_dept_id)
     other_user = create_mock_user(full_name="Bob Other", dept_id=other_dept_id)
@@ -173,15 +219,8 @@ def test_get_assets_manager_department_scoped_inclusion_and_exclusion():
     # Asset 1 held by Alice (in manager's dept), Asset 2 held by Bob (other dept)
     asset_in_dept = create_mock_asset(asset_tag="AST-2026-00001", current_holder=dept_user)
 
-    mock_db = MagicMock()
-    mock_query = mock_db.query.return_value
-    mock_query.options.return_value = mock_query
-    mock_query.join.return_value = mock_query
-    mock_query.filter.return_value = mock_query
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "read")])
     mock_query.count.return_value = 1
-    mock_query.order_by.return_value = mock_query
-    mock_query.offset.return_value = mock_query
-    mock_query.limit.return_value = mock_query
     mock_query.all.return_value = [asset_in_dept]
 
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -201,9 +240,9 @@ def test_get_assets_manager_department_scoped_inclusion_and_exclusion():
 def test_post_asset_success_it_admin():
     """it_admin can provision an asset with auto-generated tag."""
     admin_id = uuid.uuid4()
-    set_user_context(admin_id, "it_admin")
+    curr_u = set_user_context(admin_id, "it_admin")
 
-    mock_db = MagicMock()
+    mock_db, _ = create_rbac_mock_db([(curr_u.role_id, "assets", "create")])
     mock_db.bind.dialect.name = "sqlite"
 
     # Mock DB sequence table creation & ID fetching
@@ -237,7 +276,9 @@ def test_post_asset_success_it_admin():
 def test_post_asset_auditor_and_employee_forbidden():
     """Auditors and Employees cannot create assets (403 Forbidden)."""
     auditor_id = uuid.uuid4()
-    set_user_context(auditor_id, "auditor")
+    curr_u = set_user_context(auditor_id, "auditor")
+    mock_db, _ = create_rbac_mock_db(allowed_grants=[])
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     payload = {
         "name": "Unauthorized Asset",
@@ -256,7 +297,9 @@ def test_post_asset_auditor_and_employee_forbidden():
 def test_post_asset_validation_errors():
     """POST /assets validates cost >= 0 and useful_life_months > 0."""
     admin_id = uuid.uuid4()
-    set_user_context(admin_id, "it_admin")
+    curr_u = set_user_context(admin_id, "it_admin")
+    mock_db, _ = create_rbac_mock_db([(curr_u.role_id, "assets", "create")])
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     invalid_payload = {
         "name": "Bad Asset",
@@ -280,13 +323,13 @@ def test_post_asset_validation_errors():
 def test_patch_asset_retirement_by_it_admin():
     """it_admin can update asset status to retired via PATCH /assets/{id}."""
     admin_id = uuid.uuid4()
-    set_user_context(admin_id, "it_admin")
+    curr_u = set_user_context(admin_id, "it_admin")
 
     asset_id = uuid.uuid4()
     asset = create_mock_asset(asset_id=asset_id, status=AssetStatus.in_stock)
 
-    mock_db = MagicMock()
-    mock_db.query.return_value.options.return_value.filter.return_value.first.return_value = asset
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "update")])
+    mock_query.filter.return_value.first.return_value = asset
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.patch(f"/api/v1/assets/{asset_id}", json={"status": "retired"})
@@ -298,14 +341,14 @@ def test_patch_asset_retirement_by_it_admin():
 def test_patch_bulk_assets_success():
     """Bulk status update succeeds atomically for valid asset IDs."""
     admin_id = uuid.uuid4()
-    set_user_context(admin_id, "super_admin")
+    curr_u = set_user_context(admin_id, "super_admin")
 
     id1, id2 = uuid.uuid4(), uuid.uuid4()
     asset1 = create_mock_asset(asset_id=id1, status=AssetStatus.in_stock)
     asset2 = create_mock_asset(asset_id=id2, status=AssetStatus.in_stock)
 
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.all.return_value = [asset1, asset2]
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "bulk_update")])
+    mock_query.filter.return_value.all.return_value = [asset1, asset2]
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.patch(
@@ -321,14 +364,14 @@ def test_patch_bulk_assets_success():
 def test_patch_bulk_assets_atomic_failure_missing_id():
     """Bulk update fails completely (404) if any asset_id does not exist."""
     admin_id = uuid.uuid4()
-    set_user_context(admin_id, "it_admin")
+    curr_u = set_user_context(admin_id, "it_admin")
 
     id1, missing_id = uuid.uuid4(), uuid.uuid4()
     asset1 = create_mock_asset(asset_id=id1)
 
-    mock_db = MagicMock()
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "bulk_update")])
     # Only asset1 is found in DB
-    mock_db.query.return_value.filter.return_value.all.return_value = [asset1]
+    mock_query.filter.return_value.all.return_value = [asset1]
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.patch(
@@ -345,6 +388,9 @@ def test_patch_asset_unauthorized_roles_denied():
     for role in ("manager", "employee", "auditor", "hr_admin"):
         user_id = uuid.uuid4()
         set_user_context(user_id, role)
+        mock_db, _ = create_rbac_mock_db(allowed_grants=[])
+        app.dependency_overrides[get_db] = lambda: mock_db
+
         response = client.patch(f"/api/v1/assets/{asset_id}", json={"status": "retired"})
         assert response.status_code == 403, f"Role {role} should be denied PATCH /assets/{{id}}"
 
@@ -355,6 +401,9 @@ def test_patch_bulk_unauthorized_roles_denied():
     for role in ("manager", "employee", "auditor", "hr_admin"):
         user_id = uuid.uuid4()
         set_user_context(user_id, role)
+        mock_db, _ = create_rbac_mock_db(allowed_grants=[])
+        app.dependency_overrides[get_db] = lambda: mock_db
+
         response = client.patch(
             "/api/v1/assets/bulk",
             json={"asset_ids": [str(asset_id)], "status": "retired"},
@@ -369,7 +418,9 @@ def test_patch_bulk_unauthorized_roles_denied():
 def test_delete_asset_rejected_for_it_admin():
     """it_admin receives 403 Forbidden on DELETE /assets/{id}."""
     it_admin_id = uuid.uuid4()
-    set_user_context(it_admin_id, "it_admin")
+    curr_u = set_user_context(it_admin_id, "it_admin")
+    mock_db, _ = create_rbac_mock_db(allowed_grants=[])  # it_admin excluded from delete
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     asset_id = uuid.uuid4()
     response = client.delete(f"/api/v1/assets/{asset_id}")
@@ -379,16 +430,16 @@ def test_delete_asset_rejected_for_it_admin():
 def test_delete_asset_conflict_when_assignment_history_exists():
     """super_admin receives 409 Conflict if asset has assignment history."""
     super_admin_id = uuid.uuid4()
-    set_user_context(super_admin_id, "super_admin")
+    curr_u = set_user_context(super_admin_id, "super_admin")
 
     asset_id = uuid.uuid4()
     asset = create_mock_asset(asset_id=asset_id)
 
-    mock_db = MagicMock()
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "delete")])
     # first() returns asset
-    mock_db.query.return_value.filter.return_value.first.return_value = asset
+    mock_query.filter.return_value.first.return_value = asset
     # scalar() returns count = 1 for assignments, count = 0 for tickets
-    mock_db.query.return_value.filter.return_value.scalar.side_effect = [1, 0]
+    mock_query.filter.return_value.scalar.side_effect = [1, 0]
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -400,15 +451,15 @@ def test_delete_asset_conflict_when_assignment_history_exists():
 def test_delete_asset_success_when_clean():
     """super_admin can hard-delete a clean asset with no history."""
     super_admin_id = uuid.uuid4()
-    set_user_context(super_admin_id, "super_admin")
+    curr_u = set_user_context(super_admin_id, "super_admin")
 
     asset_id = uuid.uuid4()
     asset = create_mock_asset(asset_id=asset_id)
 
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = asset
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "delete")])
+    mock_query.filter.return_value.first.return_value = asset
     # scalar() returns count = 0 for assignments, count = 0 for tickets
-    mock_db.query.return_value.filter.return_value.scalar.side_effect = [0, 0]
+    mock_query.filter.return_value.scalar.side_effect = [0, 0]
 
     app.dependency_overrides[get_db] = lambda: mock_db
 

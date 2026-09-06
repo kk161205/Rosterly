@@ -9,7 +9,7 @@ from sqlalchemy import Column, String, and_, func, or_, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
-from app.core.security import CurrentUser
+from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus, DepreciationMethod, MaintenanceTicket
 from app.models.auth import Department, User
 from app.models.system import AuditLog
@@ -81,13 +81,17 @@ class AssetService:
         page: int = 1,
         page_size: int = 20,
     ) -> AssetListResponse:
-        role = self.current_user.role
-        if role not in ("it_admin", "super_admin", "auditor", "manager"):
-            raise ForbiddenError("You do not have permission to view asset inventory")
+        # RBAC (project doc §3.2 step 2): GET /assets (§5.7) is granted to
+        # it_admin, super_admin, auditor, manager — mapped to
+        # (resource="assets", action="read"). ABAC department scoping for manager
+        # is applied below (§3.2 step 3) and is left unchanged.
+        check_permission(self.current_user, "assets", "read", self.db)
 
         query = self.db.query(Asset).options(
             joinedload(Asset.current_holder).joinedload(User.department)
         )
+
+        role = (self.current_user.role or "").lower()
 
         # Department scoping for manager vs full catalog for it_admin/super_admin/auditor
         if role == "manager":
@@ -170,8 +174,9 @@ class AssetService:
         POST /assets: Auto-generate sequential asset_tag server-side (AST-YYYY-XXXXX).
         Validates depreciation_method and useful_life_months against strict enum and range bounds.
         """
-        if self.current_user.role not in ("it_admin", "super_admin"):
-            raise ForbiddenError("Only IT Admins and Super Admins can create assets")
+        # RBAC (project doc §3.2 step 2): POST /assets (§5.7) is restricted to
+        # it_admin and super_admin — mapped to (resource="assets", action="create").
+        check_permission(self.current_user, "assets", "create", self.db)
 
         # Auto-generate asset_tag
         asset_tag = self._generate_next_asset_tag()
@@ -226,8 +231,9 @@ class AssetService:
         """
         PATCH /assets/{id}: Update asset fields. Allows it_admin and super_admin to set status="retired".
         """
-        if self.current_user.role not in ("it_admin", "super_admin"):
-            raise ForbiddenError("Only IT Admins and Super Admins can update assets")
+        # RBAC (project doc §3.2 step 2): PATCH /assets/{id} (§5.7) is restricted to
+        # it_admin and super_admin — mapped to (resource="assets", action="update").
+        check_permission(self.current_user, "assets", "update", self.db)
 
         asset = self.db.query(Asset).options(
             joinedload(Asset.current_holder).joinedload(User.department)
@@ -275,8 +281,9 @@ class AssetService:
         return self._format_asset_response(asset)
 
     def bulk_update_assets(self, payload: AssetBulkUpdateRequest) -> int:
-        if self.current_user.role not in ("it_admin", "super_admin"):
-            raise ForbiddenError("Only IT Admins and Super Admins can perform bulk status updates")
+        # RBAC (project doc §3.2 step 2): PATCH /assets/bulk (§5.7) is restricted to
+        # it_admin and super_admin — mapped to (resource="assets", action="bulk_update").
+        check_permission(self.current_user, "assets", "bulk_update", self.db)
 
         asset_ids = payload.asset_ids
         if not asset_ids:
@@ -309,8 +316,10 @@ class AssetService:
         return len(assets)
 
     def delete_asset(self, asset_id: UUID) -> None:
-        if self.current_user.role != "super_admin":
-            raise ForbiddenError("Hard deletion of assets is restricted to Super Admins only")
+        # RBAC (project doc §3.2 step 2): DELETE /assets/{id} (§5.7) is restricted
+        # to super_admin only — it_admin is explicitly excluded. Mapped to
+        # (resource="assets", action="delete").
+        check_permission(self.current_user, "assets", "delete", self.db)
 
         asset = self.db.query(Asset).filter(Asset.id == asset_id).first()
         if not asset:

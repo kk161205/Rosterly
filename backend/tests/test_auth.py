@@ -51,6 +51,7 @@ Base.metadata.create_all(bind=engine)
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    app.dependency_overrides[get_db] = override_get_db
     db = TestingSessionLocal()
 
     # Clean previous test data

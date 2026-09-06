@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.security import CurrentUser, get_current_user, require_role
+from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.assets import AssetCategory, AssetStatus
 from app.schemas.assets import (
@@ -30,7 +30,7 @@ def list_assets(
     department_id: UUID | None = Query(None, description="Filter by holder's department ID"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: CurrentUser = Depends(require_role("it_admin", "super_admin", "auditor", "manager")),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AssetListResponse:
     """
@@ -53,7 +53,7 @@ def list_assets(
 @router.post("/", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 def create_asset(
     payload: AssetCreateRequest,
-    current_user: CurrentUser = Depends(require_role("it_admin", "super_admin")),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AssetResponse:
     """
@@ -68,7 +68,7 @@ def create_asset(
 @router.patch("/bulk", status_code=status.HTTP_200_OK)
 def bulk_update_assets(
     payload: AssetBulkUpdateRequest,
-    current_user: CurrentUser = Depends(require_role("it_admin", "super_admin")),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, int]:
     """
@@ -84,7 +84,7 @@ def bulk_update_assets(
 def update_asset(
     id: UUID,
     payload: AssetUpdateRequest,
-    current_user: CurrentUser = Depends(require_role("it_admin", "super_admin")),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AssetResponse:
     """
@@ -99,7 +99,7 @@ def update_asset(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset(
     id: UUID,
-    current_user: CurrentUser = Depends(require_role("super_admin")),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     """
