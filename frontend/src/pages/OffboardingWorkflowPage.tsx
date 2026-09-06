@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { OffboardingWarningBanner } from '@/components/offboarding/OffboardingWarningBanner'
 import { OffboardingProgressGauge } from '@/components/offboarding/OffboardingProgressGauge'
@@ -54,6 +55,23 @@ export const OffboardingWorkflowPage: React.FC = () => {
   const [isStartModalOpen, setIsStartModalOpen] = useState(false)
   const [isTerminateModalOpen, setIsTerminateModalOpen] = useState(false)
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false)
+
+  // Deep-link support: other pages (e.g. Employee Directory / Profile) route here
+  // with ?start=<employeeId> instead of duplicating the offboard-initiation flow.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [startEmployeeId, setStartEmployeeId] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    const employeeId = searchParams.get('start')
+    if (employeeId) {
+      setStartEmployeeId(employeeId)
+      setIsStartModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('start')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -164,7 +182,7 @@ export const OffboardingWorkflowPage: React.FC = () => {
             {isHRAdminOrSuper && (
               <button
                 onClick={() => setIsStartModalOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-mono font-semibold hover:bg-amber-700 transition-all shadow-sm cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-warning text-on-warning text-xs font-mono font-semibold hover:bg-warning/90 transition-all shadow-sm cursor-pointer"
               >
                 <UserMinus className="w-4 h-4" />
                 <span>Start Offboarding</span>
@@ -178,7 +196,7 @@ export const OffboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Active Offboardings</span>
-              <UserMinus className="w-4 h-4 text-amber-600" />
+              <UserMinus className="w-4 h-4 text-warning" />
             </div>
             <div className="font-mono text-2xl font-bold text-on-surface">
               {metrics.total_active_offboardings}
@@ -191,9 +209,9 @@ export const OffboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Assets to Reclaim</span>
-              <Laptop className="w-4 h-4 text-indigo-600" />
+              <Laptop className="w-4 h-4 text-accent" />
             </div>
-            <div className="font-mono text-2xl font-bold text-indigo-600">
+            <div className="font-mono text-2xl font-bold text-accent">
               {metrics.pending_asset_reclamations}
             </div>
             <div className="text-[11px] font-body text-on-surface-variant">
@@ -204,9 +222,9 @@ export const OffboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Access Revocations</span>
-              <Lock className="w-4 h-4 text-rose-600" />
+              <Lock className="w-4 h-4 text-error" />
             </div>
-            <div className="font-mono text-2xl font-bold text-rose-600">
+            <div className="font-mono text-2xl font-bold text-error">
               {metrics.pending_access_revocations}
             </div>
             <div className="text-[11px] font-body text-on-surface-variant">
@@ -217,9 +235,9 @@ export const OffboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Completed Exits</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <CheckCircle2 className="w-4 h-4 text-success" />
             </div>
-            <div className="font-mono text-2xl font-bold text-emerald-600">
+            <div className="font-mono text-2xl font-bold text-success">
               {metrics.completed_offboardings}
             </div>
             <div className="text-[11px] font-body text-on-surface-variant">
@@ -312,7 +330,7 @@ export const OffboardingWorkflowPage: React.FC = () => {
         ) : checklists.length === 0 ? (
           /* Empty State */
           <div className="p-12 text-center border-2 border-dashed border-outline-variant/60 rounded-2xl bg-surface-container-lowest space-y-4">
-            <div className="w-16 h-16 rounded-full bg-amber-500/10 text-amber-700 flex items-center justify-center mx-auto">
+            <div className="w-16 h-16 rounded-full bg-warning/10 text-warning flex items-center justify-center mx-auto">
               <UserMinus className="w-8 h-8" />
             </div>
             <div className="max-w-md mx-auto">
@@ -326,7 +344,7 @@ export const OffboardingWorkflowPage: React.FC = () => {
             {isHRAdminOrSuper && (
               <button
                 onClick={() => setIsStartModalOpen(true)}
-                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-mono font-semibold hover:bg-amber-700 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
+                className="px-4 py-2 rounded-lg bg-warning text-on-warning text-xs font-mono font-semibold hover:bg-warning/90 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
               >
                 <UserMinus className="w-4 h-4" /> Start Offboarding Workflow
               </button>
@@ -354,8 +372,12 @@ export const OffboardingWorkflowPage: React.FC = () => {
         {/* Start Offboarding Modal */}
         <StartOffboardingModal
           isOpen={isStartModalOpen}
-          onClose={() => setIsStartModalOpen(false)}
+          onClose={() => {
+            setIsStartModalOpen(false)
+            setStartEmployeeId(undefined)
+          }}
           onSuccess={loadData}
+          initialEmployeeId={startEmployeeId}
         />
 
         {/* Termination Confirmation Modal */}

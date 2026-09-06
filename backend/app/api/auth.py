@@ -103,5 +103,6 @@ def get_me_endpoint(
         email=current_user.email or "",
         full_name=current_user.full_name or "Rosterly User",
         role=current_user.role,
+        department_id=str(current_user.department_id) if current_user.department_id else None,
     )
 

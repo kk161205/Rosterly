@@ -146,6 +146,9 @@ def test_post_offboarding_denied_roles(role):
     set_user_context(uid, role)
 
     mock_db = MagicMock()
+    # No (employee, create) role_permissions grant for this role — RBAC gate in
+    # OffboardingService.create_offboarding_checklist (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.post("/api/v1/offboarding", json={"employee_id": str(uuid.uuid4())})
@@ -453,6 +456,9 @@ def test_complete_offboarding_denied_non_hr_admin_roles(role):
     set_user_context(uid, role)
 
     mock_db = MagicMock()
+    # No (employee, approve) role_permissions grant for this role — RBAC gate in
+    # OffboardingService.complete_offboarding (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.post(f"/api/v1/offboarding/{chk_id}/complete")

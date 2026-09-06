@@ -19,8 +19,26 @@ interface AssignedAssetsTabProps {
 
 export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
   assetsData,
+  isLoading = false,
 }) => {
   const { current = [], history = [] } = assetsData
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8 animate-pulse">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-surface-container-lowest border border-outline-variant rounded-lg p-5 h-40 space-y-3">
+              <div className="w-10 h-10 rounded-md bg-surface-container-high" />
+              <div className="w-3/4 h-4 bg-surface-container-high rounded" />
+              <div className="w-1/2 h-3 bg-surface-container-low rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 h-32" />
+      </div>
+    )
+  }
 
   const getAssetIcon = (category: AssetCategory) => {
     switch (category) {
@@ -29,7 +47,7 @@ export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
       case 'monitor':
         return <Monitor className="w-5 h-5 text-tertiary" />
       case 'mobile':
-        return <Smartphone className="w-5 h-5 text-indigo-600" />
+        return <Smartphone className="w-5 h-5 text-accent" />
       default:
         return <HardDrive className="w-5 h-5 text-outline" />
     }
@@ -46,8 +64,8 @@ export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
         )
       case 'expiring_soon':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-amber-100 text-amber-900 border border-amber-300">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-warning-container text-on-warning-container border border-warning/30">
+            <AlertTriangle className="w-3.5 h-3.5 text-warning" />
             Expiring Soon ({new Date(expiryDate).toLocaleDateString()})
           </span>
         )

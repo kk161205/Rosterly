@@ -118,7 +118,7 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
                     className="mt-0.5 text-on-surface-variant group-hover:text-accent transition-colors flex-shrink-0"
                   >
                     {isDone ? (
-                      <CheckSquare className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+                      <CheckSquare className="w-5 h-5 text-success fill-success-container" />
                     ) : (
                       <Square className="w-5 h-5 text-outline" />
                     )}
@@ -141,8 +141,8 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
                         </span>
                       )}
                       {task.due_date && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                          <Calendar className="w-3 h-3 text-amber-600" />
+                        <span className="inline-flex items-center gap-1 text-[11px] font-mono text-on-warning-container bg-warning-container px-2 py-0.5 rounded">
+                          <Calendar className="w-3 h-3 text-warning" />
                           Due: {task.due_date}
                         </span>
                       )}
@@ -158,7 +158,7 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
                   }}
                   className={`text-xs font-mono font-medium px-2.5 py-1 rounded border transition-colors ${
                     isDone
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      ? 'bg-success-container text-on-success-container border-success/20'
                       : 'bg-accent/10 text-accent border-accent/20 group-hover:bg-accent group-hover:text-on-accent'
                   }`}
                 >

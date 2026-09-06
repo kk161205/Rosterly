@@ -11,7 +11,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
-from app.core.security import CurrentUser, invalidate_session_cache
+from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment, AssetStatus
 from app.models.auth import Role, Session as DBSessionModel, User, UserStatus
 from app.models.lifecycle import (
@@ -93,13 +93,10 @@ class OffboardingService:
         POST /offboarding — create an offboarding checklist with default & dynamic asset recovery items.
         Allowed roles: hr_admin, super_admin only.
         """
-        user_role = (self.current_user.role or "").lower()
-        if user_role not in ("hr_admin", "super_admin"):
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="Only HR Admin or Super Admin can create offboarding checklists.",
-            )
+        # RBAC (project doc §3.2 step 2): POST /offboarding (§5.6) is restricted to
+        # hr_admin/super_admin — same grant as onboarding's checklist create, so
+        # both share (resource="employee", action="create") without collision.
+        check_permission(self.current_user, "employee", "create", self.db)
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
@@ -281,6 +278,10 @@ class OffboardingService:
                 message="Offboarding checklist not found.",
             )
 
+        # NOT ported to check_permission(): same OR-of-role-and-ABAC pattern as
+        # OnboardingService.get_onboarding_checklist — is_assigned_manager depends
+        # on this specific employee's manager_id, so the whole gate is dynamic
+        # (§3.2 step 3) and is left unchanged. See report.
         user_role = (self.current_user.role or "").lower()
         is_hr_or_admin = user_role in ("hr_admin", "it_admin", "super_admin")
         is_assigned_manager = (
@@ -308,6 +309,9 @@ class OffboardingService:
         Pessimistic row lock on Checklist prevents concurrent modifications.
         Note: Does NOT auto-complete parent checklist or terminate employee (must be invoked via POST /complete).
         """
+        # NOT ported to check_permission(): "matching owner_role_id OR
+        # hr_admin/super_admin" — the brief's own canonical dynamic-ABAC example
+        # (§3.2 step 3, per-item owner_role_id), left exactly as-is. See report.
         user_role = (self.current_user.role or "").lower()
 
         # Pessimistic row locking on parent Checklist row
@@ -429,13 +433,13 @@ class OffboardingService:
         Independently re-checks that all checklist items are done, transitions employee status to terminated,
         revokes all active sessions, and dispatches notification.
         """
-        user_role = (self.current_user.role or "").lower()
-        if user_role not in ("hr_admin", "super_admin"):
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="Only HR Admin or Super Admin can complete an offboarding checklist.",
-            )
+        # RBAC (project doc §3.2 step 2): POST /offboarding/{id}/complete (§5.6) is
+        # restricted to hr_admin/super_admin. This is a final sign-off action
+        # (checklist -> completed, employee -> terminated, sessions revoked), so
+        # it's mapped to (resource="employee", action="approve") rather than
+        # "update" — keeping the "update" pair reserved for PATCH-profile field
+        # edits, which grant the same two roles but for a different operation.
+        check_permission(self.current_user, "employee", "approve", self.db)
 
         checklist = (
             self.db.query(Checklist)
@@ -487,8 +491,6 @@ class OffboardingService:
                 DBSessionModel.user_id == target_user.id,
                 DBSessionModel.revoked_at.is_(None),
             ).update({"revoked_at": now}, synchronize_session=False)
-
-            invalidate_session_cache()
 
             # Notification
             notification = Notification(

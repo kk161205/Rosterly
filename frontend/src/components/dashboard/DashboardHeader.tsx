@@ -17,6 +17,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   onPrimaryAction,
   isRefreshing = false,
 }) => {
+  // `hasDestination` tracks whether this role's action currently routes
+  // somewhere real. Requests (§5.11), Approvals (§5.12), Maintenance Tickets
+  // (§5.10), and Audit Log (§5.17) pages aren't built yet in this codebase —
+  // their buttons stay visible (so the layout doesn't shift once those pages
+  // ship) but disabled, rather than silently doing nothing on click.
   const getRoleDetails = (role: UserRole) => {
     switch (role) {
       case 'manager':
@@ -24,30 +29,35 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           title: 'Department Manager Overview',
           subtitle: 'Review team approvals, department asset allocations, and pending requests.',
           actionLabel: 'Review Approvals',
+          hasDestination: false,
         }
       case 'hr_admin':
         return {
           title: 'HR Administration Hub',
           subtitle: 'Track active onboardings, employee offboarding clearances, and document watchlists.',
           actionLabel: 'Start Onboarding',
+          hasDestination: true,
         }
       case 'it_admin':
         return {
           title: 'IT Asset & Infrastructure Depot',
           subtitle: 'Monitor maintenance tickets, expiring hardware warranties, and available stock.',
           actionLabel: 'Log Maintenance Ticket',
+          hasDestination: false,
         }
       case 'super_admin':
         return {
           title: 'System Oversight & Governance',
           subtitle: 'Global audit ledger, system health metrics, and infrastructure security.',
           actionLabel: 'System Diagnostics',
+          hasDestination: false,
         }
       case 'auditor':
         return {
           title: 'Compliance & Audit Console',
           subtitle: 'Read-only verification feed, policy compliance scores, and immutable records.',
           actionLabel: 'Export Audit Log',
+          hasDestination: false,
         }
       case 'employee':
       default:
@@ -55,6 +65,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           title: 'Employee Workspace',
           subtitle: 'Your active hardware assignments, request status, and action items at a glance.',
           actionLabel: 'New Asset Request',
+          hasDestination: false,
         }
     }
   }
@@ -89,7 +100,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           variant="primary"
           size="md"
           onClick={onPrimaryAction}
+          disabled={!details.hasDestination}
           icon={<Plus className="w-4 h-4" />}
+          title={details.hasDestination ? undefined : `${details.actionLabel} isn't built yet — coming in a future page`}
         >
           {details.actionLabel}
         </Button>

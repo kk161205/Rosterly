@@ -308,29 +308,14 @@ def test_update_employee_permission_forbidden_for_employee():
     )
     app.dependency_overrides[get_current_user] = lambda: current_user
     mock_db = MagicMock()
+    # No (employee, update) role_permissions grant for this role — RBAC gate in
+    # EmployeeProfileService.patch_employee_profile (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
         emp_id = uuid.uuid4()
         response = client.patch(f"/api/v1/employees/{emp_id}", json={"designation": "New Lead"})
-        assert response.status_code == 403
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_offboard_employee_permission_forbidden_for_employee():
-    current_user = CurrentUser(
-        user_id=uuid.uuid4(),
-        role="employee",
-        session_id=uuid.uuid4(),
-    )
-    app.dependency_overrides[get_current_user] = lambda: current_user
-    mock_db = MagicMock()
-    app.dependency_overrides[get_db] = lambda: mock_db
-
-    try:
-        emp_id = uuid.uuid4()
-        response = client.post(f"/api/v1/employees/{emp_id}/offboard")
         assert response.status_code == 403
     finally:
         app.dependency_overrides.clear()
@@ -344,6 +329,9 @@ def test_delete_employee_permission_forbidden_for_hr_admin():
     )
     app.dependency_overrides[get_current_user] = lambda: current_user
     mock_db = MagicMock()
+    # No (employee, delete) role_permissions grant for hr_admin — RBAC gate in
+    # EmployeeDirectoryService.delete_employee (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { OnboardingProgressGauge } from '@/components/onboarding/OnboardingProgressGauge'
 import { OnboardingTaskBoard } from '@/components/onboarding/OnboardingTaskBoard'
@@ -48,6 +49,20 @@ export const OnboardingWorkflowPage: React.FC = () => {
   // Modal & Drawer State
   const [isStartModalOpen, setIsStartModalOpen] = useState(false)
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false)
+
+  // Deep-link support: the Dashboard's HR Admin "Start Onboarding" CTA routes
+  // here with ?start=1 instead of duplicating the modal-open flow.
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('start')) {
+      setIsStartModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('start')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -159,9 +174,9 @@ export const OnboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Pending IT Provisioning</span>
-              <Clock className="w-4 h-4 text-indigo-600" />
+              <Clock className="w-4 h-4 text-accent" />
             </div>
-            <div className="font-mono text-2xl font-bold text-indigo-600">
+            <div className="font-mono text-2xl font-bold text-accent">
               {metrics.pending_it_tasks}
             </div>
             <div className="text-[11px] font-body text-on-surface-variant">
@@ -172,9 +187,9 @@ export const OnboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Pending HR Tasks</span>
-              <Clock className="w-4 h-4 text-rose-600" />
+              <Clock className="w-4 h-4 text-error" />
             </div>
-            <div className="font-mono text-2xl font-bold text-rose-600">
+            <div className="font-mono text-2xl font-bold text-error">
               {metrics.pending_hr_tasks}
             </div>
             <div className="text-[11px] font-body text-on-surface-variant">
@@ -185,9 +200,9 @@ export const OnboardingWorkflowPage: React.FC = () => {
           <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-mono text-on-surface-variant">
               <span>Completion Rate</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <CheckCircle2 className="w-4 h-4 text-success" />
             </div>
-            <div className="font-mono text-2xl font-bold text-emerald-600">
+            <div className="font-mono text-2xl font-bold text-success">
               {metrics.completion_rate}%
             </div>
             <div className="text-[11px] font-body text-on-surface-variant">

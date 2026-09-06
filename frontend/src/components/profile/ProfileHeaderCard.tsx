@@ -74,9 +74,9 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
     <Card elevated className="w-full transition-all">
       {/* Offboarding Banner Alert if active offboarding */}
       {profile.status === 'offboarding' && (
-        <div className="mb-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-md flex items-center justify-between text-amber-900 text-xs font-body">
+        <div className="mb-6 px-4 py-3 bg-warning-container border border-warning/20 rounded-md flex items-center justify-between text-on-warning-container text-xs font-body">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0" />
             <span>
               <strong>Offboarding Active:</strong> Asset reclamation and account revocation workflows are currently in progress for this employee.
             </span>
@@ -100,7 +100,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
               </div>
             )}
             <span className="absolute -bottom-1 -right-1 bg-surface-container-lowest rounded-full p-0.5">
-              <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 block border-2 border-surface-container-lowest" />
+              <span className="w-3.5 h-3.5 rounded-full bg-success block border-2 border-surface-container-lowest" />
             </span>
           </div>
 

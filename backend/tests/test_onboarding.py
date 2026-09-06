@@ -154,6 +154,9 @@ def test_post_onboarding_denied_roles(denied_role):
     set_user_context(user_id, denied_role)
 
     mock_db = MagicMock()
+    # No (employee, create) role_permissions grant for this role — RBAC gate in
+    # OnboardingService.create_onboarding_checklist (check_permission) must deny.
+    mock_db.query().join().filter().first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.post("/api/v1/onboarding", json={"employee_id": str(emp_id)})

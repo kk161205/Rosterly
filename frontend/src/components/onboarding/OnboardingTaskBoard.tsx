@@ -41,27 +41,27 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
       title: 'HR & Legal Compliance',
       subtitle: 'Contracts, NDA & Payroll',
       icon: UserCheck,
-      headerBg: 'bg-rose-50 text-rose-900 border-rose-200',
-      badgeBg: 'bg-rose-100 text-rose-800',
-      accentColor: 'border-l-rose-500',
+      headerBg: 'bg-error-container text-on-error-container border-error/20',
+      badgeBg: 'bg-error-container text-on-error-container',
+      accentColor: 'border-l-error',
     },
     {
       roleKey: 'it_admin',
       title: 'IT & Access Provisioning',
       subtitle: 'Hardware, Accounts & Credentials',
       icon: Laptop,
-      headerBg: 'bg-indigo-50 text-indigo-900 border-indigo-200',
-      badgeBg: 'bg-indigo-100 text-indigo-800',
-      accentColor: 'border-l-indigo-500',
+      headerBg: 'bg-accent-container text-on-accent-container border-accent/20',
+      badgeBg: 'bg-accent-container text-on-accent-container',
+      accentColor: 'border-l-accent',
     },
     {
       roleKey: 'facilities',
       title: 'Facilities & Workplace',
       subtitle: 'Keycard, ID Badge & Desk Pass',
       icon: KeyRound,
-      headerBg: 'bg-amber-50 text-amber-900 border-amber-200',
-      badgeBg: 'bg-amber-100 text-amber-800',
-      accentColor: 'border-l-amber-500',
+      headerBg: 'bg-warning-container text-on-warning-container border-warning/20',
+      badgeBg: 'bg-warning-container text-on-warning-container',
+      accentColor: 'border-l-warning',
     },
   ]
 
@@ -95,7 +95,7 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
             {/* Column Header */}
             <div className={`p-3.5 border-b flex items-center justify-between ${col.headerBg}`}>
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-md bg-white/80 backdrop-blur-xs flex items-center justify-center shadow-xs">
+                <div className="w-8 h-8 rounded-md bg-surface-container-lowest/80 backdrop-blur-xs flex items-center justify-center shadow-xs">
                   <Icon className="w-4 h-4 text-on-surface" />
                 </div>
                 <div>
@@ -128,7 +128,7 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
                       onClick={() => onSelectItem?.(item)}
                       className={`group bg-surface-container-lowest border border-outline-variant/60 rounded-lg p-3 shadow-2xs hover:shadow-xs transition-all border-l-4 ${
                         col.accentColor
-                      } ${isDone ? 'opacity-75 bg-slate-50/70' : ''} ${onSelectItem ? 'cursor-pointer' : ''}`}
+                      } ${isDone ? 'opacity-75 bg-surface-container-low/70' : ''} ${onSelectItem ? 'cursor-pointer' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <span className="font-body text-xs font-semibold text-on-surface leading-snug flex-1">
@@ -151,16 +151,16 @@ export const OnboardingTaskBoard: React.FC<OnboardingTaskBoardProps> = ({
                         {/* Status Chip */}
                         <div className="flex items-center gap-1.5">
                           {isDone ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Done
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-on-success-container bg-success-container px-2 py-0.5 rounded border border-success/20">
+                              <CheckCircle2 className="w-3 h-3 text-success" /> Done
                             </span>
                           ) : isInProgress ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                              <Clock className="w-3 h-3 text-blue-600 animate-spin-slow" /> In Progress
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-on-accent-container bg-accent-container px-2 py-0.5 rounded border border-accent/20">
+                              <Clock className="w-3 h-3 text-accent animate-spin-slow" /> In Progress
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                              <AlertCircle className="w-3 h-3 text-slate-400" /> Pending
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-on-surface-variant bg-surface-container px-2 py-0.5 rounded border border-outline-variant">
+                              <AlertCircle className="w-3 h-3 text-outline" /> Pending
                             </span>
                           )}
                         </div>

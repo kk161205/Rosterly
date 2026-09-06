@@ -67,8 +67,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
 
   // Confirmation modal states
-  const [showOffboardConfirm, setShowOffboardConfirm] = useState(false)
-  const [isOffboarding, setIsOffboarding] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -87,7 +85,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
       setIsEditing(false)
       setSaveError(null)
       setSaveSuccess(null)
-      setShowOffboardConfirm(false)
       setShowDeleteConfirm(false)
     }
   }, [employee])
@@ -98,8 +95,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
       if (e.key === 'Escape') {
         if (showDeleteConfirm) {
           setShowDeleteConfirm(false)
-        } else if (showOffboardConfirm) {
-          setShowOffboardConfirm(false)
         } else if (isEditing) {
           setIsEditing(false)
         } else {
@@ -109,7 +104,7 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [employee, showDeleteConfirm, showOffboardConfirm, isEditing, onClose])
+  }, [employee, showDeleteConfirm, isEditing, onClose])
 
   if (!employee) return null
 
@@ -143,25 +138,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
     }
   }
 
-  const handleConfirmOffboard = async () => {
-    setIsOffboarding(true)
-    setSaveError(null)
-    try {
-      const updated = await employeeService.offboardEmployee(employee.id)
-      setSaveSuccess(`${employee.full_name} is now transitioned to offboarding.`)
-      setShowOffboardConfirm(false)
-      if (onEmployeeUpdated) {
-        onEmployeeUpdated(updated)
-      }
-      setTimeout(() => setSaveSuccess(null), 3500)
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to offboard employee'
-      setSaveError(errorMsg)
-    } finally {
-      setIsOffboarding(false)
-    }
-  }
-
   const handleConfirmDelete = async () => {
     setIsDeleting(true)
     setSaveError(null)
@@ -185,7 +161,7 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
         onClick={() => {
-          if (!showDeleteConfirm && !showOffboardConfirm) {
+          if (!showDeleteConfirm) {
             onClose()
           }
         }}
@@ -233,8 +209,8 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
 
           {/* Feedback Banners */}
           {saveSuccess && (
-            <div className="mb-3 p-3 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-sans font-medium flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <div className="mb-3 p-3 rounded-lg bg-success-container text-on-success-container border border-success/20 text-xs font-sans font-medium flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
               <span>{saveSuccess}</span>
             </div>
           )}
@@ -542,7 +518,10 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setShowOffboardConfirm(true)}
+                    onClick={() => {
+                      onClose()
+                      navigate(`/offboarding?start=${employee.id}`)
+                    }}
                     icon={<UserMinus className="w-3.5 h-3.5 text-secondary" />}
                     title="Initiate Offboarding Process"
                   >
@@ -567,47 +546,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
           )}
         </div>
       </div>
-
-      {/* Confirmation Modal: Offboarding */}
-      {showOffboardConfirm && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl border border-outline-variant p-6 shadow-2xl space-y-4 animate-scale-in">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center flex-shrink-0 border border-outline-variant/60">
-                <UserMinus className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-title-md font-sans font-semibold text-on-surface">
-                  Initiate Offboarding
-                </h3>
-                <p className="text-body-xs font-body text-on-surface-variant">
-                  Change employee status to offboarding
-                </p>
-              </div>
-            </div>
-
-            <p className="text-body-sm font-body text-on-surface-variant leading-relaxed">
-              Are you sure you want to transition <strong>{employee.full_name}</strong> to offboarding? This will update their active status in the directory and initiate departure workflows.
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowOffboardConfirm(false)} disabled={isOffboarding}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                isLoading={isOffboarding}
-                onClick={handleConfirmOffboard}
-                disabled={isOffboarding}
-                className="bg-primary hover:bg-primary-container"
-              >
-                Confirm Offboarding
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Confirmation Modal: Deletion (Super Admin Destructive Action) */}
       {showDeleteConfirm && (

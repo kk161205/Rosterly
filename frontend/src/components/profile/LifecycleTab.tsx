@@ -9,7 +9,21 @@ interface LifecycleTabProps {
 
 export const LifecycleTab: React.FC<LifecycleTabProps> = ({
   lifecycleData,
+  isLoading = false,
 }) => {
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 h-28" />
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="px-6 py-4 h-16 border-b border-outline-variant/60 last:border-0" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   if (!lifecycleData) {
     return (
       <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-3 shadow-sm">
@@ -135,7 +149,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                 {item.status === 'completed' || item.status === 'done' ? (
                   <CheckCircle2 className="w-5 h-5 text-tertiary flex-shrink-0 mt-0.5" />
                 ) : (
-                  <Clock className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <Clock className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
                 )}
                 <div>
                   <h4 className="text-xs font-semibold text-on-surface">{item.title}</h4>
@@ -155,7 +169,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                     Completed {item.completed_at ? new Date(item.completed_at).toLocaleDateString() : ''}
                   </span>
                 ) : (
-                  <span className="text-amber-700 font-semibold flex items-center gap-1">
+                  <span className="text-warning font-semibold flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />
                     Pending {item.due_date ? `(Due ${new Date(item.due_date).toLocaleDateString()})` : ''}
                   </span>

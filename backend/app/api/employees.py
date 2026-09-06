@@ -1,7 +1,6 @@
 """
 Employee Directory & Profile API routes — project doc §5.3 & §5.4.
 """
-from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
@@ -14,7 +13,6 @@ from app.schemas.employee_directory import (
     EmployeeActionResponse,
     EmployeeDirectoryResponse,
     EmployeeFiltersMetaResponse,
-    EmployeeListItem,
 )
 from app.schemas.employee_profile import (
     DocumentResponse,
@@ -53,7 +51,7 @@ def get_employee_directory(
     role: str | None = Query(None, description="Filter by user role name"),
     view: str = Query("list", pattern="^(list|tree)$", description="View format: list or tree"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(20, ge=1, le=1000, description="Items per page"),
+    page_size: int = Query(25, ge=1, le=100, description="Items per page"),
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EmployeeDirectoryResponse:
@@ -211,24 +209,6 @@ def get_employee_lifecycle(
         return None
     return LifecycleChecklistResponse.model_validate(data)
 
-
-
-@router.post("/{employee_id}/offboard", response_model=EmployeeListItem)
-def offboard_employee(
-    employee_id: UUID,
-    request: Request,
-    exit_date: date | None = Query(None, description="Employee's last working day"),
-    reason: str | None = Query(None, description="Reason for offboarding"),
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> EmployeeListItem:
-    """
-    Initiate offboarding transition for an employee (Super Admin or HR Admin only).
-    """
-    ip_address = request.client.host if request.client else None
-    service = EmployeeDirectoryService(db=db, current_user=current_user, ip_address=ip_address)
-    data = service.offboard_employee(employee_id=employee_id, exit_date=exit_date, reason=reason)
-    return EmployeeListItem.model_validate(data)
 
 
 @router.delete("/{employee_id}", response_model=EmployeeActionResponse)

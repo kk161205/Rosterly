@@ -33,6 +33,7 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
   isSelf,
   onUploadDocument,
   onDeleteDocument,
+  isLoading = false,
 }) => {
   const isHRAdmin = ['hr_admin', 'super_admin'].includes(currentUserRole)
   const canUpload = isSelf || isHRAdmin
@@ -82,6 +83,16 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-3 animate-pulse">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 h-16" />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header & Drag Drop Upload Zone */}
@@ -125,7 +136,7 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
                   onChange={(e) => setIsConfidential(e.target.checked)}
                   className="rounded border-outline-variant text-accent focus:ring-accent"
                 />
-                <Lock className="w-3.5 h-3.5 text-amber-600" />
+                <Lock className="w-3.5 h-3.5 text-warning" />
                 Mark as Confidential (Restricted to Self & HR)
               </label>
             </div>

@@ -82,7 +82,7 @@ export const OnboardingDetailDrawer: React.FC<OnboardingDetailDrawerProps> = ({
                 <span
                   className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full border ${
                     isCompleted
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      ? 'bg-success-container text-on-success-container border-success/30'
                       : 'bg-accent-container/50 text-on-accent-container border-accent/30'
                   }`}
                 >
@@ -98,7 +98,7 @@ export const OnboardingDetailDrawer: React.FC<OnboardingDetailDrawerProps> = ({
                 <div className="h-2.5 w-full bg-surface-container-high rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-500 ${
-                      isCompleted ? 'bg-emerald-500' : 'bg-accent'
+                      isCompleted ? 'bg-success' : 'bg-accent'
                     }`}
                     style={{ width: `${checklist.progress_percentage}%` }}
                   />
@@ -151,7 +151,7 @@ export const OnboardingDetailDrawer: React.FC<OnboardingDetailDrawerProps> = ({
                       </div>
 
                       <div className="flex items-center justify-between text-[11px] font-mono pt-1 border-t border-outline-variant/20">
-                        <span className="uppercase text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                        <span className="uppercase text-on-accent-container bg-accent-container px-1.5 py-0.5 rounded">
                           {item.owner_role_name || 'hr_admin'}
                         </span>
 
@@ -173,7 +173,7 @@ export const OnboardingDetailDrawer: React.FC<OnboardingDetailDrawerProps> = ({
                       </div>
 
                       {isDone && item.completed_by_name && (
-                        <div className="text-[10px] font-mono text-emerald-700 bg-emerald-50/60 p-1.5 rounded flex items-center justify-between">
+                        <div className="text-[10px] font-mono text-on-success-container bg-success-container/60 p-1.5 rounded flex items-center justify-between">
                           <span>Verified: {item.completed_by_name}</span>
                           {item.completed_at && (
                             <span>{new Date(item.completed_at).toLocaleTimeString()}</span>
