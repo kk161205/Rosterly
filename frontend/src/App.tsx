@@ -5,6 +5,7 @@ import { EmployeeDirectoryPage } from '@/pages/EmployeeDirectoryPage'
 import { EmployeeProfilePage } from '@/pages/EmployeeProfilePage'
 import { OnboardingWorkflowPage } from '@/pages/OnboardingWorkflowPage'
 import { OffboardingWorkflowPage } from '@/pages/OffboardingWorkflowPage'
+import { AssetInventoryPage } from '@/pages/AssetInventoryPage'
 import { authStorage } from '@/utils/authStorage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -42,6 +43,14 @@ function App() {
           element={
             <ProtectedRoute>
               <OffboardingWorkflowPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assets"
+          element={
+            <ProtectedRoute>
+              <AssetInventoryPage />
             </ProtectedRoute>
           }
         />

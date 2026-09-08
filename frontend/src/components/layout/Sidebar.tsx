@@ -55,7 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'ASSET GOVERNANCE',
     items: [
-      { name: 'Asset Inventory', path: '/assets', icon: Box, roleAccess: ['employee', 'manager', 'it_admin', 'super_admin', 'auditor'] },
+      { name: 'Asset Inventory', path: '/assets', icon: Box, roleAccess: ['manager', 'it_admin', 'super_admin', 'auditor'] },
       { name: 'Maintenance & Tickets', path: '/maintenance', icon: Wrench, roleAccess: ['it_admin', 'super_admin'] },
     ],
   },
