@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
-from app.core.errors import AppError
+from app.core.errors import AppError, FileInvalidError
 from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment
 from app.models.auth import Department, Role, User, UserStatus
@@ -73,6 +73,7 @@ class EmployeeProfileService:
                 Department.name.label("department_name"),
                 Role.name.label("role_name"),
                 ManagerUser.full_name.label("manager_name"),
+                ManagerUser.designation.label("manager_designation"),
             )
             .outerjoin(Department, User.department_id == Department.id)
             .outerjoin(Role, User.role_id == Role.id)
@@ -84,7 +85,7 @@ class EmployeeProfileService:
         if not target:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
-        user_obj, dept_name, role_name, manager_name = target
+        user_obj, dept_name, role_name, manager_name, manager_designation = target
 
         # Row-level department scoping for manager role
         if user_role == "manager" and not is_self:
@@ -104,6 +105,45 @@ class EmployeeProfileService:
             else str(user_obj.status)
         )
 
+        manager_node = None
+        if user_obj.manager_id and manager_name:
+            manager_node = {
+                "id": user_obj.manager_id,
+                "full_name": manager_name,
+                "designation": manager_designation or "",
+                "department": None,
+                "role": None,
+            }
+
+        # Direct reports (§5.4 Overview Tab reporting hierarchy tree) — the
+        # inverse of manager_id, previously never computed at all so the tree
+        # always rendered empty regardless of whether the employee actually
+        # had reports.
+        DirectReportRole = aliased(Role)
+        DirectReportDept = aliased(Department)
+        direct_report_rows = (
+            self.db.query(
+                User,
+                DirectReportRole.name.label("role_name"),
+                DirectReportDept.name.label("department_name"),
+            )
+            .outerjoin(DirectReportRole, User.role_id == DirectReportRole.id)
+            .outerjoin(DirectReportDept, User.department_id == DirectReportDept.id)
+            .filter(User.manager_id == employee_id)
+            .order_by(User.full_name.asc())
+            .all()
+        )
+        direct_reports = [
+            {
+                "id": report.id,
+                "full_name": report.full_name,
+                "designation": report.designation,
+                "department": report_dept_name,
+                "role": report_role_name,
+            }
+            for report, report_role_name, report_dept_name in direct_report_rows
+        ]
+
         return {
             "id": user_obj.id,
             "employee_code": user_obj.employee_code,
@@ -115,8 +155,12 @@ class EmployeeProfileService:
             "department_name": dept_name,
             "manager_id": user_obj.manager_id,
             "manager_name": manager_name,
+            "manager": manager_node,
+            "direct_reports": direct_reports,
             "designation": user_obj.designation,
             "phone": user_obj.phone,
+            "emergency_contact_name": user_obj.emergency_contact_name,
+            "emergency_contact_phone": user_obj.emergency_contact_phone,
             "status": status_val,
             "date_of_joining": user_obj.date_of_joining,
             "date_of_exit": user_obj.date_of_exit,
@@ -169,8 +213,11 @@ class EmployeeProfileService:
                     message="Address field storage is not supported by database schema. Profile update rejected.",
                 )
 
-            # Validate that self only updates allowed field ('phone')
-            allowed_self_fields = {"phone"}
+            # Validate that self only updates allowed fields. Emergency contact
+            # is included per §5.4's Overview Tab spec ("inline pencil edit
+            # toggle (HR Admin / self)") — self can edit their own contact
+            # details, unlike role_id/status/department_id/manager_id below.
+            allowed_self_fields = {"phone", "emergency_contact_name", "emergency_contact_phone"}
             restricted_fields = set(set_fields.keys()) - allowed_self_fields
             if restricted_fields:
                 restricted_field = sorted(list(restricted_fields))[0]
@@ -191,6 +238,12 @@ class EmployeeProfileService:
         # Apply updates based on payload
         if "phone" in set_fields:
             target_user.phone = (payload.phone or "").strip() or None
+
+        if "emergency_contact_name" in set_fields:
+            target_user.emergency_contact_name = (payload.emergency_contact_name or "").strip() or None
+
+        if "emergency_contact_phone" in set_fields:
+            target_user.emergency_contact_phone = (payload.emergency_contact_phone or "").strip() or None
 
         if user_role in ("hr_admin", "super_admin"):
             if "full_name" in set_fields and payload.full_name is not None:
@@ -314,7 +367,11 @@ class EmployeeProfileService:
         # manager AND it_admin) differs from get_employee_profile's read grant
         # (excludes it_admin only) — the doc's 5-action vocabulary has no way to
         # distinguish "read the profile" from "read the document vault" under the
-        # same resource. Left as the original hardcoded check; see final report.
+        # same resource. A dedicated employee_document resource + migration
+        # (c2d4e6f8a0b2) exists for this but was reverted here after it proved
+        # disproportionately disruptive to this file's mock-heavy test suite for
+        # a pure architecture cleanup with no functional bug behind it — left as
+        # the original hardcoded check.
         if user_role in ("manager", "it_admin"):
             raise AppError(
                 status_code=403,
@@ -379,11 +436,11 @@ class EmployeeProfileService:
         Denied roles: manager (403), it_admin (403), auditor (403).
         """
         user_role = (self.current_user.role or "").lower()
-        # NOT ported to check_permission(): this would need (resource="employee",
+        # NOT ported to check_permission(): would need (resource="employee",
         # action="create"), but its allowed set (employee-self, hr_admin,
         # super_admin) differs from the checklist-create grant used for
-        # POST /onboarding and POST /offboarding (hr_admin, super_admin only, no
-        # self-upload concept). Left as the original hardcoded check; see report.
+        # POST /onboarding and POST /offboarding. See get_employee_documents'
+        # comment above — reverted here for the same reason.
         if user_role in ("manager", "it_admin", "auditor"):
             raise AppError(
                 status_code=403,
@@ -403,28 +460,21 @@ class EmployeeProfileService:
         if not target_user:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
-        # File size validation: max 10MB
+        # File size validation: max 10MB (§7 rule 8)
         max_bytes = 10 * 1024 * 1024
         if len(file_bytes) > max_bytes:
-            raise AppError(
-                status_code=400,
-                code="bad_request",
-                message="File size exceeds maximum allowed limit of 10MB.",
-            )
+            raise FileInvalidError("File size exceeds maximum allowed limit of 10MB.")
 
         # Path traversal prevention: strip directory components
         raw_basename = os.path.basename(file_name)
         display_name = raw_basename or "uploaded_doc"
 
-        # File extension validation
+        # File extension validation — PDF, PNG, JPG only (§7 rule 8; .docx was
+        # previously accepted here in violation of the documented constraint).
         ext = os.path.splitext(display_name)[1].lower()
-        allowed_exts = {".pdf", ".png", ".jpg", ".jpeg", ".docx"}
+        allowed_exts = {".pdf", ".png", ".jpg", ".jpeg"}
         if ext not in allowed_exts:
-            raise AppError(
-                status_code=400,
-                code="bad_request",
-                message="Invalid file type. Allowed formats: PDF, PNG, JPG, JPEG, DOCX.",
-            )
+            raise FileInvalidError("Invalid file type. Allowed formats: PDF, PNG, JPG, JPEG.")
 
         # Generate a safe physical filename on disk
         safe_base = re.sub(r"[^a-zA-Z0-9_.-]", "_", display_name)
@@ -488,10 +538,10 @@ class EmployeeProfileService:
         Self cannot delete own documents.
         """
         user_role = (self.current_user.role or "").lower()
-        # NOT ported to check_permission(): this would need (resource="employee",
+        # NOT ported to check_permission(): would need (resource="employee",
         # action="delete"), but its allowed set (hr_admin, super_admin) differs
-        # from the account-deletion grant used by DELETE /employees/{id}
-        # (super_admin only). Left as the original hardcoded check; see report.
+        # from DELETE /employees/{id}'s (super_admin only). See
+        # get_employee_documents' comment above — reverted for the same reason.
         if user_role not in ("hr_admin", "super_admin"):
             raise AppError(
                 status_code=403,

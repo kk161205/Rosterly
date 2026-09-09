@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from app.schemas.onboarding import (
     ChecklistItemResponse,
     ChecklistItemUpdateRequest,
+    ChecklistListResponse,
     ChecklistResponse,
 )
 
@@ -24,4 +25,5 @@ __all__ = [
     "ChecklistItemResponse",
     "ChecklistResponse",
     "ChecklistItemUpdateRequest",
+    "ChecklistListResponse",
 ]

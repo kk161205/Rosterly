@@ -38,6 +38,10 @@ class FilterOptionItem(BaseModel):
     value: str
     label: str
     count: int
+    # Populated only on `roles` items — the role's real UUID, needed by the
+    # Directory drawer's edit form to send PATCH /employees/{id}'s role_id
+    # field (the backend schema takes an id, not the role name in `value`).
+    role_id: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

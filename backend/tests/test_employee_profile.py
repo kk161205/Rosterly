@@ -90,7 +90,9 @@ def test_get_employee_profile_self_allowed():
         "Engineering",
         "employee",
         "Manager One",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -132,7 +134,9 @@ def test_get_employee_profile_manager_own_dept_allowed():
         "Engineering",
         "employee",
         "Manager One",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -156,7 +160,9 @@ def test_get_employee_profile_manager_out_of_dept_denied_403():
         "Marketing",
         "employee",
         "Manager Two",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -197,7 +203,9 @@ def test_get_employee_profile_hr_admin_allowed():
         "Engineering",
         "employee",
         "Manager One",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -219,7 +227,9 @@ def test_get_employee_profile_super_admin_allowed():
         "Engineering",
         "employee",
         "Manager One",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -241,7 +251,9 @@ def test_get_employee_profile_auditor_allowed():
         "Engineering",
         "employee",
         "Manager One",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -267,7 +279,9 @@ def test_patch_employee_self_phone_allowed():
         "Engineering",
         "employee",
         "Manager One",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -406,7 +420,9 @@ def test_patch_employee_hr_admin_allowed_all_fields():
         "HR",
         "hr_admin",
         "Manager Boss",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
@@ -440,7 +456,9 @@ def test_patch_employee_super_admin_allowed_all_fields():
         "Engineering",
         "super_admin",
         "Manager Boss",
+        "Senior Manager",
     )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:

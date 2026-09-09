@@ -26,12 +26,13 @@ app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
-from app.api import assets, auth, dashboard, departments, employees, offboarding, onboarding
+from app.api import assets, auth, dashboard, departments, employees, offboarding, onboarding, roles
 
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX + "/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix=settings.API_V1_PREFIX + "/dashboard", tags=["dashboard"])
 app.include_router(employees.router, prefix=settings.API_V1_PREFIX + "/employees", tags=["employees"])
 app.include_router(departments.router, prefix=settings.API_V1_PREFIX + "/departments", tags=["departments"])
+app.include_router(roles.router, prefix=settings.API_V1_PREFIX + "/roles", tags=["roles"])
 app.include_router(onboarding.router, prefix=settings.API_V1_PREFIX + "/onboarding", tags=["onboarding"])
 app.include_router(offboarding.router, prefix=settings.API_V1_PREFIX + "/offboarding", tags=["offboarding"])
 app.include_router(assets.router, prefix=settings.API_V1_PREFIX + "/assets", tags=["assets"])

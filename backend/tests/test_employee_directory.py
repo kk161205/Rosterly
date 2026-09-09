@@ -284,7 +284,7 @@ def test_employee_filters_endpoint():
         (UserStatus.active, 10)
     ]
     mock_db.query.return_value.join.return_value.group_by.return_value.all.return_value = [
-        ("employee", 10)
+        (uuid.uuid4(), "employee", 10)
     ]
 
     app.dependency_overrides[get_db] = lambda: mock_db

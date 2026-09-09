@@ -80,13 +80,16 @@ def update_checklist_item(
 @router.get("/", response_model=ChecklistListResponse)
 def list_onboardings(
     status: ChecklistStatus | None = Query(None, description="Filter checklists by status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChecklistListResponse:
     """
     GET /onboarding — List active/completed onboarding checklists (PRD §5.5).
-    Allowed roles: hr_admin, super_admin only.
+    Allowed roles: hr_admin/super_admin (full); it_admin and manager (scoped —
+    see OnboardingService.list_onboardings).
     """
     service = OnboardingService(db=db, current_user=current_user)
-    data = service.list_onboardings(status_filter=status)
+    data = service.list_onboardings(status_filter=status, page=page, page_size=page_size)
     return ChecklistListResponse.model_validate(data)

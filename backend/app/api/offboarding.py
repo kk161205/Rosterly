@@ -3,14 +3,16 @@ Offboarding Workflow API routes — project doc §5.6.
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
+from app.models.lifecycle import ChecklistStatus
 from app.schemas.offboarding import (
     ChecklistItemResponse,
     ChecklistItemUpdateRequest,
+    ChecklistListResponse,
     ChecklistResponse,
     OffboardingCreateRequest,
 )
@@ -39,6 +41,26 @@ def create_offboarding_checklist(
         reason=payload.reason,
     )
     return ChecklistResponse.model_validate(data)
+
+
+@router.get("", response_model=ChecklistListResponse)
+@router.get("/", response_model=ChecklistListResponse)
+def list_offboardings(
+    status: ChecklistStatus | None = Query(None, description="Filter checklists by status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChecklistListResponse:
+    """
+    GET /offboarding — List active/completed offboarding checklists (§5.6
+    addition — mirrors §5.5's GET /onboarding, not in the original doc).
+    Allowed roles: hr_admin/super_admin (full); it_admin and manager (scoped —
+    see OffboardingService.list_offboardings).
+    """
+    service = OffboardingService(db=db, current_user=current_user)
+    data = service.list_offboardings(status_filter=status, page=page, page_size=page_size)
+    return ChecklistListResponse.model_validate(data)
 
 
 @router.get("/{checklist_id}", response_model=ChecklistResponse)

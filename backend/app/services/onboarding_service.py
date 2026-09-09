@@ -216,7 +216,10 @@ class OnboardingService:
                 joinedload(Checklist.items).joinedload(ChecklistItem.owner_role),
                 joinedload(Checklist.items).joinedload(ChecklistItem.completer),
             )
-            .filter(Checklist.id == checklist_id)
+            .filter(
+                Checklist.id == checklist_id,
+                Checklist.type == ChecklistType.onboarding,
+            )
             .first()
         )
         if not checklist:
@@ -265,10 +268,17 @@ class OnboardingService:
         # whole gate, including its role-only half, is left exactly as-is.
         user_role = (self.current_user.role or "").lower()
 
-        # Pessimistic row locking on parent Checklist row
+        # Pessimistic row locking on parent Checklist row. Type-filtered so a
+        # caller with a legitimate offboarding checklist ID can't have it
+        # processed by the onboarding endpoint instead — that would run
+        # onboarding's cascading-completion logic and skip offboarding's
+        # asset-return side effect entirely (rules.md §1.2 cross-workflow fix).
         checklist = (
             self.db.query(Checklist)
-            .filter(Checklist.id == checklist_id)
+            .filter(
+                Checklist.id == checklist_id,
+                Checklist.type == ChecklistType.onboarding,
+            )
             .with_for_update()
             .first()
         )
@@ -392,24 +402,21 @@ class OnboardingService:
         }
 
     def list_onboardings(
-        self, status_filter: Optional[ChecklistStatus] = None
+        self,
+        status_filter: Optional[ChecklistStatus] = None,
+        page: int = 1,
+        page_size: int = 25,
     ) -> dict[str, Any]:
         """
         GET /onboarding — list active / completed onboarding checklists (§5.5).
-        Allowed roles: hr_admin, super_admin only.
+        Allowed roles: hr_admin/super_admin (full); it_admin (checklists with at
+        least one item owned by the IT role — "view + complete own tasks" per
+        §5.5's Access line); manager (checklists for their own direct reports —
+        "view own report's progress"). Previously this endpoint 403'd it_admin
+        and manager entirely despite §5.5 explicitly granting them access,
+        leaving the Onboarding page a dead-end error screen for both roles.
         """
         user_role = (self.current_user.role or "").lower()
-        # NOT ported to check_permission(): this would need (resource="employee",
-        # action="read"), but its allowed set (hr_admin, super_admin only) differs
-        # from both get_employee_profile's read grant (also includes employee,
-        # manager, auditor) and get_onboarding_checklist's role-only set (also
-        # includes it_admin). Left as the original hardcoded check; see report.
-        if user_role not in ("hr_admin", "super_admin"):
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="Only HR Admin or Super Admin can view the onboarding checklist list.",
-            )
 
         query = (
             self.db.query(Checklist)
@@ -421,13 +428,39 @@ class OnboardingService:
             .filter(Checklist.type == ChecklistType.onboarding)
         )
 
+        if user_role in ("hr_admin", "super_admin"):
+            pass
+        elif user_role == "it_admin":
+            query = query.filter(
+                Checklist.items.any(ChecklistItem.owner_role_id == self.current_user.role_id)
+            )
+        elif user_role == "manager":
+            query = query.join(User, Checklist.employee_id == User.id).filter(
+                User.manager_id == self.current_user.user_id
+            )
+        else:
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="You do not have permission to view the onboarding checklist list.",
+            )
+
         if status_filter:
             query = query.filter(Checklist.status == status_filter)
 
-        checklists = query.order_by(Checklist.created_at.desc()).all()
+        total = query.order_by(None).count()
+        total_pages = -(-total // page_size) if total > 0 else 0
+        offset = (page - 1) * page_size
+
+        checklists = (
+            query.order_by(Checklist.created_at.desc()).offset(offset).limit(page_size).all()
+        )
         formatted_checklists = [self._format_checklist_response(c) for c in checklists]
 
         return {
             "checklists": formatted_checklists,
-            "total": len(formatted_checklists),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
         }

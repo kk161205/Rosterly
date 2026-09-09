@@ -211,16 +211,21 @@ class EmployeeDirectoryService:
 
         # Role counts from DB
         role_query = (
-            self.db.query(Role.name, func.count(User.id))
+            self.db.query(Role.id, Role.name, func.count(User.id))
             .join(User, User.role_id == Role.id)
         )
         if user_role == "manager":
             role_query = role_query.filter(User.department_id == self.current_user.department_id)
-        role_rows = role_query.group_by(Role.name).all()
+        role_rows = role_query.group_by(Role.id, Role.name).all()
 
         role_items = [
-            {"value": r_name, "label": r_name.replace("_", " ").title(), "count": r_count}
-            for r_name, r_count in role_rows
+            {
+                "value": r_name,
+                "label": r_name.replace("_", " ").title(),
+                "count": r_count,
+                "role_id": str(r_id),
+            }
+            for r_id, r_name, r_count in role_rows
         ]
 
         return {

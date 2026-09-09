@@ -85,6 +85,8 @@ class User(Base):
     manager_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     designation = Column(String(100), nullable=False)
     phone = Column(String(50), nullable=True)
+    emergency_contact_name = Column(String(255), nullable=True)
+    emergency_contact_phone = Column(String(50), nullable=True)
     status = Column(Enum(UserStatus, name="user_status_enum", native_enum=False), default=UserStatus.active, nullable=False)
     date_of_joining = Column(Date, nullable=False, default=date.today)
     date_of_exit = Column(Date, nullable=True)

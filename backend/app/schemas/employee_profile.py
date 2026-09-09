@@ -4,9 +4,20 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.assets import AssetCategory
 from app.models.auth import UserStatus
 from app.models.lifecycle import DocumentType
+
+
+class ReportingNode(BaseModel):
+    """Shared shape for the reporting-hierarchy tree (§5.4 Overview Tab)."""
+
+    id: UUID
+    full_name: str
+    designation: str
+    department: Optional[str] = None
+    role: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EmployeeProfileResponse(BaseModel):
@@ -20,8 +31,12 @@ class EmployeeProfileResponse(BaseModel):
     department_name: Optional[str] = None
     manager_id: Optional[UUID] = None
     manager_name: Optional[str] = None
+    manager: Optional[ReportingNode] = None
+    direct_reports: list[ReportingNode] = []
     designation: str
     phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
     status: UserStatus
     date_of_joining: date
     date_of_exit: Optional[date] = None
@@ -32,6 +47,8 @@ class EmployeeProfileResponse(BaseModel):
 
 class EmployeeProfileUpdateRequest(BaseModel):
     phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
     address: Optional[str] = None
     full_name: Optional[str] = None
     designation: Optional[str] = None
@@ -62,7 +79,7 @@ class AssetAssignmentItem(BaseModel):
     asset_id: UUID
     asset_tag: str
     asset_name: str
-    category: AssetCategory
+    category: str
     serial_number: Optional[str] = None
     assigned_by: UUID
     assigned_by_name: Optional[str] = None

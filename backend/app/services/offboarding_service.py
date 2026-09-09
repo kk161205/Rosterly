@@ -253,6 +253,71 @@ class OffboardingService:
         self.db.commit()
         return self._format_checklist_response(checklist)
 
+    def list_offboardings(
+        self,
+        status_filter: Optional[ChecklistStatus] = None,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> dict[str, Any]:
+        """
+        GET /offboarding — list active/completed offboarding checklists. Not in
+        the original doc (§5.6 only listed 4 endpoint rows, no list route,
+        unlike §5.5's onboarding); added here mirroring OnboardingService's
+        list_onboardings so the frontend can stop working around the gap with
+        an always-fails-then-N+1-employee-enumeration fallback. Same role
+        scoping as list_onboardings: hr_admin/super_admin (full); it_admin
+        (checklists with an item owned by the IT role); manager (their own
+        direct reports' offboardings).
+        """
+        user_role = (self.current_user.role or "").lower()
+
+        query = (
+            self.db.query(Checklist)
+            .options(
+                joinedload(Checklist.employee),
+                joinedload(Checklist.items).joinedload(ChecklistItem.owner_role),
+                joinedload(Checklist.items).joinedload(ChecklistItem.completer),
+            )
+            .filter(Checklist.type == ChecklistType.offboarding)
+        )
+
+        if user_role in ("hr_admin", "super_admin"):
+            pass
+        elif user_role == "it_admin":
+            query = query.filter(
+                Checklist.items.any(ChecklistItem.owner_role_id == self.current_user.role_id)
+            )
+        elif user_role == "manager":
+            query = query.join(User, Checklist.employee_id == User.id).filter(
+                User.manager_id == self.current_user.user_id
+            )
+        else:
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="You do not have permission to view the offboarding checklist list.",
+            )
+
+        if status_filter:
+            query = query.filter(Checklist.status == status_filter)
+
+        total = query.order_by(None).count()
+        total_pages = -(-total // page_size) if total > 0 else 0
+        offset = (page - 1) * page_size
+
+        checklists = (
+            query.order_by(Checklist.created_at.desc()).offset(offset).limit(page_size).all()
+        )
+        formatted_checklists = [self._format_checklist_response(c) for c in checklists]
+
+        return {
+            "checklists": formatted_checklists,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+
     def get_offboarding_checklist(self, checklist_id: UUID) -> dict[str, Any]:
         """
         GET /offboarding/{checklist_id} — detail view of offboarding checklist.

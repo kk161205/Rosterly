@@ -320,6 +320,56 @@ def test_get_onboarding_detail_not_found():
     assert response.json()["error"]["code"] == "not_found"
 
 
+def test_get_onboarding_detail_wrong_checklist_type_not_found():
+    """Regression test for the cross-workflow type-filter fix: the query now
+    filters on `Checklist.type == ChecklistType.onboarding` in addition to id
+    (see onboarding_service.py), so a legitimate offboarding checklist ID must
+    behave exactly like an unknown ID here (404), not be silently served by the
+    onboarding endpoint — which would skip offboarding's asset-return side
+    effect and session revocation entirely. The mock can't evaluate a real SQL
+    WHERE clause, so this asserts the code's *handling* of a filtered-out
+    lookup (None) is a clean 404, not a crash or a bypass — combined with the
+    filter clause itself being directly verified by reading the service code."""
+    user_id = uuid.uuid4()
+    offboarding_chk_id = uuid.uuid4()
+    set_user_context(user_id, "hr_admin")
+
+    mock_db = MagicMock()
+    # As the real DB would: `.filter(id==X, type==onboarding)` finds nothing
+    # for an id that only matches an *offboarding*-typed row.
+    mock_db.query().options().filter().first.return_value = None
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.get(f"/api/v1/onboarding/{offboarding_chk_id}")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
+
+
+def test_patch_item_wrong_checklist_type_not_found():
+    """Same regression as above, for the PATCH item endpoint."""
+    it_admin_id = uuid.uuid4()
+    offboarding_chk_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    set_user_context(it_admin_id, "it_admin")
+
+    mock_db = MagicMock()
+    mock_db.query().filter().with_for_update().first.return_value = None
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.patch(
+        f"/api/v1/onboarding/{offboarding_chk_id}/items/{item_id}",
+        json={"status": "done"},
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
+
+
 # ============================================================================
 # 3. GET /api/v1/onboarding (List)
 # ============================================================================
@@ -342,7 +392,12 @@ def test_get_onboarding_list_hr_admin_allowed():
     chk.items = []
 
     mock_db = MagicMock()
-    mock_db.query().options().filter().order_by().all.return_value = [chk]
+    # list_onboardings computes `total` via .order_by(None).count() and fetches
+    # the page via .order_by(...).offset().limit().all() — both hang off the
+    # same base query node (MagicMock memoizes .order_by by name, ignoring the
+    # args each call passes), so both need configuring.
+    mock_db.query().options().filter().order_by().count.return_value = 1
+    mock_db.query().options().filter().order_by().offset().limit().all.return_value = [chk]
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -355,9 +410,10 @@ def test_get_onboarding_list_hr_admin_allowed():
     assert len(res_data["checklists"]) == 1
 
 
-@pytest.mark.parametrize("denied_role", ["it_admin", "manager", "employee", "auditor"])
+@pytest.mark.parametrize("denied_role", ["employee", "auditor"])
 def test_get_onboarding_list_denied_roles(denied_role):
-    """Non-HR/Super Admins get 403 on GET /onboarding list."""
+    """Roles with no view right at all on this list (§5.5's Access line only
+    grants hr_admin/super_admin/it_admin/manager) get 403 on GET /onboarding."""
     user_id = uuid.uuid4()
     set_user_context(user_id, denied_role)
 
@@ -369,6 +425,35 @@ def test_get_onboarding_list_denied_roles(denied_role):
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize("scoped_role", ["it_admin", "manager"])
+def test_get_onboarding_list_scoped_roles_allowed(scoped_role):
+    """it_admin ("view + complete own tasks") and manager ("view own report's
+    progress") get a scoped 200, not a 403 — §5.5's Access line explicitly
+    grants both view rights; this endpoint previously 403'd them entirely,
+    leaving the Onboarding page a dead-end error screen for both roles."""
+    user_id = uuid.uuid4()
+    role_id = uuid.uuid4()
+    set_user_context(user_id, scoped_role, role_id=role_id)
+
+    mock_db = MagicMock()
+    # it_admin's extra scoping is a second .filter() on the base query node;
+    # manager's is .join().filter(). Configure both possible shapes so this
+    # single test works for either parametrized role.
+    mock_db.query().options().filter().filter().order_by().count.return_value = 0
+    mock_db.query().options().filter().filter().order_by().offset().limit().all.return_value = []
+    mock_db.query().options().filter().join().filter().order_by().count.return_value = 0
+    mock_db.query().options().filter().join().filter().order_by().offset().limit().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.get("/api/v1/onboarding")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["total"] == 0
+    assert res_data["checklists"] == []
 
 
 # ============================================================================

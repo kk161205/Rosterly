@@ -56,5 +56,8 @@ class ChecklistItemUpdateRequest(BaseModel):
 class ChecklistListResponse(BaseModel):
     checklists: list[ChecklistResponse] = []
     total: int
+    page: int = 1
+    page_size: int = 25
+    total_pages: int = 0
 
     model_config = ConfigDict(from_attributes=True)
