@@ -5,6 +5,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { dashboardService } from '@/services/dashboardService'
 import { authService } from '@/services/authService'
 import { onboardingService } from '@/services/onboardingService'
+import { offboardingService } from '@/services/offboardingService'
 import { DashboardResponse } from '@/types/dashboard'
 
 vi.mock('@/services/authService', () => ({
@@ -22,6 +23,12 @@ vi.mock('@/services/dashboardService', () => ({
 
 vi.mock('@/services/onboardingService', () => ({
   onboardingService: {
+    updateChecklistItem: vi.fn().mockResolvedValue({}),
+  },
+}))
+
+vi.mock('@/services/offboardingService', () => ({
+  offboardingService: {
     updateChecklistItem: vi.fn().mockResolvedValue({}),
   },
 }))
@@ -60,6 +67,7 @@ describe('DashboardPage Component (PRD §5.2)', () => {
         {
           id: '33333333-3333-3333-3333-333333333333',
           checklist_id: '55555555-5555-5555-5555-555555555555',
+          checklist_type: 'onboarding',
           task_name: 'Verify Laptop Serial Number',
           status: 'pending',
           created_at: '2026-08-12T00:00:00Z',
@@ -115,6 +123,7 @@ describe('DashboardPage Component (PRD §5.2)', () => {
       email: 'alex.chen@rosterly.example',
       full_name: 'Alex Chen',
       role: 'employee',
+      permissions: [],
     })
     vi.mocked(dashboardService.getMetricRibbonCards).mockReturnValue(mockMetricCards)
   })
@@ -180,14 +189,71 @@ describe('DashboardPage Component (PRD §5.2)', () => {
     const resolveBtn = screen.getByRole('button', { name: /Resolve/i })
     fireEvent.click(resolveBtn)
 
-    await waitFor(() => {
-      expect(screen.getByText('Completed')).toBeInTheDocument()
-    })
+    // Generous timeout: this click triggers a mocked service call *and* a
+    // full dashboard refetch (two Promise.allSettled legs) before the DOM
+    // updates — under a loaded test-runner (many files/workers), the default
+    // 1000ms waitFor window can occasionally be tight even though every
+    // mock resolves on the next microtask, causing intermittent, order-
+    // dependent flakiness that isn't reproducible in isolation.
+    await waitFor(
+      () => {
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+      },
+      { timeout: 3000 }
+    )
 
     expect(onboardingService.updateChecklistItem).toHaveBeenCalledWith(
       '55555555-5555-5555-5555-555555555555',
       '33333333-3333-3333-3333-333333333333',
       'done'
     )
+    expect(offboardingService.updateChecklistItem).not.toHaveBeenCalled()
+  })
+
+  it('dispatches offboarding-type pending action items to offboardingService, not onboardingService', async () => {
+    // Regression test: pending_action_items can surface either checklist type
+    // (same owner_role_id query backend-side) — completing an offboarding item
+    // must run offboarding's asset-return side effect, not onboarding's logic.
+    const offboardingItemData: DashboardResponse = {
+      ...mockEmployeeData,
+      widgets: {
+        ...mockEmployeeData.widgets,
+        pending_action_items: [
+          {
+            id: '33333333-3333-3333-3333-333333333333',
+            checklist_id: '66666666-6666-6666-6666-666666666666',
+            checklist_type: 'offboarding',
+            task_name: 'Return Assigned Laptop',
+            status: 'pending',
+            created_at: '2026-08-12T00:00:00Z',
+          },
+        ],
+      },
+    }
+    vi.mocked(dashboardService.getDashboardSummary).mockResolvedValue(offboardingItemData)
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Return Assigned Laptop')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Resolve/i }))
+
+    await waitFor(
+      () => {
+        expect(offboardingService.updateChecklistItem).toHaveBeenCalledWith(
+          '66666666-6666-6666-6666-666666666666',
+          '33333333-3333-3333-3333-333333333333',
+          'done'
+        )
+      },
+      { timeout: 3000 }
+    )
+    expect(onboardingService.updateChecklistItem).not.toHaveBeenCalled()
   })
 })

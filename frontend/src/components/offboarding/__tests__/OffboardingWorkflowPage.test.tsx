@@ -113,6 +113,7 @@ describe('OffboardingWorkflowPage Component', () => {
       full_name: 'Super Administrator',
       email: 'admin@rosterly.io',
       role: 'super_admin',
+      permissions: [],
     })
     vi.mocked(offboardingService.getOffboardings).mockResolvedValue({
       checklists: mockChecklists,

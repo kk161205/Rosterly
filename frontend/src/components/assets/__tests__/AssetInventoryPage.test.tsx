@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { AssetInventoryPage } from '@/pages/AssetInventoryPage'
@@ -17,6 +17,8 @@ vi.mock('@/services/assetService', () => ({
   assetService: {
     getAssets: vi.fn(),
     getDepartments: vi.fn(),
+    getAssetMeta: vi.fn(),
+    getAssetSummary: vi.fn(),
     createAsset: vi.fn(),
     updateAsset: vi.fn(),
     bulkUpdateAssets: vi.fn(),
@@ -26,8 +28,8 @@ vi.mock('@/services/assetService', () => ({
 
 describe('AssetInventoryPage Component', () => {
   const mockDepartments: Department[] = [
-    { id: 'dept-1', name: 'Engineering', code: 'ENG' },
-    { id: 'dept-2', name: 'Design', code: 'DSGN' },
+    { id: 'dept-1', name: 'Engineering', code: 'ENG', head_count: 12 },
+    { id: 'dept-2', name: 'Design', code: 'DSGN', head_count: 5 },
   ]
 
   const mockAssetData: AssetListResponse = {
@@ -115,9 +117,20 @@ describe('AssetInventoryPage Component', () => {
       email: 'admin@rosterly.example',
       full_name: 'IT Admin User',
       role: 'it_admin',
+      permissions: [],
     })
     vi.mocked(assetService.getDepartments).mockResolvedValue(mockDepartments)
     vi.mocked(assetService.getAssets).mockResolvedValue(mockAssetData)
+    vi.mocked(assetService.getAssetMeta).mockResolvedValue({
+      categories: ['laptop', 'monitor', 'furniture'],
+      statuses: ['in_stock', 'assigned', 'under_maintenance', 'retired', 'lost'],
+    })
+    vi.mocked(assetService.getAssetSummary).mockResolvedValue({
+      total: 3,
+      deployed: 1,
+      inStock: 1,
+      underMaintenance: 1,
+    })
   })
 
   it('renders page header, summary ribbon metrics, and asset table data', async () => {
@@ -159,9 +172,15 @@ describe('AssetInventoryPage Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Asset Details')).toBeInTheDocument()
-      expect(screen.getByText('Sarah Connor')).toBeInTheDocument()
-      expect(screen.getByText('Financial & Depreciation Metrics')).toBeInTheDocument()
     })
+
+    // "Sarah Connor" legitimately appears both in the table row (behind the
+    // drawer) and inside the opened drawer — scope the assertion to the
+    // drawer's outer panel rather than the whole document.
+    const drawer = screen.getByText('Asset Details').closest('.fixed.inset-0') as HTMLElement
+    expect(drawer).toBeInTheDocument()
+    expect(within(drawer).getByText('Sarah Connor')).toBeInTheDocument()
+    expect(screen.getByText('Financial & Depreciation Metrics')).toBeInTheDocument()
   })
 
   it('opens Add Asset modal when clicking Add Asset button', async () => {
@@ -199,9 +218,54 @@ describe('AssetInventoryPage Component', () => {
     fireEvent.click(checkboxes[1])
 
     await waitFor(() => {
-      expect(screen.getByText(/1 asset selected/i)).toBeInTheDocument()
+      // The count is rendered as `<strong>1</strong> asset selected` — split
+      // across elements, so a plain string/regex match on one text node
+      // won't find it. Match on combined textContent, restricted to the
+      // innermost matching element (an ancestor's textContent matches too,
+      // since the only other content nearby is a non-text icon).
+      expect(
+        screen.getByText((_, element) => {
+          if (element?.textContent !== '1 asset selected') return false
+          return Array.from(element.children).every(
+            (child) => child.textContent !== '1 asset selected'
+          )
+        })
+      ).toBeInTheDocument()
       expect(screen.getByText('Mark In Stock')).toBeInTheDocument()
       expect(screen.getByText('Mark Maintenance')).toBeInTheDocument()
+    })
+  })
+
+  it('computes summary ribbon stats from real backend aggregates, not the current page', async () => {
+    // Regression test: the paginated list's total (200, deliberately
+    // different from the summary's total below) exceeds page_size (20), so a
+    // client-side derivation from assetData.items would both undercount and
+    // mismatch. The ribbon must render whatever GET /assets/summary returns,
+    // not assetData.total. Values avoid the fixed page-size <select> options
+    // (10/20/50/100) so they can't collide with an unrelated element in the DOM.
+    vi.mocked(assetService.getAssets).mockResolvedValue({
+      ...mockAssetData,
+      total: 200,
+      page_size: 20,
+    })
+    vi.mocked(assetService.getAssetSummary).mockResolvedValue({
+      total: 73,
+      deployed: 41,
+      inStock: 22,
+      underMaintenance: 9,
+    })
+
+    render(
+      <MemoryRouter>
+        <AssetInventoryPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('73')).toBeInTheDocument()
+      expect(screen.getByText('41')).toBeInTheDocument()
+      expect(screen.getByText('22')).toBeInTheDocument()
+      expect(screen.getByText('9')).toBeInTheDocument()
     })
   })
 

@@ -106,6 +106,7 @@ describe('OnboardingWorkflowPage Component (§5.5)', () => {
       email: 'hr@rosterly.example',
       full_name: 'Sarah Connor',
       role: 'hr_admin',
+      permissions: [],
     })
     vi.mocked(onboardingService.getOnboardings).mockResolvedValue({
       checklists: mockChecklists,

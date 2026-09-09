@@ -17,7 +17,10 @@ vi.mock('@/services/employeeService', () => ({
     getEmployees: vi.fn(),
     getDepartments: vi.fn(),
     getFilterOptions: vi.fn(),
+    getRoles: vi.fn(),
     getEmployeeById: vi.fn(),
+    updateEmployee: vi.fn(),
+    deleteEmployee: vi.fn(),
     buildOrgTree: vi.fn(),
   },
 }))
@@ -58,7 +61,6 @@ describe('EmployeeDirectoryPage Component', () => {
         role: 'manager',
         phone: '+1 555-0100',
         joining_date: '2023-01-15',
-        location: 'San Francisco, CA',
       },
       {
         id: 'emp-102',
@@ -73,7 +75,6 @@ describe('EmployeeDirectoryPage Component', () => {
         role: 'employee',
         phone: '+1 555-0101',
         joining_date: '2024-02-01',
-        location: 'New York, NY',
       },
     ],
     total: 2,
@@ -88,9 +89,18 @@ describe('EmployeeDirectoryPage Component', () => {
       email: 'alex.chen@rosterly.example',
       full_name: 'Alex Chen',
       role: 'employee',
+      permissions: [],
     })
     vi.mocked(employeeService.getDepartments).mockResolvedValue(mockDepartments)
     vi.mocked(employeeService.getFilterOptions).mockResolvedValue(mockFilterMeta)
+    vi.mocked(employeeService.getRoles).mockResolvedValue([
+      { id: 'role-employee', name: 'employee' },
+      { id: 'role-manager', name: 'manager' },
+      { id: 'role-hr_admin', name: 'hr_admin' },
+      { id: 'role-it_admin', name: 'it_admin' },
+      { id: 'role-auditor', name: 'auditor' },
+      { id: 'role-super_admin', name: 'super_admin' },
+    ])
     vi.mocked(employeeService.getEmployees).mockResolvedValue(mockEmployeeData)
     vi.mocked(employeeService.buildOrgTree).mockReturnValue([
       {
@@ -198,6 +208,7 @@ describe('EmployeeDirectoryPage Component', () => {
       email: 'admin@rosterly.io',
       full_name: 'Admin User',
       role: 'super_admin',
+      permissions: [],
     })
 
     render(
@@ -222,9 +233,9 @@ describe('EmployeeDirectoryPage Component', () => {
 
     // Verify confirmation modal popup appears
     await waitFor(() => {
-      expect(screen.getByText('Delete Employee Record')).toBeInTheDocument()
-      expect(screen.getByText(/This will delete the user account and clear direct report hierarchy links/i)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Yes, Delete Employee/i })).toBeInTheDocument()
+      expect(screen.getByText('Deactivate Employee Record')).toBeInTheDocument()
+      expect(screen.getByText(/sets the account status to terminated and clears direct report hierarchy links/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Yes, Deactivate Employee/i })).toBeInTheDocument()
     })
 
     // Click cancel
@@ -232,7 +243,7 @@ describe('EmployeeDirectoryPage Component', () => {
 
     // Modal closes
     await waitFor(() => {
-      expect(screen.queryByText('Delete Employee Record')).not.toBeInTheDocument()
+      expect(screen.queryByText('Deactivate Employee Record')).not.toBeInTheDocument()
     })
   })
 })
