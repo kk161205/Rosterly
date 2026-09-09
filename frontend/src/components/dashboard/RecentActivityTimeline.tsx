@@ -113,7 +113,9 @@ export const RecentActivityTimeline: React.FC<RecentActivityTimelineProps> = ({
                     </span>
                     <button
                       type="button"
-                      className="text-[11px] font-mono text-accent hover:underline flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      disabled
+                      title="Deep-linking to the source record isn't built yet — coming in a future page"
+                      className="text-[11px] font-mono text-outline flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-not-allowed"
                     >
                       <span>Shortcut</span>
                       <ExternalLink className="w-3 h-3" />
@@ -133,7 +135,9 @@ export const RecentActivityTimeline: React.FC<RecentActivityTimelineProps> = ({
         </span>
         <button
           type="button"
-          className="font-sans font-semibold text-accent text-xs hover:underline inline-flex items-center gap-1"
+          disabled
+          title="A dedicated full audit feed page isn't built yet — coming in a future page"
+          className="font-sans font-semibold text-outline text-xs inline-flex items-center gap-1 cursor-not-allowed"
         >
           <span>Full Audit Feed</span>
           <ChevronRight className="w-3.5 h-3.5" />

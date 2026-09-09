@@ -6,6 +6,8 @@ import {
   AssetCreatePayload,
   AssetUpdatePayload,
   AssetBulkUpdatePayload,
+  AssetMetaResponse,
+  AssetSummaryStats,
 } from '@/types/assets'
 import { Department } from '@/types/employee'
 
@@ -32,6 +34,34 @@ export const assetService = {
   async getDepartments(): Promise<Department[]> {
     const response = await apiClient.get<Department[]>('/departments')
     return response.data
+  },
+
+  /**
+   * Real filter-option data for Category (distinct values in use, role-scoped)
+   * and Status (fixed enum) — never hardcode these (rules.md §1.1).
+   */
+  async getAssetMeta(): Promise<AssetMetaResponse> {
+    const response = await apiClient.get<AssetMetaResponse>('/assets/meta')
+    return response.data
+  },
+
+  /**
+   * Real, server-computed aggregate counts for the Summary Ribbon — computed
+   * across the whole role-scoped catalog, not derived from one paginated page.
+   */
+  async getAssetSummary(): Promise<AssetSummaryStats> {
+    const response = await apiClient.get<{
+      total: number
+      deployed: number
+      in_stock: number
+      under_maintenance: number
+    }>('/assets/summary')
+    return {
+      total: response.data.total,
+      deployed: response.data.deployed,
+      inStock: response.data.in_stock,
+      underMaintenance: response.data.under_maintenance,
+    }
   },
 
   /**

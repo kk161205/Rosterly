@@ -7,21 +7,39 @@ import {
   ProfileUpdatePayload,
 } from '@/types/profile'
 
+// PDF, PNG, JPG only — project doc §7 rule 8. .docx was previously accepted
+// here (and by the backend) in violation of the documented constraint.
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
   'image/png',
   'image/jpeg',
   'image/jpg',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
+
+// Backend returns flat emergency_contact_name/emergency_contact_phone
+// (ROSTERLY_PROJECT_DOCUMENTATION.md §1.1) — mapped here into the nested
+// EmergencyContact shape the profile UI already expects.
+const withMappedFields = (data: EmployeeProfile & { emergency_contact_name?: string | null; emergency_contact_phone?: string | null }): EmployeeProfile => ({
+  ...data,
+  department: data.department_name || data.department || 'Unassigned',
+  role: (data.role_name || data.role || 'employee') as EmployeeProfile['role'],
+  joining_date: data.date_of_joining || data.joining_date || '',
+  emergency_contact: data.emergency_contact_name || data.emergency_contact_phone
+    ? {
+        name: data.emergency_contact_name || '',
+        phone: data.emergency_contact_phone || '',
+        relationship: '',
+      }
+    : undefined,
+})
 
 export const profileService = {
   validateDocumentFile(file: File): { valid: boolean; error?: string } {
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return {
         valid: false,
-        error: 'Invalid file type. Only PDF, PNG, JPG, and DOCX files are permitted.',
+        error: 'Invalid file type. Only PDF, PNG, and JPG files are permitted.',
       }
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -39,13 +57,7 @@ export const profileService = {
    */
   async getEmployeeProfile(employeeId: string): Promise<EmployeeProfile> {
     const response = await apiClient.get<EmployeeProfile>(`/employees/${employeeId}`)
-    const data = response.data
-    return {
-      ...data,
-      department: data.department_name || data.department || 'Unassigned',
-      role: (data.role_name || data.role || 'employee') as EmployeeProfile['role'],
-      joining_date: data.date_of_joining || data.joining_date || '',
-    }
+    return withMappedFields(response.data)
   },
 
   /**
@@ -57,13 +69,7 @@ export const profileService = {
     updates: ProfileUpdatePayload
   ): Promise<EmployeeProfile> {
     const response = await apiClient.patch<EmployeeProfile>(`/employees/${employeeId}`, updates)
-    const data = response.data
-    return {
-      ...data,
-      department: data.department_name || data.department || 'Unassigned',
-      role: (data.role_name || data.role || 'employee') as EmployeeProfile['role'],
-      joining_date: data.date_of_joining || data.joining_date || '',
-    }
+    return withMappedFields(response.data)
   },
 
   /**

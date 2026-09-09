@@ -3,7 +3,6 @@ import {
   Building2,
   Mail,
   Phone,
-  MapPin,
   Calendar,
   Edit3,
   UserX,
@@ -136,10 +135,6 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
               <span className="flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5 text-outline" />
                 {profile.phone}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-outline" />
-                {profile.location}
               </span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-outline" />

@@ -18,6 +18,7 @@ import {
   EmployeePaginatedResponse,
   EmployeeFiltersMeta,
   OrgChartNode,
+  RoleOption,
 } from '@/types/employee'
 import { UserRole } from '@/types/dashboard'
 import { UserProfile } from '@/types/auth'
@@ -41,6 +42,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(cachedUser)
   const [filters, setFilters] = useState<EmployeeQueryFilters>(DEFAULT_FILTERS)
   const [departments, setDepartments] = useState<Department[]>([])
+  const [roles, setRoles] = useState<RoleOption[]>([])
   const [filterMeta, setFilterMeta] = useState<EmployeeFiltersMeta>({ departments: [], statuses: [], roles: [] })
   const [employeeData, setEmployeeData] = useState<EmployeePaginatedResponse>({
     items: [],
@@ -67,10 +69,11 @@ export const EmployeeDirectoryPage: React.FC = () => {
         page_size: filters.view === 'tree' ? 100 : filters.page_size,
       }
 
-      const [profileResult, deptResult, filterMetaResult, empResult] = await Promise.allSettled([
+      const [profileResult, deptResult, filterMetaResult, rolesResult, empResult] = await Promise.allSettled([
         authService.getCurrentUser(),
         employeeService.getDepartments(),
         employeeService.getFilterOptions(),
+        employeeService.getRoles(),
         employeeService.getEmployees(queryParams),
       ])
 
@@ -88,6 +91,10 @@ export const EmployeeDirectoryPage: React.FC = () => {
 
       if (filterMetaResult.status === 'fulfilled') {
         setFilterMeta(filterMetaResult.value)
+      }
+
+      if (rolesResult.status === 'fulfilled') {
+        setRoles(rolesResult.value)
       }
 
       if (empResult.status === 'fulfilled') {
@@ -212,6 +219,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
           employee={selectedEmployee}
           currentUserRole={currentRole || userProfile?.role || 'employee'}
           departments={departments}
+          roles={roles}
           onClose={() => setSelectedEmployee(null)}
           onEmployeeUpdated={handleEmployeeUpdated}
           onEmployeeDeleted={handleEmployeeDeleted}

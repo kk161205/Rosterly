@@ -12,7 +12,7 @@ import { Card } from '@/components/common/CommonUI'
 
 interface ActionItemsChecklistProps {
   tasks: TaskChecklistItem[]
-  onCompleteTask?: (checklistId: string, taskId: string) => void
+  onCompleteTask?: (checklistId: string, taskId: string, checklistType: 'onboarding' | 'offboarding') => void
   title?: string
   subtitle?: string
 }
@@ -35,7 +35,7 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
     setTaskList((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, status: 'done' } : t))
     )
-    onCompleteTask?.(task.checklist_id, task.id)
+    onCompleteTask?.(task.checklist_id, task.id, task.checklist_type)
   }
 
   const filteredTasks = taskList.filter((t) => {
@@ -176,8 +176,9 @@ export const ActionItemsChecklist: React.FC<ActionItemsChecklistProps> = ({
           Showing {filteredTasks.length} of {taskList.length} items
         </span>
         <button
-          onClick={() => setFilter('all')}
-          className="font-sans font-semibold text-accent text-xs hover:underline inline-flex items-center gap-1"
+          disabled
+          title="A dedicated full task list page isn't built yet — coming in a future page"
+          className="font-sans font-semibold text-outline text-xs inline-flex items-center gap-1 cursor-not-allowed"
         >
           <span>View All Tasks</span>
           <ArrowRight className="w-3.5 h-3.5" />

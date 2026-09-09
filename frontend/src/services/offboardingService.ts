@@ -7,78 +7,23 @@ import {
   OffboardingChecklistItem,
   OffboardingSummaryMetrics,
 } from '@/types/offboarding'
-import { Employee } from '@/types/employee'
 
 export const offboardingService = {
   /**
-   * Fetches list of active and completed offboarding checklists.
+   * Fetches list of active and completed offboarding checklists via the real
+   * GET /offboarding list endpoint (§5.6 addition — previously this endpoint
+   * didn't exist at all, so this method always fell into an N+1
+   * employee-enumeration fallback on every page load). Requests the
+   * documented max page_size (100, §7 rule 3) explicitly, matching the same
+   * pattern used for onboarding's board view.
    */
   async getOffboardings(statusFilter?: string): Promise<OffboardingListResponse> {
-    try {
-      const params = statusFilter && statusFilter !== 'all' ? `?status=${statusFilter}` : ''
-      const response = await apiClient.get<OffboardingListResponse | OffboardingChecklist[]>(`/offboarding${params}`)
-
-      let checklists: OffboardingChecklist[] = []
-      if (Array.isArray(response.data)) {
-        checklists = response.data
-      } else if (response.data && Array.isArray((response.data as OffboardingListResponse).checklists)) {
-        checklists = (response.data as OffboardingListResponse).checklists
-      }
-
-      if (statusFilter && statusFilter !== 'all') {
-        checklists = checklists.filter((c) => c.status === statusFilter)
-      }
-
-      return {
-        checklists,
-        total: checklists.length,
-      }
-    } catch {
-      // Fallback: resolve offboarding checklists from employee lifecycle records
-      try {
-        const empResponse = await apiClient.get<{ items: Employee[] }>('/employees?page_size=100')
-        const allEmployees = empResponse.data.items || []
-        const relevantEmployees = allEmployees.filter(
-          (emp) => emp.status === 'offboarding' || emp.status === 'terminated'
-        )
-
-        const checklistPromises = relevantEmployees.map(async (emp) => {
-          try {
-            const lifeResponse = await apiClient.get<OffboardingChecklist | null>(`/employees/${emp.id}/lifecycle`)
-            if (lifeResponse.data && lifeResponse.data.type === 'offboarding') {
-              const checklist: OffboardingChecklist = {
-                ...lifeResponse.data,
-                employee_name: emp.full_name,
-                employee_email: emp.email,
-                employee_designation: emp.designation,
-                department_name: emp.department_name || undefined,
-                avatar_url: emp.avatar_url || undefined,
-              }
-              return checklist
-            }
-          } catch {
-            return null
-          }
-          return null
-        })
-
-        const resolvedList = await Promise.all(checklistPromises)
-        const validChecklists: OffboardingChecklist[] = resolvedList.filter(
-          (c): c is OffboardingChecklist => c !== null
-        )
-
-        let filtered = validChecklists
-        if (statusFilter && statusFilter !== 'all') {
-          filtered = filtered.filter((c) => c.status === statusFilter)
-        }
-
-        return {
-          checklists: filtered,
-          total: filtered.length,
-        }
-      } catch {
-        return { checklists: [], total: 0 }
-      }
+    const params = new URLSearchParams({ page_size: '100' })
+    if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
+    const response = await apiClient.get<OffboardingListResponse>(`/offboarding?${params.toString()}`)
+    return {
+      checklists: response.data.checklists || [],
+      total: response.data.total ?? 0,
     }
   },
 

@@ -38,6 +38,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const isHRAdmin = ['hr_admin', 'super_admin'].includes(currentUserRole) && !isSelf
 
   const [phone, setPhone] = useState(profile.phone || '')
+  const [emergencyContactName, setEmergencyContactName] = useState(profile.emergency_contact?.name || '')
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState(profile.emergency_contact?.phone || '')
   const [designation, setDesignation] = useState(profile.designation || '')
   const [departmentId, setDepartmentId] = useState(profile.department_id || '')
   const [status, setStatus] = useState<string>(profile.status || 'active')
@@ -49,6 +51,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setPhone(profile.phone || '')
+      setEmergencyContactName(profile.emergency_contact?.name || '')
+      setEmergencyContactPhone(profile.emergency_contact?.phone || '')
       setDesignation(profile.designation || '')
       setDepartmentId(profile.department_id || '')
       setStatus(profile.status || 'active')
@@ -70,7 +74,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     try {
       // Only send fields the backend's EmployeeProfileUpdateRequest schema
       // actually accepts (extra="forbid" rejects anything else outright).
-      const payload: ProfileUpdatePayload = { phone }
+      const payload: ProfileUpdatePayload = {
+        phone,
+        emergency_contact_name: emergencyContactName,
+        emergency_contact_phone: emergencyContactPhone,
+      }
 
       if (isHRAdmin) {
         payload.designation = designation
@@ -134,6 +142,33 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 className="w-full px-3 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-sm text-on-surface focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
                 placeholder="+1 (555) 000-0000"
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-on-surface mb-1">
+                  Emergency Contact Name
+                </label>
+                <input
+                  type="text"
+                  value={emergencyContactName}
+                  onChange={(e) => setEmergencyContactName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-sm text-on-surface focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+                  placeholder="Jane Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface mb-1">
+                  Emergency Contact Phone
+                </label>
+                <input
+                  type="text"
+                  value={emergencyContactPhone}
+                  onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-body bg-surface-container-low border border-outline-variant rounded-sm text-on-surface focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+                  placeholder="+1 (555) 000-0000"
+                />
+              </div>
             </div>
           </div>
 

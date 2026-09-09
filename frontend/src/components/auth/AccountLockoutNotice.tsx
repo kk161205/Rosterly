@@ -35,7 +35,7 @@ export const AccountLockoutNotice: React.FC<AccountLockoutNoticeProps> = ({
 
   const minutes = Math.floor(secondsLeft / 60)
   const seconds = secondsLeft % 60
-  const formattedTime = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+  const formattedTime = `${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 
   return (
     <div className="space-y-6 text-center animate-fadeIn">

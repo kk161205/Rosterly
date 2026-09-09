@@ -3,7 +3,6 @@ import {
   User,
   Mail,
   Phone,
-  MapPin,
   Calendar,
   PhoneCall,
   GitBranch,
@@ -83,14 +82,6 @@ export const ProfileOverviewTab: React.FC<ProfileOverviewTabProps> = ({
               </div>
 
               <div className="space-y-1">
-                <span className="text-outline font-medium block">Work Location</span>
-                <span className="text-on-surface flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-outline" />
-                  {profile.location}
-                </span>
-              </div>
-
-              <div className="space-y-1">
                 <span className="text-outline font-medium block">Joining Date</span>
                 <span className="text-on-surface flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-outline" />
@@ -104,24 +95,6 @@ export const ProfileOverviewTab: React.FC<ProfileOverviewTabProps> = ({
                 </span>
               </div>
             </div>
-
-            {profile.address && (
-              <div className="mt-4 pt-4 border-t border-outline-variant/60">
-                <span className="text-outline font-medium text-xs block mb-1">Residential Address</span>
-                <p className="text-xs font-body text-on-surface-variant leading-relaxed">
-                  {profile.address}
-                </p>
-              </div>
-            )}
-
-            {profile.bio && (
-              <div className="mt-4 pt-4 border-t border-outline-variant/60">
-                <span className="text-outline font-medium text-xs block mb-1">Professional Bio</span>
-                <p className="text-xs font-body text-on-surface-variant leading-relaxed">
-                  {profile.bio}
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Reporting Hierarchy Tree */}
@@ -227,12 +200,14 @@ export const ProfileOverviewTab: React.FC<ProfileOverviewTabProps> = ({
                     {profile.emergency_contact.name}
                   </span>
                 </div>
-                <div>
-                  <span className="text-outline block text-[11px]">Relationship</span>
-                  <span className="text-on-surface bg-surface-container px-2 py-0.5 rounded text-[11px]">
-                    {profile.emergency_contact.relationship}
-                  </span>
-                </div>
+                {profile.emergency_contact.relationship && (
+                  <div>
+                    <span className="text-outline block text-[11px]">Relationship</span>
+                    <span className="text-on-surface bg-surface-container px-2 py-0.5 rounded text-[11px]">
+                      {profile.emergency_contact.relationship}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-outline block text-[11px]">Emergency Phone</span>
                   <span className="font-mono text-on-surface">

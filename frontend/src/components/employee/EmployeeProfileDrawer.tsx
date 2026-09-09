@@ -8,7 +8,6 @@ import {
   Calendar,
   Building,
   UserCheck,
-  MapPin,
   Shield,
   Edit3,
   UserMinus,
@@ -20,7 +19,7 @@ import {
   RotateCcw,
   ExternalLink,
 } from 'lucide-react'
-import { Employee, Department, EmployeeUpdatePayload } from '@/types/employee'
+import { Employee, Department, EmployeeUpdatePayload, RoleOption } from '@/types/employee'
 import { employeeService } from '@/services/employeeService'
 import { Button, StatusBadge, SelectDropdown } from '@/components/common/CommonUI'
 
@@ -44,6 +43,7 @@ interface EmployeeProfileDrawerProps {
   employee: Employee | null
   currentUserRole?: string | null
   departments?: Department[]
+  roles?: RoleOption[]
   onClose: () => void
   onEmployeeUpdated?: (updated: Employee) => void
   onEmployeeDeleted?: (deletedId: string) => void
@@ -53,6 +53,7 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
   employee,
   currentUserRole = 'employee',
   departments = [],
+  roles = [],
   onClose,
   onEmployeeUpdated,
   onEmployeeDeleted,
@@ -73,13 +74,13 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
   // Reset form data when employee changes
   useEffect(() => {
     if (employee) {
+      const matchingRole = roles.find((r) => r.name === employee.role)
       setFormData({
         full_name: employee.full_name,
         designation: employee.designation,
         department_id: employee.department_id || '',
-        role_name: (employee.role as string) || 'employee',
+        role_id: matchingRole?.id || '',
         phone: employee.phone || '',
-        location: employee.location || 'Headquarters',
         status: employee.status,
       })
       setIsEditing(false)
@@ -339,48 +340,29 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                     System Access Role
                   </label>
                   <SelectDropdown
-                    value={formData.role_name || 'employee'}
-                    onChange={(val) => setFormData({ ...formData, role_name: val })}
-                    options={[
-                      { value: 'employee', label: 'Employee' },
-                      { value: 'manager', label: 'Manager' },
-                      { value: 'hr_admin', label: 'HR Admin' },
-                      { value: 'it_admin', label: 'IT Admin' },
-                      { value: 'auditor', label: 'Auditor' },
-                      ...(isSuperAdmin ? [{ value: 'super_admin', label: 'Super Admin' }] : []),
-                    ]}
+                    value={formData.role_id || ''}
+                    onChange={(val) => setFormData({ ...formData, role_id: val })}
+                    placeholder="Select role"
+                    options={roles
+                      .filter((r) => isSuperAdmin || r.name !== 'super_admin')
+                      .map((r) => ({ value: r.id, label: r.name.replace(/_/g, ' ') }))}
                     containerClassName="w-full"
-                    className="w-full justify-between"
+                    className="w-full justify-between capitalize"
                   />
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-mono text-on-surface-variant uppercase mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.phone || ''}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+1 (555) 000-0000"
-                    className="w-full px-3 py-2 text-body-sm bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-accent text-on-surface"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono text-on-surface-variant uppercase mb-1">
-                    Office Location
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.location || ''}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="Headquarters / Remote"
-                    className="w-full px-3 py-2 text-body-sm bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-accent text-on-surface"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-mono text-on-surface-variant uppercase mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.phone || ''}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full px-3 py-2 text-body-sm bg-surface-container-low border border-outline-variant rounded-lg focus:outline-none focus:border-accent text-on-surface"
+                />
               </div>
             </form>
           ) : (
@@ -432,12 +414,6 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3 text-body-sm">
-                    <MapPin className="w-4 h-4 text-outline flex-shrink-0" />
-                    <span className="text-on-surface font-body">
-                      {employee.location || 'Headquarters'}
-                    </span>
-                  </div>
                 </div>
               </div>
 
@@ -536,7 +512,7 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                     onClick={() => setShowDeleteConfirm(true)}
                     icon={<Trash2 className="w-3.5 h-3.5 text-error" />}
                     className="bg-error-container/40 hover:bg-error-container text-on-error-container border border-error/20"
-                    title="Permanently Delete Employee Record"
+                    title="Deactivate Employee Record"
                   >
                     Delete Record
                   </Button>
@@ -557,20 +533,20 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
               </div>
               <div>
                 <h3 className="text-title-md font-sans font-semibold text-error">
-                  Delete Employee Record
+                  Deactivate Employee Record
                 </h3>
                 <p className="text-body-xs font-body text-on-surface-variant">
-                  Irreversible permanent action
+                  Soft delete — reversible by an admin
                 </p>
               </div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-error-container/20 border border-error/20 text-xs font-body text-on-surface leading-relaxed space-y-1">
               <p>
-                Are you sure you want to permanently delete <strong>{employee.full_name}</strong> ({employee.employee_code || 'ID: ' + employee.id.slice(0, 8)})?
+                Are you sure you want to deactivate <strong>{employee.full_name}</strong> ({employee.employee_code || 'ID: ' + employee.id.slice(0, 8)})?
               </p>
               <p className="text-error font-medium">
-                This will delete the user account and clear direct report hierarchy links. This cannot be undone.
+                This sets the account status to terminated and clears direct report hierarchy links. It does not permanently erase the record — status can be changed back by an HR Admin or Super Admin.
               </p>
             </div>
 
@@ -579,7 +555,7 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
                 Cancel
               </Button>
               <Button type="button" variant="danger" isLoading={isDeleting} onClick={handleConfirmDelete} disabled={isDeleting}>
-                Yes, Delete Employee
+                Yes, Deactivate Employee
               </Button>
             </div>
           </div>

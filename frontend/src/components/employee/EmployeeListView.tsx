@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Building,
   UserCheck,
+  Eye,
 } from 'lucide-react'
 import { Employee, EmployeePaginatedResponse } from '@/types/employee'
 import { StatusBadge, SelectDropdown } from '@/components/common/CommonUI'
@@ -55,6 +56,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               <th className="py-3 px-4 font-semibold">Department</th>
               <th className="py-3 px-4 font-semibold">Reporting To</th>
               <th className="py-3 px-4 font-semibold">Status</th>
+              <th className="py-3 px-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant/60">
@@ -121,6 +123,22 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                 {/* Status Column */}
                 <td className="py-3.5 px-4">
                   <StatusBadge status={emp.status} variant={STATUS_VARIANT[emp.status] || 'neutral'} />
+                </td>
+
+                {/* Actions Column */}
+                <td className="py-3.5 px-4 text-right">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSelectEmployee(emp)
+                    }}
+                    title="View employee profile"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono text-on-surface-variant hover:text-accent hover:bg-accent-container/30 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    View
+                  </button>
                 </td>
               </tr>
             ))}

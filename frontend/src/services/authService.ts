@@ -43,6 +43,17 @@ export const authService = {
   },
 
   /**
+   * POST /auth/mfa/resend
+   * Requests a fresh MFA code for a pending mfa_session_id.
+   */
+  async resendMFA(mfaSessionId: string): Promise<MessageResponse> {
+    const response = await apiClient.post<MessageResponse>('/auth/mfa/resend', {
+      mfa_session_id: mfaSessionId,
+    })
+    return response.data
+  },
+
+  /**
    * POST /auth/forgot-password
    * Requests password reset link. Returns standard message response.
    */

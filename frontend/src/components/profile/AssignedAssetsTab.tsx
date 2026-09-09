@@ -4,13 +4,10 @@ import {
   Monitor,
   Smartphone,
   HardDrive,
-  ShieldCheck,
-  ShieldAlert,
-  AlertTriangle,
   History,
   Tag,
 } from 'lucide-react'
-import { AssignedAssetsResponse, AssetCategory, WarrantyStatus } from '@/types/profile'
+import { AssignedAssetsResponse, AssetCategory } from '@/types/profile'
 
 interface AssignedAssetsTabProps {
   assetsData: AssignedAssetsResponse
@@ -50,32 +47,6 @@ export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
         return <Smartphone className="w-5 h-5 text-accent" />
       default:
         return <HardDrive className="w-5 h-5 text-outline" />
-    }
-  }
-
-  const getWarrantyBadge = (status: WarrantyStatus, expiryDate: string) => {
-    switch (status) {
-      case 'active':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-tertiary-fixed text-on-tertiary-fixed-variant">
-            <ShieldCheck className="w-3.5 h-3.5 text-tertiary" />
-            Warranty Active (Exp. {new Date(expiryDate).toLocaleDateString()})
-          </span>
-        )
-      case 'expiring_soon':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-warning-container text-on-warning-container border border-warning/30">
-            <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-            Expiring Soon ({new Date(expiryDate).toLocaleDateString()})
-          </span>
-        )
-      case 'expired':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-error-container text-on-error-container">
-            <ShieldAlert className="w-3.5 h-3.5 text-error" />
-            Warranty Expired ({new Date(expiryDate).toLocaleDateString()})
-          </span>
-        )
     }
   }
 
@@ -147,12 +118,6 @@ export const AssignedAssetsTab: React.FC<AssignedAssetsTabProps> = ({
                     <span className="text-on-surface font-medium">
                       {new Date(asset.assigned_at).toLocaleDateString()}
                     </span>
-                  </div>
-
-                  <div className="pt-1">
-                    {asset.warranty_status && asset.warranty_expires_at
-                      ? getWarrantyBadge(asset.warranty_status, asset.warranty_expires_at)
-                      : null}
                   </div>
                 </div>
               </div>

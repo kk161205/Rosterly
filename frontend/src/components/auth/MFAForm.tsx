@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { ShieldCheck, AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/common/CommonUI'
+import { authService } from '@/services/authService'
 
 interface MFAFormProps {
   mfaSessionId: string
@@ -20,6 +21,7 @@ export const MFAForm: React.FC<MFAFormProps> = ({
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', ''])
   const [resendCooldown, setResendCooldown] = useState<number>(30)
   const [resendMessage, setResendMessage] = useState<string | null>(null)
+  const [isResending, setIsResending] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   // Resend cooldown timer — one interval for the form's lifetime, not recreated every tick
@@ -78,11 +80,20 @@ export const MFAForm: React.FC<MFAFormProps> = ({
     await onSubmit(mfaSessionId, fullCode)
   }
 
-  const handleResendCode = () => {
-    if (resendCooldown > 0) return
-    setResendCooldown(30)
-    setResendMessage('A new verification code has been sent.')
-    setTimeout(() => setResendMessage(null), 4000)
+  const handleResendCode = async () => {
+    if (resendCooldown > 0 || isResending) return
+    setIsResending(true)
+    try {
+      const res = await authService.resendMFA(mfaSessionId)
+      setResendCooldown(30)
+      setResendMessage(res.message)
+      setTimeout(() => setResendMessage(null), 4000)
+    } catch {
+      setResendMessage('Could not resend code — please try again shortly.')
+      setTimeout(() => setResendMessage(null), 4000)
+    } finally {
+      setIsResending(false)
+    }
   }
 
   const fullCode = digits.join('')
@@ -171,11 +182,13 @@ export const MFAForm: React.FC<MFAFormProps> = ({
         <button
           type="button"
           onClick={handleResendCode}
-          disabled={resendCooldown > 0 || isLoading}
+          disabled={resendCooldown > 0 || isLoading || isResending}
           className="text-accent hover:text-on-accent-container font-medium disabled:text-outline disabled:cursor-not-allowed transition-colors focus:outline-none cursor-pointer"
         >
           {resendCooldown > 0 ? (
             `Resend code in ${resendCooldown}s`
+          ) : isResending ? (
+            'Sending…'
           ) : (
             'Resend code'
           )}

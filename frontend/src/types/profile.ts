@@ -13,8 +13,11 @@ export interface ReportingNode {
 
 export interface EmergencyContact {
   name: string
-  relationship: string
   phone: string
+  // Not backed by the schema (ROSTERLY_PROJECT_DOCUMENTATION.md §1.1 only has
+  // emergency_contact_name/emergency_contact_phone) — kept optional here for
+  // any future UI that wants to collect them, never sent to the backend.
+  relationship?: string
   email?: string
 }
 
@@ -40,14 +43,13 @@ export interface EmployeeProfile {
   joining_date?: string
   date_of_exit?: string | null
   created_at?: string
-  location?: string
   avatar_url?: string
   emergency_contact?: EmergencyContact
-  address?: string
-  bio?: string
 }
 
-export type DocumentCategory = 'contract' | 'identity' | 'tax' | 'certification' | 'id_proof' | 'offer_letter' | 'policy_ack' | 'other'
+// Matches the backend's DocumentType enum exactly (doc §1.8) — must not carry
+// values the backend doesn't accept.
+export type DocumentCategory = 'contract' | 'id_proof' | 'offer_letter' | 'policy_ack' | 'other'
 
 export interface DocumentItem {
   id: string
@@ -63,8 +65,7 @@ export interface DocumentItem {
   file_url: string
 }
 
-export type AssetCategory = 'laptop' | 'monitor' | 'mobile' | 'software_license' | 'furniture' | 'peripherals' | 'license' | 'other'
-export type WarrantyStatus = 'active' | 'expiring_soon' | 'expired'
+export type AssetCategory = string
 
 export interface AssignedAssetItem {
   id: string
@@ -80,8 +81,6 @@ export interface AssignedAssetItem {
   condition_at_assignment?: string
   condition_at_return?: string | null
   notes?: string | null
-  warranty_expires_at?: string
-  warranty_status?: WarrantyStatus
   specs?: string
   status?: 'active' | 'returned' | 'maintenance' | string
 }
@@ -127,13 +126,12 @@ export interface LifecycleChecklist {
 
 export interface ProfileUpdatePayload {
   phone?: string | null
-  address?: string
-  emergency_contact?: EmergencyContact
+  emergency_contact_name?: string | null
+  emergency_contact_phone?: string | null
   designation?: string
-  department?: string
   department_id?: string | null
   role_id?: string | null
+  manager_id?: string | null
   status?: EmploymentStatus
-  role?: UserRole
 }
 

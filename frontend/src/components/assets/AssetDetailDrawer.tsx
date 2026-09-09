@@ -3,7 +3,6 @@ import {
   X,
   QrCode,
   Download,
-  Calendar,
   DollarSign,
   TrendingDown,
   Clock,
@@ -14,7 +13,6 @@ import {
   CheckCircle2,
   Wrench,
   Archive,
-  RefreshCw,
 } from 'lucide-react'
 import { Button, StatusBadge } from '@/components/common/CommonUI'
 import { Asset, AssetStatus } from '@/types/assets'
@@ -250,7 +248,18 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
           </div>
 
           {/* Quick Actions (IT Admin & Super Admin) */}
-          {canWrite && onStatusChange && (
+          {canWrite && onStatusChange && asset.status === 'retired' && (
+            <div className="space-y-2 pt-2">
+              <h3 className="text-xs font-mono font-semibold text-outline uppercase tracking-wider">
+                Quick Status Transition
+              </h3>
+              <p className="text-[11px] text-on-surface-variant">
+                This asset is retired. Retired assets are a terminal state and cannot be transitioned to any other status.
+              </p>
+            </div>
+          )}
+
+          {canWrite && onStatusChange && asset.status !== 'retired' && (
             <div className="space-y-3 pt-2">
               <h3 className="text-xs font-mono font-semibold text-outline uppercase tracking-wider">
                 Quick Status Transition
@@ -278,17 +287,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                     Mark Maintenance
                   </Button>
                 )}
-                {asset.status !== 'retired' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isUpdatingStatus}
-                    icon={<Archive className="w-3.5 h-3.5 text-outline" />}
-                    onClick={() => handleQuickStatus('retired')}
-                  >
-                    Mark Retired
-                  </Button>
-                )}
+                {/* No `status !== 'retired'` guard needed here — the enclosing
+                    block (line 264) already only renders when that's true. */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isUpdatingStatus}
+                  icon={<Archive className="w-3.5 h-3.5 text-outline" />}
+                  onClick={() => handleQuickStatus('retired')}
+                >
+                  Mark Retired
+                </Button>
               </div>
             </div>
           )}

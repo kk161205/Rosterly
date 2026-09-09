@@ -165,7 +165,7 @@ export const OnboardingDetailDrawer: React.FC<OnboardingDetailDrawerProps> = ({
                             }
                             className="text-accent hover:underline font-semibold cursor-pointer"
                           >
-                            {isDone ? 'Mark Pending' : 'Mark Done'}
+                            {isDone ? 'Reopen' : 'Mark Done'}
                           </button>
                         ) : (
                           <span className="text-outline text-[10px]">View Only</span>

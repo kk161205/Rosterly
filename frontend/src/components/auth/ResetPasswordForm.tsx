@@ -27,8 +27,18 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
     e.preventDefault()
     setValidationError(null)
 
-    if (password.length < 8) {
-      setValidationError('Password must be at least 8 characters long')
+    if (password.length < 10) {
+      setValidationError('Password must be at least 10 characters long')
+      return
+    }
+
+    if (!/[a-zA-Z]/.test(password)) {
+      setValidationError('Password must contain at least one letter')
+      return
+    }
+
+    if (!/\d/.test(password)) {
+      setValidationError('Password must contain at least one number')
       return
     }
 
@@ -45,10 +55,13 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
     }
   }
 
-  // Password strength checks
-  const hasMinLength = password.length >= 8
+  // Password strength checks — mirrors the server-side policy exactly (doc §7
+  // rule 9): 10+ characters, at least one letter, at least one number. No
+  // special-character requirement — the backend doesn't enforce one, so the
+  // frontend shouldn't imply it does.
+  const hasMinLength = password.length >= 10
+  const hasLetter = /[a-zA-Z]/.test(password)
   const hasNumber = /\d/.test(password)
-  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password)
 
   return (
     <div className="space-y-6">
@@ -134,13 +147,13 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
             <p className="font-medium text-on-surface text-label-caps">Password requirements:</p>
             <ul className="space-y-1 text-on-surface-variant text-body-sm">
               <li className={`flex items-center gap-1.5 ${hasMinLength ? 'text-tertiary font-medium' : ''}`}>
-                <span>{hasMinLength ? '✓' : '•'} At least 8 characters</span>
+                <span>{hasMinLength ? '✓' : '•'} At least 10 characters</span>
+              </li>
+              <li className={`flex items-center gap-1.5 ${hasLetter ? 'text-tertiary font-medium' : ''}`}>
+                <span>{hasLetter ? '✓' : '•'} Contains a letter</span>
               </li>
               <li className={`flex items-center gap-1.5 ${hasNumber ? 'text-tertiary font-medium' : ''}`}>
                 <span>{hasNumber ? '✓' : '•'} Contains a number</span>
-              </li>
-              <li className={`flex items-center gap-1.5 ${hasSpecial ? 'text-tertiary font-medium' : ''}`}>
-                <span>{hasSpecial ? '✓' : '•'} Contains a special character</span>
               </li>
             </ul>
           </div>

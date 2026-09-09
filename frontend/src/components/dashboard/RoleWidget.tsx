@@ -21,7 +21,7 @@ import {
   ExpiringWarrantyItem,
   AuditEventItem,
 } from '@/types/dashboard'
-import { Card, Button, StatusBadge } from '@/components/common/CommonUI'
+import { Card, StatusBadge } from '@/components/common/CommonUI'
 
 const PRIORITY_VARIANT: Record<string, 'info' | 'warning' | 'error'> = {
   low: 'info',
@@ -204,15 +204,6 @@ function PendingApprovalsWidget({ approvals }: { approvals: PendingApprovalItem[
                     Requester: <strong>{item.requester_name}</strong> • Type: {item.request_type}
                   </p>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2 self-end sm:self-center">
-                <Button type="button" variant="primary" size="sm" className="bg-success hover:bg-success/90">
-                  Approve
-                </Button>
-                <Button type="button" variant="outline" size="sm">
-                  Reject
-                </Button>
               </div>
             </div>
           ))}

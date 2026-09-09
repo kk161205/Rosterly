@@ -1,22 +1,28 @@
 import React, { useState } from 'react'
 import { X, QrCode, Plus, Sparkles, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/CommonUI'
-import { AssetCreatePayload, AssetCategory, DepreciationMethod } from '@/types/assets'
+import { AssetCreatePayload, DepreciationMethod } from '@/types/assets'
 
 interface AddAssetModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (payload: AssetCreatePayload) => Promise<void>
+  // Distinct categories currently in use (GET /assets/meta) — suggested
+  // options in the combobox below; an admin can also type a brand-new one.
+  existingCategories: string[]
 }
+
+const ADD_NEW_CATEGORY_VALUE = '__add_new__'
 
 export const AddAssetModal: React.FC<AddAssetModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  existingCategories,
 }) => {
   const [formData, setFormData] = useState<AssetCreatePayload>({
     name: '',
-    category: 'laptop',
+    category: existingCategories[0] || '',
     serial_number: '',
     vendor: '',
     purchase_date: new Date().toISOString().split('T')[0],
@@ -30,12 +36,14 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [generalError, setGeneralError] = useState<string | null>(null)
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(existingCategories.length === 0)
 
   if (!isOpen) return null
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
     if (!formData.name.trim()) newErrors.name = 'Asset name is required'
+    if (!formData.category.trim()) newErrors.category = 'Category is required'
     if (!formData.vendor.trim()) newErrors.vendor = 'Vendor name is required'
     if (formData.purchase_cost < 0) newErrors.purchase_cost = 'Purchase cost must be 0 or greater'
     if (formData.useful_life_months <= 0) newErrors.useful_life_months = 'Useful life must be greater than 0'
@@ -55,6 +63,7 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({
     try {
       const payload: AssetCreatePayload = {
         ...formData,
+        category: formData.category.trim(),
         serial_number: formData.serial_number?.trim() || null,
         warranty_expiry: formData.warranty_expiry || null,
         amc_expiry: formData.amc_expiry || null,
@@ -166,18 +175,54 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({
               <label className="font-semibold text-on-surface">
                 Category <span className="text-error">*</span>
               </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value as AssetCategory })}
-                className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-md text-on-surface focus:outline-none focus:border-accent capitalize"
-              >
-                <option value="laptop">Laptop</option>
-                <option value="monitor">Monitor</option>
-                <option value="mobile">Mobile Device</option>
-                <option value="software_license">Software License</option>
-                <option value="furniture">Furniture</option>
-                <option value="other">Other Equipment</option>
-              </select>
+              {isAddingNewCategory ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    required
+                    placeholder="e.g. networking_equipment"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className={`w-full px-3 py-2 bg-surface-container-low border rounded-md text-on-surface focus:outline-none focus:border-accent ${
+                      errors.category ? 'border-error' : 'border-outline-variant'
+                    }`}
+                  />
+                  {existingCategories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingNewCategory(false)
+                        setFormData({ ...formData, category: existingCategories[0] })
+                      }}
+                      className="px-2 py-2 text-[11px] font-mono text-on-surface-variant hover:text-primary whitespace-nowrap"
+                    >
+                      Choose existing
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <select
+                  value={formData.category}
+                  onChange={(e) => {
+                    if (e.target.value === ADD_NEW_CATEGORY_VALUE) {
+                      setIsAddingNewCategory(true)
+                      setFormData({ ...formData, category: '' })
+                    } else {
+                      setFormData({ ...formData, category: e.target.value })
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-md text-on-surface focus:outline-none focus:border-accent capitalize"
+                >
+                  {existingCategories.map((c) => (
+                    <option key={c} value={c} className="capitalize">
+                      {c.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                  <option value={ADD_NEW_CATEGORY_VALUE}>+ Add new category…</option>
+                </select>
+              )}
+              {errors.category && <p className="text-error text-[10px]">{errors.category}</p>}
             </div>
 
             <div className="space-y-1">

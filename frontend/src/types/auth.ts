@@ -15,6 +15,8 @@ export interface UserProfile {
   email: string
   full_name: string
   role: string
+  permissions: string[]
+  department_id?: string | null
 }
 
 export interface LoginRequest {
@@ -48,14 +50,6 @@ export interface ResetPasswordRequest {
 
 export interface MessageResponse {
   message: string
-}
-
-export interface ApiErrorResponse {
-  error: {
-    message: string
-    code: string
-    details?: unknown
-  }
 }
 
 export type AuthStep = 'login' | 'mfa' | 'forgot-password' | 'reset-password' | 'lockout'

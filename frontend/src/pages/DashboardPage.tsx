@@ -10,6 +10,7 @@ import { FullPageDashboardSkeleton } from '@/components/dashboard/DashboardSkele
 import { dashboardService } from '@/services/dashboardService'
 import { authService } from '@/services/authService'
 import { onboardingService } from '@/services/onboardingService'
+import { offboardingService } from '@/services/offboardingService'
 import { UserRole, DashboardResponse, DashboardMetricCard } from '@/types/dashboard'
 import { UserProfile } from '@/types/auth'
 import { authStorage } from '@/utils/authStorage'
@@ -65,9 +66,18 @@ export const DashboardPage: React.FC = () => {
     fetchDashboardData(true)
   }
 
-  const handleCompleteTask = async (checklistId: string, taskId: string) => {
+  const handleCompleteTask = async (checklistId: string, taskId: string, checklistType: 'onboarding' | 'offboarding') => {
     try {
-      await onboardingService.updateChecklistItem(checklistId, taskId, 'done')
+      // Dashboard pending_action_items can surface either onboarding or
+      // offboarding checklist items (same owner_role_id query on the backend)
+      // — dispatch to the matching service so offboarding's asset-return side
+      // effect and session revocation actually run, instead of always hitting
+      // the onboarding endpoint.
+      if (checklistType === 'offboarding') {
+        await offboardingService.updateChecklistItem(checklistId, taskId, 'done')
+      } else {
+        await onboardingService.updateChecklistItem(checklistId, taskId, 'done')
+      }
       fetchDashboardData(true)
     } catch {
       setError('Failed to update task status. Please retry.')

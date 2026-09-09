@@ -30,7 +30,6 @@ export interface Employee {
   phone?: string | null
   date_of_joining?: string | null
   joining_date?: string | null
-  location?: string | null
 }
 
 export interface Department {
@@ -72,10 +71,14 @@ export interface EmployeeUpdatePayload {
   full_name?: string
   designation?: string
   department_id?: string | null
-  role_name?: string | null
+  role_id?: string | null
   phone?: string | null
-  location?: string | null
   status?: string | null
   manager_id?: string | null
+}
+
+export interface RoleOption {
+  id: string
+  name: string
 }
 

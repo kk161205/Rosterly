@@ -1,10 +1,7 @@
-export type AssetCategory =
-  | 'laptop'
-  | 'monitor'
-  | 'mobile'
-  | 'software_license'
-  | 'furniture'
-  | 'other'
+// Open, admin-extensible field — not a closed union. GET /assets/meta returns
+// the distinct categories currently in use; the Add Asset form also lets an
+// IT admin type a brand-new one. See ROSTERLY_PROJECT_DOCUMENTATION.md §1.9.
+export type AssetCategory = string
 
 export type AssetStatus =
   | 'in_stock'
@@ -100,4 +97,9 @@ export interface AssetSummaryStats {
   deployed: number
   inStock: number
   underMaintenance: number
+}
+
+export interface AssetMetaResponse {
+  categories: string[]
+  statuses: AssetStatus[]
 }

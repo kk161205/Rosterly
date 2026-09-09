@@ -6,6 +6,7 @@ import {
   EmployeePaginatedResponse,
   EmployeeFiltersMeta,
   OrgChartNode,
+  RoleOption,
 } from '@/types/employee'
 
 export const employeeService = {
@@ -43,6 +44,17 @@ export const employeeService = {
   },
 
   /**
+   * GET /roles — the full set of system roles (§3.1), regardless of current
+   * membership. Used by the edit-role picker, which needs every role
+   * selectable (not just roles that already have at least one user, unlike
+   * getFilterOptions()'s role list).
+   */
+  async getRoles(): Promise<RoleOption[]> {
+    const response = await apiClient.get<RoleOption[]>('/roles')
+    return response.data
+  },
+
+  /**
    * Fetches single employee record details by ID.
    */
   async getEmployeeById(employeeId: string): Promise<Employee> {
@@ -59,7 +71,9 @@ export const employeeService = {
   },
 
   /**
-   * Permanently deletes an employee record (Super Admin only).
+   * Soft-deletes an employee record (Super Admin only) — sets status=terminated,
+   * preserving the row for audit history (§7 rule 4). Reversible by a later
+   * status change; not a hard delete.
    */
   async deleteEmployee(employeeId: string): Promise<{ success: boolean; message: string }> {
     const response = await apiClient.delete<{ success: boolean; message: string }>(`/employees/${employeeId}`)

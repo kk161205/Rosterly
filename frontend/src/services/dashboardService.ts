@@ -46,7 +46,7 @@ export const dashboardService = {
           {
             id: 'm3',
             label: 'Dept Asset Allocation',
-            value: `${metrics.dept_asset_allocation ?? 0}%`,
+            value: metrics.dept_asset_allocation ?? 0,
             change: 'Hardware Assigned',
             changeType: 'positive',
             iconName: 'asset',

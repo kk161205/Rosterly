@@ -19,11 +19,47 @@ import { SearchInput, SelectDropdown, SelectOption, Button } from '@/components/
 import { AssetCategory, AssetStatus, AssetQueryFilters } from '@/types/assets'
 import { Department } from '@/types/employee'
 
+// Icon lookup for known/seed category values — a custom, admin-created
+// category (rules.md §1.1 — not hardcoded data, just a display icon) falls
+// back to a generic box icon.
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  laptop: <Laptop className="w-3.5 h-3.5" />,
+  monitor: <Monitor className="w-3.5 h-3.5" />,
+  mobile: <Smartphone className="w-3.5 h-3.5" />,
+  software_license: <Key className="w-3.5 h-3.5" />,
+  furniture: <Armchair className="w-3.5 h-3.5" />,
+  other: <Box className="w-3.5 h-3.5" />,
+}
+
+const categoryLabel = (value: string) =>
+  value
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  in_stock: <CheckCircle2 className="w-3.5 h-3.5 text-success" />,
+  assigned: <Clock className="w-3.5 h-3.5 text-accent" />,
+  under_maintenance: <Wrench className="w-3.5 h-3.5 text-warning" />,
+  retired: <Archive className="w-3.5 h-3.5 text-error" />,
+  lost: <AlertTriangle className="w-3.5 h-3.5 text-error" />,
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  in_stock: 'In Stock',
+  assigned: 'Assigned',
+  under_maintenance: 'Under Maintenance',
+  retired: 'Retired',
+  lost: 'Lost / Missing',
+}
+
 interface AssetFilterBarProps {
   filters: AssetQueryFilters
   onFilterChange: (newFilters: Partial<AssetQueryFilters>) => void
   onResetFilters: () => void
   departments: Department[]
+  categories: string[]
+  statuses: AssetStatus[]
   totalResults: number
 }
 
@@ -32,6 +68,8 @@ export const AssetFilterBar: React.FC<AssetFilterBarProps> = ({
   onFilterChange,
   onResetFilters,
   departments,
+  categories,
+  statuses,
   totalResults,
 }) => {
   const [searchTerm, setSearchTerm] = useState(filters.search || '')
@@ -64,23 +102,25 @@ export const AssetFilterBar: React.FC<AssetFilterBarProps> = ({
     setSearchTerm(filters.search || '')
   }, [filters.search])
 
+  // Category and status options are real, backend-sourced data — never
+  // hardcoded (rules.md §1.1). Categories are the distinct values currently
+  // in use (GET /assets/meta); statuses are the fixed workflow enum.
   const categoryOptions: SelectOption[] = [
     { value: 'all', label: 'All Categories', icon: <Layers className="w-3.5 h-3.5" /> },
-    { value: 'laptop', label: 'Laptops', icon: <Laptop className="w-3.5 h-3.5" /> },
-    { value: 'monitor', label: 'Monitors', icon: <Monitor className="w-3.5 h-3.5" /> },
-    { value: 'mobile', label: 'Mobile Devices', icon: <Smartphone className="w-3.5 h-3.5" /> },
-    { value: 'software_license', label: 'Software Licenses', icon: <Key className="w-3.5 h-3.5" /> },
-    { value: 'furniture', label: 'Furniture', icon: <Armchair className="w-3.5 h-3.5" /> },
-    { value: 'other', label: 'Other Hardware', icon: <Box className="w-3.5 h-3.5" /> },
+    ...categories.map((c) => ({
+      value: c,
+      label: categoryLabel(c),
+      icon: CATEGORY_ICONS[c] || <Box className="w-3.5 h-3.5" />,
+    })),
   ]
 
   const statusOptions: SelectOption[] = [
     { value: 'all', label: 'All Statuses', icon: <Layers className="w-3.5 h-3.5" /> },
-    { value: 'in_stock', label: 'In Stock', icon: <CheckCircle2 className="w-3.5 h-3.5 text-success" /> },
-    { value: 'assigned', label: 'Assigned', icon: <Clock className="w-3.5 h-3.5 text-accent" /> },
-    { value: 'under_maintenance', label: 'Under Maintenance', icon: <Wrench className="w-3.5 h-3.5 text-warning" /> },
-    { value: 'retired', label: 'Retired', icon: <Archive className="w-3.5 h-3.5 text-outline" /> },
-    { value: 'lost', label: 'Lost / Missing', icon: <AlertTriangle className="w-3.5 h-3.5 text-error" /> },
+    ...statuses.map((s) => ({
+      value: s,
+      label: STATUS_LABELS[s] || categoryLabel(s),
+      icon: STATUS_ICONS[s] || <Layers className="w-3.5 h-3.5" />,
+    })),
   ]
 
   const departmentOptions: SelectOption[] = [

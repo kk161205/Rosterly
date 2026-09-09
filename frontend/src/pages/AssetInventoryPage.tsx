@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus,
@@ -28,11 +28,12 @@ import { assetService } from '@/services/assetService'
 import { authService } from '@/services/authService'
 import {
   Asset,
-  AssetCategory,
   AssetStatus,
   AssetQueryFilters,
   AssetListResponse,
   AssetCreatePayload,
+  AssetMetaResponse,
+  AssetSummaryStats,
 } from '@/types/assets'
 import { Department } from '@/types/employee'
 import { UserRole } from '@/types/dashboard'
@@ -55,6 +56,13 @@ export const AssetInventoryPage: React.FC = () => {
 
   const [filters, setFilters] = useState<AssetQueryFilters>(DEFAULT_FILTERS)
   const [departments, setDepartments] = useState<Department[]>([])
+  const [assetMeta, setAssetMeta] = useState<AssetMetaResponse>({ categories: [], statuses: [] })
+  const [summaryStats, setSummaryStats] = useState<AssetSummaryStats>({
+    total: 0,
+    deployed: 0,
+    inStock: 0,
+    underMaintenance: 0,
+  })
   const [assetData, setAssetData] = useState<AssetListResponse>({
     items: [],
     total: 0,
@@ -84,9 +92,11 @@ export const AssetInventoryPage: React.FC = () => {
     setError(null)
 
     try {
-      const [profileRes, deptRes, assetRes] = await Promise.allSettled([
+      const [profileRes, deptRes, metaRes, summaryRes, assetRes] = await Promise.allSettled([
         authService.getCurrentUser(),
         assetService.getDepartments(),
+        assetService.getAssetMeta(),
+        assetService.getAssetSummary(),
         assetService.getAssets(filters),
       ])
 
@@ -100,6 +110,14 @@ export const AssetInventoryPage: React.FC = () => {
 
       if (deptRes.status === 'fulfilled') {
         setDepartments(deptRes.value)
+      }
+
+      if (metaRes.status === 'fulfilled') {
+        setAssetMeta(metaRes.value)
+      }
+
+      if (summaryRes.status === 'fulfilled') {
+        setSummaryStats(summaryRes.value)
       }
 
       if (assetRes.status === 'fulfilled') {
@@ -121,22 +139,6 @@ export const AssetInventoryPage: React.FC = () => {
   useEffect(() => {
     loadData()
   }, [loadData])
-
-  // Aggregate metrics from current results
-  const summaryStats = useMemo(() => {
-    const total = assetData.total
-    const items = assetData.items
-    const deployed = items.filter((a) => a.status === 'assigned').length
-    const inStock = items.filter((a) => a.status === 'in_stock').length
-    const underMaintenance = items.filter((a) => a.status === 'under_maintenance').length
-
-    return {
-      total,
-      deployed,
-      inStock,
-      underMaintenance,
-    }
-  }, [assetData])
 
   // Filter handlers
   const handleFilterChange = (newFilters: Partial<AssetQueryFilters>) => {
@@ -234,7 +236,7 @@ export const AssetInventoryPage: React.FC = () => {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    triggerToast('Asset catalog CSV exported successfully.')
+    triggerToast(`Exported ${assetData.items.length} visible row(s) to CSV.`)
   }
 
   const canWrite = currentRole === 'super_admin' || currentRole === 'it_admin'
@@ -279,7 +281,7 @@ export const AssetInventoryPage: React.FC = () => {
         <div className="p-3 rounded-lg bg-accent-container/30 border border-accent/20 flex items-center gap-2.5 text-xs text-on-accent-container">
           <Building className="w-4 h-4 flex-shrink-0 text-accent" />
           <span>
-            Department Scoped View: Displaying hardware and software assets allocated across your direct reporting line.
+            Department Scoped View: Displaying hardware and software assets currently held by employees in your department.
           </span>
         </div>
       )}
@@ -326,9 +328,9 @@ export const AssetInventoryPage: React.FC = () => {
             icon={<Download className="w-3.5 h-3.5" />}
             onClick={handleExportCSV}
             disabled={assetData.items.length === 0}
-            title="Export CSV"
+            title="Export the currently visible page of results as CSV"
           >
-            Export
+            Export Visible Rows
           </Button>
 
           {canWrite && (
@@ -359,6 +361,8 @@ export const AssetInventoryPage: React.FC = () => {
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
         departments={departments}
+        categories={assetMeta.categories}
+        statuses={assetMeta.statuses}
         totalResults={assetData.total}
       />
 
@@ -421,6 +425,7 @@ export const AssetInventoryPage: React.FC = () => {
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           onSubmit={handleCreateAsset}
+          existingCategories={assetMeta.categories}
         />
       )}
 

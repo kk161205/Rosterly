@@ -119,10 +119,10 @@ export const DocumentVaultTab: React.FC<DocumentVaultTabProps> = ({
                 containerClassName="w-full"
                 className="w-full justify-between"
                 options={[
-                  { value: 'contract', label: 'Contract & Offer Letter' },
-                  { value: 'identity', label: 'Identity Verification (Passport/DL)' },
-                  { value: 'tax', label: 'Tax & Financial Forms' },
-                  { value: 'certification', label: 'Professional Certification' },
+                  { value: 'contract', label: 'Contract' },
+                  { value: 'id_proof', label: 'ID Proof' },
+                  { value: 'offer_letter', label: 'Offer Letter' },
+                  { value: 'policy_ack', label: 'Policy Acknowledgement' },
                   { value: 'other', label: 'General / Other' },
                 ]}
               />

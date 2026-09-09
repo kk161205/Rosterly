@@ -78,7 +78,9 @@ export const getStatusVariant = (status: AssetStatus): 'success' | 'info' | 'war
     case 'under_maintenance':
       return 'warning'
     case 'retired':
-      return 'neutral'
+      // Per DESIGN.md's explicit semantic mapping and §4's global shell spec
+      // (Rose for Locked/Retired-style states) — confirmed with the developer.
+      return 'error'
     case 'lost':
       return 'error'
     default:

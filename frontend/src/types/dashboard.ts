@@ -30,6 +30,7 @@ export interface PendingApprovalItem {
 export interface TaskChecklistItem {
   id: string
   checklist_id: string
+  checklist_type: 'onboarding' | 'offboarding'
   task_name: string
   status: 'pending' | 'in_progress' | 'done'
   created_at: string

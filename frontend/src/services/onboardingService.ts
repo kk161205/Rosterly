@@ -12,11 +12,16 @@ import {
 
 export const onboardingService = {
   /**
-   * Fetches list of active and completed onboarding checklists.
+   * Fetches list of active and completed onboarding checklists. The board view
+   * has no per-page pagination controls, so this requests the documented max
+   * page_size (100, §7 rule 3) explicitly rather than sidestepping pagination
+   * with an unbounded request (rules.md §2.8) — matching the same pattern
+   * already used for the Employee Directory's org-chart view.
    */
   async getOnboardings(statusFilter?: string): Promise<OnboardingListResponse> {
-    const params = statusFilter && statusFilter !== 'all' ? `?status=${statusFilter}` : ''
-    const response = await apiClient.get<OnboardingListResponse | OnboardingChecklist[]>(`/onboarding${params}`)
+    const params = new URLSearchParams({ page_size: '100' })
+    if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
+    const response = await apiClient.get<OnboardingListResponse | OnboardingChecklist[]>(`/onboarding?${params.toString()}`)
 
     let checklists: OnboardingChecklist[] = []
     if (Array.isArray(response.data)) {
