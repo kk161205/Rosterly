@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.assets import AssetCategory, AssetStatus, DepreciationMethod
+from app.models.assets import AssetStatus, DepreciationMethod
 
 
 class CurrentHolderNested(BaseModel):
@@ -20,7 +20,7 @@ class CurrentHolderNested(BaseModel):
 
 class AssetCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    category: AssetCategory
+    category: str = Field(..., min_length=1, max_length=100)
     serial_number: str | None = Field(None, max_length=100)
     vendor: str = Field(..., min_length=1, max_length=255)
     purchase_date: date
@@ -41,7 +41,7 @@ class AssetCreateRequest(BaseModel):
 
 class AssetUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
-    category: AssetCategory | None = None
+    category: str | None = Field(None, min_length=1, max_length=100)
     serial_number: str | None = Field(None, max_length=100)
     vendor: str | None = Field(None, min_length=1, max_length=255)
     purchase_date: date | None = None
@@ -72,7 +72,7 @@ class AssetResponse(BaseModel):
     id: UUID
     asset_tag: str
     name: str
-    category: AssetCategory
+    category: str
     serial_number: str | None = None
     vendor: str
     purchase_date: date
@@ -99,3 +99,19 @@ class AssetListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class AssetMetaResponse(BaseModel):
+    """GET /assets/meta — filter option source data (project doc §5.7 addition)."""
+
+    categories: list[str]
+    statuses: list[str]
+
+
+class AssetSummaryResponse(BaseModel):
+    """GET /assets/summary — real aggregate counts for the Summary Ribbon (§5.7)."""
+
+    total: int
+    deployed: int
+    in_stock: int
+    under_maintenance: int

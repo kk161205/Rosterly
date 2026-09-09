@@ -97,3 +97,10 @@ class ConflictError(AppError):
     def __init__(self, message: str = "Conflict", code: str = "conflict"):
         super().__init__(409, code, message)
 
+
+class FileInvalidError(AppError):
+    """§7 rule 8: rejected uploads return 400 with code: file_invalid."""
+
+    def __init__(self, message: str = "Invalid file"):
+        super().__init__(400, "file_invalid", message)
+

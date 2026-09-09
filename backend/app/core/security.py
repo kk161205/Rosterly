@@ -325,3 +325,21 @@ def check_permission(
     )
     if grant is None:
         raise ForbiddenError("You do not have permission to do this")
+
+
+def get_role_permissions(role_id: uuid.UUID, db: DBSession) -> list[str]:
+    """
+    Live role_permissions ⋈ permissions lookup for a role — the same source of
+    truth check_permission() enforces against, exposed here for GET /auth/me
+    (§5.1) to populate the full `permissions[]` list the client needs to
+    correctly hide/disable UI elements (§3.2: the frontend's RBAC is UI
+    convenience only, but it still needs to know its own permission set).
+    Returned as "resource:action" strings.
+    """
+    grants = (
+        db.query(Permission.resource, Permission.action)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .filter(RolePermission.role_id == role_id)
+        .all()
+    )
+    return [f"{resource}:{action}" for resource, action in grants]

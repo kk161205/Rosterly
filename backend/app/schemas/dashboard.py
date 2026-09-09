@@ -43,6 +43,7 @@ class PendingApprovalItem(BaseModel):
 class TaskChecklistItem(BaseModel):
     id: UUID
     checklist_id: UUID
+    checklist_type: str
     task_name: str
     status: str
     created_at: datetime

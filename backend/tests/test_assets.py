@@ -338,6 +338,90 @@ def test_patch_asset_retirement_by_it_admin():
     assert mock_db.commit.called
 
 
+def test_patch_asset_retired_is_terminal_rejected_409():
+    """§7 rule 1: retired assets can never transition to any other status."""
+    admin_id = uuid.uuid4()
+    curr_u = set_user_context(admin_id, "it_admin")
+
+    asset_id = uuid.uuid4()
+    asset = create_mock_asset(asset_id=asset_id, status=AssetStatus.retired)
+
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "update")])
+    mock_query.filter.return_value.first.return_value = asset
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.patch(f"/api/v1/assets/{asset_id}", json={"status": "in_stock"})
+    assert response.status_code == 409
+    assert asset.status == AssetStatus.retired
+
+
+def test_patch_asset_status_assigned_rejected_400():
+    """status='assigned' must go through POST /assets/{id}/assign, not PATCH."""
+    admin_id = uuid.uuid4()
+    curr_u = set_user_context(admin_id, "it_admin")
+
+    asset_id = uuid.uuid4()
+    asset = create_mock_asset(asset_id=asset_id, status=AssetStatus.in_stock)
+
+    mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "update")])
+    mock_query.filter.return_value.first.return_value = asset
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.patch(f"/api/v1/assets/{asset_id}", json={"status": "assigned"})
+    assert response.status_code == 400
+    assert asset.status == AssetStatus.in_stock
+
+
+def test_patch_asset_closes_active_assignment_on_status_change():
+    """§7 rule 2: moving an asset away from 'assigned' via PATCH must close the
+    open asset_assignments row and clear current_holder_id in the same
+    transaction, not just flip assets.status."""
+    admin_id = uuid.uuid4()
+    curr_u = set_user_context(admin_id, "it_admin")
+
+    holder = create_mock_user(role_name="employee")
+    asset_id = uuid.uuid4()
+    asset = create_mock_asset(asset_id=asset_id, status=AssetStatus.assigned, current_holder=holder)
+    assignment = AssetAssignment(
+        id=uuid.uuid4(),
+        asset_id=asset_id,
+        employee_id=holder.id,
+        assigned_by=admin_id,
+        condition_at_assignment="Good",
+        returned_at=None,
+    )
+
+    mock_db, _ = create_rbac_mock_db([(curr_u.role_id, "assets", "update")])
+
+    def query_side_effect(*entities):
+        q = MagicMock()
+        q.options.return_value = q
+        q.filter.return_value = q
+        if entities and entities[0] is Asset:
+            q.first.return_value = asset
+        elif entities and entities[0] is AssetAssignment:
+            q.first.return_value = assignment
+        return q
+
+    # Preserve the RBAC dispatch behavior for RolePermission while overriding
+    # Asset/AssetAssignment lookups with entity-specific mocks.
+    original_side_effect = mock_db.query.side_effect
+
+    def combined_side_effect(*entities):
+        if entities and entities[0] is RolePermission:
+            return original_side_effect(*entities)
+        return query_side_effect(*entities)
+
+    mock_db.query.side_effect = combined_side_effect
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    response = client.patch(f"/api/v1/assets/{asset_id}", json={"status": "in_stock"})
+    assert response.status_code == 200
+    assert asset.status == AssetStatus.in_stock
+    assert asset.current_holder_id is None
+    assert assignment.returned_at is not None
+
+
 def test_patch_bulk_assets_success():
     """Bulk status update succeeds atomically for valid asset IDs."""
     admin_id = uuid.uuid4()

@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
-from app.models.assets import AssetCategory, AssetStatus
+from app.models.assets import AssetStatus
 from app.schemas.assets import (
     AssetBulkUpdateRequest,
     AssetCreateRequest,
     AssetListResponse,
+    AssetMetaResponse,
     AssetResponse,
+    AssetSummaryResponse,
     AssetUpdateRequest,
 )
 from app.services.asset_service import AssetService
@@ -25,7 +27,7 @@ router = APIRouter()
 @router.get("/", response_model=AssetListResponse)
 def list_assets(
     search: str | None = Query(None, description="Search by name, asset tag, or serial number"),
-    category: AssetCategory | None = Query(None, description="Filter by category"),
+    category: str | None = Query(None, description="Filter by category"),
     status: AssetStatus | None = Query(None, description="Filter by status"),
     department_id: UUID | None = Query(None, description="Filter by holder's department ID"),
     page: int = Query(1, ge=1),
@@ -47,6 +49,35 @@ def list_assets(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/meta", response_model=AssetMetaResponse)
+def get_asset_meta(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AssetMetaResponse:
+    """
+    GET /api/v1/assets/meta — real filter-option data for the Category and
+    Status dropdowns (PRD §5.7 addition; rules.md §1.1). Categories are the
+    distinct values currently in use (role-scoped); statuses are the fixed
+    AssetStatus enum.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.get_asset_meta()
+
+
+@router.get("/summary", response_model=AssetSummaryResponse)
+def get_asset_summary(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AssetSummaryResponse:
+    """
+    GET /api/v1/assets/summary — real aggregate counts for the Summary Ribbon
+    (PRD §5.7 addition), computed server-side across the whole role-scoped
+    catalog rather than derived client-side from one paginated page.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.get_asset_summary()
 
 
 @router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session as DBSession
 
-from app.core.security import CurrentUser, get_current_user
+from app.core.security import CurrentUser, get_current_user, get_role_permissions
 from app.db.session import get_db
 from app.schemas.auth import (
     CurrentUserResponse,
@@ -9,6 +9,7 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
     MessageResponse,
+    MFAResendRequest,
     MFAVerifyRequest,
     RefreshTokenRequest,
     ResetPasswordRequest,
@@ -54,6 +55,13 @@ def mfa_verify_endpoint(
     )
 
 
+@router.post("/mfa/resend", response_model=MessageResponse)
+def mfa_resend_endpoint(
+    req: MFAResendRequest,
+) -> MessageResponse:
+    return auth_service.resend_mfa_code(mfa_session_id=req.mfa_session_id)
+
+
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_endpoint(
     req: RefreshTokenRequest,
@@ -97,12 +105,14 @@ def logout_all_devices_endpoint(
 @router.get("/me", response_model=CurrentUserResponse)
 def get_me_endpoint(
     current_user: CurrentUser = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
 ) -> CurrentUserResponse:
     return CurrentUserResponse(
         id=str(current_user.user_id),
         email=current_user.email or "",
         full_name=current_user.full_name or "Rosterly User",
         role=current_user.role,
+        permissions=get_role_permissions(current_user.role_id, db),
         department_id=str(current_user.department_id) if current_user.department_id else None,
     )
 

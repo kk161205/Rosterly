@@ -162,6 +162,41 @@ def test_login_mfa_required():
     assert "refresh_token" in mfa_data
 
 
+def test_mfa_resend_refreshes_challenge_and_code_still_verifies():
+    """POST /auth/mfa/resend (§5.1 addition) — the frontend's 30s resend timer
+    previously had no real backend call behind it at all. Resend should keep
+    the same mfa_session_id valid (refreshing its challenge) rather than
+    inventing a new one, so the code the user already has on screen still works."""
+    login_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/login",
+        json={"email": "mfauser@example.com", "password": "Password123!"},
+    )
+    mfa_session_id = login_resp.json()["mfa_session_id"]
+
+    resend_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/mfa/resend",
+        json={"mfa_session_id": mfa_session_id},
+    )
+    assert resend_resp.status_code == 200
+    assert "message" in resend_resp.json()
+
+    verify_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
+        json={"mfa_session_id": mfa_session_id, "code": "123456"},
+    )
+    assert verify_resp.status_code == 200
+    assert "access_token" in verify_resp.json()
+
+
+def test_mfa_resend_unknown_session_rejected():
+    resend_resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/mfa/resend",
+        json={"mfa_session_id": str(uuid.uuid4())},
+    )
+    assert resend_resp.status_code == 401
+    assert resend_resp.json()["error"]["code"] == "mfa_invalid"
+
+
 def test_mfa_wrong_session_id_rejected():
     login_resp = client.post(
         f"{settings.API_V1_PREFIX}/auth/login",
@@ -218,6 +253,68 @@ def test_account_lockout_after_5_failures():
     assert locked_resp.status_code == 400
     data = locked_resp.json()
     assert data["error"]["code"] == "account_locked"
+
+
+def test_lockout_does_not_self_extend_from_polling_while_locked():
+    """Regression test: attempts rejected *because* the account was already
+    locked (failure_reason=account_locked) must not themselves count toward
+    triggering a new lock — otherwise a client that keeps hitting /auth/login
+    while locked can keep the account locked indefinitely. Simulates the
+    original 5 genuine failures aging out of the 15-minute window, with a
+    burst of more-recent account_locked rows in between (as if the client
+    kept polling while locked) — login should succeed once the genuine
+    failures are outside the window, regardless of the polling noise."""
+    email = "lockouttest@example.com"
+    db = TestingSessionLocal()
+    now = datetime.now(timezone.utc)
+    try:
+        user = User(
+            id=uuid.uuid4(),
+            employee_code="RST-9999",
+            full_name="Lockout Test User",
+            email=email,
+            password_hash=get_password_hash("Password123!"),
+            role_id=db.query(Role).filter(Role.name == "employee").first().id,
+            designation="Tester",
+            status=UserStatus.active,
+            date_of_joining=datetime.now(timezone.utc).date(),
+        )
+        db.add(user)
+
+        # 5 genuine failures, well outside the trailing 15-minute window.
+        for _ in range(5):
+            db.add(
+                LoginAttempt(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    email_attempted=email,
+                    success=False,
+                    failure_reason="invalid_credentials",
+                    created_at=now - timedelta(minutes=20),
+                )
+            )
+        # A burst of "already locked" rejections logged recently — simulating
+        # a client that kept polling /auth/login while locked.
+        for _ in range(10):
+            db.add(
+                LoginAttempt(
+                    id=uuid.uuid4(),
+                    email_attempted=email,
+                    success=False,
+                    failure_reason="account_locked",
+                    created_at=now - timedelta(minutes=1),
+                )
+            )
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.post(
+        f"{settings.API_V1_PREFIX}/auth/login",
+        json={"email": email, "password": "Password123!"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["mfa_required"] is False
 
 
 def test_token_refresh_and_rotation():

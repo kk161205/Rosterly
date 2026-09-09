@@ -185,6 +185,7 @@ class DashboardService:
         pending_items = (
             self.db.query(ChecklistItem)
             .join(Checklist)
+            .options(joinedload(ChecklistItem.checklist))
             .filter(
                 Checklist.employee_id == user_id,
                 ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
@@ -197,6 +198,7 @@ class DashboardService:
             TaskChecklistItem(
                 id=item.id,
                 checklist_id=item.checklist_id,
+                checklist_type=str(item.checklist.type.value) if hasattr(item.checklist.type, "value") else str(item.checklist.type),
                 task_name=item.task_name,
                 status=str(item.status.value) if hasattr(item.status, "value") else str(item.status),
                 created_at=item.created_at,
@@ -455,6 +457,7 @@ class DashboardService:
         if hr_role_id:
             pending_items = (
                 self.db.query(ChecklistItem)
+                .options(joinedload(ChecklistItem.checklist))
                 .filter(
                     ChecklistItem.owner_role_id == hr_role_id,
                     ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
@@ -467,6 +470,7 @@ class DashboardService:
             TaskChecklistItem(
                 id=item.id,
                 checklist_id=item.checklist_id,
+                checklist_type=str(item.checklist.type.value) if hasattr(item.checklist.type, "value") else str(item.checklist.type),
                 task_name=item.task_name,
                 status=str(item.status.value) if hasattr(item.status, "value") else str(item.status),
                 created_at=item.created_at,
@@ -596,6 +600,7 @@ class DashboardService:
         if it_role_id:
             pending_items = (
                 self.db.query(ChecklistItem)
+                .options(joinedload(ChecklistItem.checklist))
                 .filter(
                     ChecklistItem.owner_role_id == it_role_id,
                     ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
@@ -608,6 +613,7 @@ class DashboardService:
             TaskChecklistItem(
                 id=item.id,
                 checklist_id=item.checklist_id,
+                checklist_type=str(item.checklist.type.value) if hasattr(item.checklist.type, "value") else str(item.checklist.type),
                 task_name=item.task_name,
                 status=str(item.status.value) if hasattr(item.status, "value") else str(item.status),
                 created_at=item.created_at,

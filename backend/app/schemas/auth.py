@@ -22,6 +22,10 @@ class MFAVerifyRequest(BaseModel):
     code: str = Field(..., min_length=6, max_length=6)
 
 
+class MFAResendRequest(BaseModel):
+    mfa_session_id: str
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 

@@ -77,7 +77,11 @@ class Asset(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     asset_tag = Column(String(100), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
-    category = Column(Enum(AssetCategory, name="asset_category_enum", native_enum=False), nullable=False)
+    # Open, admin-extensible field (not a closed enum) — the frontend sources
+    # suggested values from GET /assets/meta (distinct values already in use)
+    # plus a free-text "add new category" affordance on asset creation.
+    # AssetCategory below is kept only as a seed/reference list, not a DB constraint.
+    category = Column(String(100), nullable=False)
     serial_number = Column(String(100), nullable=True, index=True)
     vendor = Column(String(255), nullable=False)
     purchase_date = Column(Date, nullable=False)

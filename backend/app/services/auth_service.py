@@ -43,12 +43,18 @@ def login(
     now = datetime.now(timezone.utc)
     fifteen_mins_ago = now - timedelta(minutes=15)
 
-    # 1. Lockout check: 5 failed attempts in last 15 mins
+    # 1. Lockout check: 5 failed attempts in last 15 mins. Attempts rejected
+    # *because* the account was already locked (failure_reason=account_locked)
+    # are excluded from this count — otherwise a client that keeps hitting
+    # /auth/login while locked would keep re-arming its own trailing window
+    # and could stay locked out indefinitely. Only genuine credential/MFA
+    # failures should trigger or extend a lock.
     failed_attempts_count = (
         db.query(LoginAttempt)
         .filter(
             LoginAttempt.email_attempted == email,
             LoginAttempt.success == False,  # noqa: E712
+            LoginAttempt.failure_reason != "account_locked",
             LoginAttempt.created_at >= fifteen_mins_ago,
         )
         .count()
@@ -205,6 +211,23 @@ def verify_mfa(
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         token_type="bearer",
     )
+
+
+def resend_mfa_code(mfa_session_id: str) -> MessageResponse:
+    """
+    POST /auth/mfa/resend (§5.1 addition — the frontend's 30s resend timer
+    previously had no real backend call behind it at all). NOTE: no real
+    SMS/TOTP provider is wired up yet (see verify_mfa's docstring) — resending
+    re-registers (refreshes) the TTL of the same pending challenge rather than
+    dispatching a new code through a real channel. Once a provider is wired up,
+    this is the one place that needs to actually send something.
+    """
+    user_id = peek_mfa_challenge(mfa_session_id)
+    if not user_id:
+        raise UnauthenticatedError("MFA session expired or invalid", code="mfa_invalid")
+
+    register_mfa_challenge(mfa_session_id, user_id)
+    return MessageResponse(message="A new verification code has been sent.")
 
 
 def refresh_tokens(db: DBSession, raw_refresh_token: str) -> TokenResponse:
