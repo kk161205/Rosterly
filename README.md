@@ -6,6 +6,25 @@ Rosterly is an enterprise-grade platform designed for managing employee lifecycl
 
 ---
 
+## 📋 Project Status
+
+Phase 1 core platform — authentication, employee management, and asset inventory are built, backed by a real Postgres schema with RBAC/ABAC enforcement, zero-trust sessions, and audit logging.
+
+**Implemented pages:**
+- ✅ Login (multi-step auth: password, MFA, forgot/reset password, lockout)
+- ✅ Dashboard (role-aware home for employee / manager / hr_admin / it_admin / super_admin / auditor)
+- ✅ Employee Directory (list + org-chart views, department/role/status filtering)
+- ✅ Employee Profile Detail (overview, document vault, assigned assets, lifecycle tabs)
+- ✅ Onboarding Workflow (task board, progress tracking, AI-assisted checklist suggestions)
+- ✅ Offboarding Workflow (asset reclamation, access revocation, termination flow)
+- ✅ Asset Inventory (catalog, bulk actions, admin-extensible categories, depreciation tracking)
+
+**Not yet built:** Asset Detail, QR Check-In/Check-Out, Maintenance Tickets, Unified Request Portal, Approvals Queue, Approval Chain Configuration, Software License Tracking, Leave & Attendance, Analytics, and the AI Assistant panel.
+
+**Current test coverage:** 165 backend tests (pytest) and 34 frontend tests (Vitest) passing, plus a clean TypeScript build (`tsc -b`).
+
+---
+
 ## 🏛 Architecture Overview
 
 The repository is organized as a modular monorepo:
@@ -79,10 +98,16 @@ docker compose up --build
 
 ## 🧪 Testing
 
-### Backend Unit Tests
+### Backend Tests (pytest — 165 passing)
 ```bash
 cd backend
 python -m pytest
+```
+
+### Frontend Tests (Vitest — 34 passing)
+```bash
+cd frontend
+npx vitest run
 ```
 
 ### Frontend Typecheck & Build
