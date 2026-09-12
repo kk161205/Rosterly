@@ -1,9 +1,16 @@
 from app.schemas.assets import (
+    AssetAssignRequest,
+    AssetAssignmentResponse,
     AssetBulkUpdateRequest,
     AssetCreateRequest,
+    AssetDetailResponse,
     AssetListResponse,
+    AssetMetaResponse,
     AssetResponse,
+    AssetReturnRequest,
+    AssetSummaryResponse,
     AssetUpdateRequest,
+    MaintenanceTicketResponse,
 )
 from app.schemas.auth import (
     ForgotPasswordRequest,
@@ -61,6 +68,14 @@ __all__ = [
     "AssetBulkUpdateRequest",
     "AssetResponse",
     "AssetListResponse",
+    "AssetAssignRequest",
+    "AssetReturnRequest",
+    "AssetAssignmentResponse",
+    "AssetDetailResponse",
+    "AssetMetaResponse",
+    "AssetSummaryResponse",
+    "MaintenanceTicketResponse",
 ]
+
 
 
