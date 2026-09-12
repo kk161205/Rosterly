@@ -18,6 +18,7 @@ from app.schemas.assets import (
     AssetListResponse,
     AssetMetaResponse,
     AssetResponse,
+    AssetReturnRequest,
     AssetSummaryResponse,
     AssetUpdateRequest,
 )
@@ -125,6 +126,23 @@ def assign_asset(
     """
     service = AssetService(db=db, current_user=current_user)
     return service.assign_asset(asset_id=id, payload=payload)
+
+
+@router.post("/{id}/return", response_model=AssetAssignmentResponse)
+def return_asset(
+    id: UUID,
+    payload: AssetReturnRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AssetAssignmentResponse:
+    """
+    POST /api/v1/assets/{id}/return — Return an assigned asset to stock (PRD §5.8).
+    - Roles: it_admin, super_admin.
+    - Concurrency-safe: pessimistic row locking via with_for_update() + status re-check.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.return_asset(asset_id=id, payload=payload)
+
 
 
 
