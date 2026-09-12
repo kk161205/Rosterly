@@ -14,15 +14,21 @@ from app.models.assets import Asset, AssetAssignment, AssetStatus, DepreciationM
 from app.models.auth import Department, User
 from app.models.system import AuditLog
 from app.schemas.assets import (
+    AssetAssignRequest,
+    AssetAssignmentResponse,
     AssetBulkUpdateRequest,
     AssetCreateRequest,
+    AssetDetailResponse,
     AssetListResponse,
     AssetMetaResponse,
     AssetResponse,
+    AssetReturnRequest,
     AssetSummaryResponse,
     AssetUpdateRequest,
     CurrentHolderNested,
+    MaintenanceTicketResponse,
 )
+from app.services.assets import calculate_current_value
 
 
 class AssetService:
@@ -60,7 +66,7 @@ class AssetService:
             vendor=asset.vendor,
             purchase_date=asset.purchase_date,
             purchase_cost=asset.purchase_cost,
-            current_value=asset.current_value,
+            current_value=calculate_current_value(asset, as_of=today),
             depreciation_method=asset.depreciation_method,
             useful_life_months=asset.useful_life_months,
             warranty_expiry=asset.warranty_expiry,
@@ -73,6 +79,122 @@ class AssetService:
             created_at=asset.created_at,
             updated_at=asset.updated_at,
         )
+
+    def _check_asset_read_access(self, asset: Asset, allow_manager: bool = True) -> None:
+        """
+        Two-layer access control check for Asset read operations (§2.3, PRD §5.8).
+        - Layer 1: Roles it_admin, super_admin, auditor pass unconditionally if check_permission passes.
+        - Layer 2 (Row-level ABAC for manager/employee):
+          - employee: allowed ONLY if asset.current_holder_id == current_user.id.
+          - manager: allowed if asset.current_holder_id == current_user.id OR
+                     (allow_manager is True AND asset.current_holder.manager_id == current_user.id).
+                     For GET /assets/{id}/maintenance, allow_manager=False per PRD §5.8.
+          - Any other role (e.g. hr_admin): falls back to check_permission which raises ForbiddenError.
+        """
+        role = (self.current_user.role or "").lower()
+        if role in ("it_admin", "super_admin", "auditor"):
+            check_permission(self.current_user, "assets", "read", self.db)
+            return
+
+        if role == "employee":
+            if asset.current_holder_id != self.current_user.user_id:
+                raise ForbiddenError("You do not have permission to view this asset")
+            return
+
+        if role == "manager":
+            is_holder = asset.current_holder_id == self.current_user.user_id
+            is_holders_manager = (
+                allow_manager
+                and asset.current_holder is not None
+                and asset.current_holder.manager_id == self.current_user.user_id
+            )
+            if not (is_holder or is_holders_manager):
+                raise ForbiddenError("You do not have permission to view this asset")
+            return
+
+        check_permission(self.current_user, "assets", "read", self.db)
+
+    def get_asset_detail(self, asset_id: UUID) -> AssetDetailResponse:
+        """
+        GET /assets/{id} (PRD §5.8): Full asset record + current assignment.
+        """
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder).joinedload(User.department))
+            .filter(Asset.id == asset_id)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        self._check_asset_read_access(asset, allow_manager=True)
+
+        current_assignment_resp = None
+        if asset.status != AssetStatus.in_stock and asset.current_holder_id is not None:
+            current_assignment = (
+                self.db.query(AssetAssignment)
+                .options(joinedload(AssetAssignment.employee), joinedload(AssetAssignment.assigner))
+                .filter(AssetAssignment.asset_id == asset.id, AssetAssignment.returned_at.is_(None))
+                .first()
+            )
+            if current_assignment:
+                current_assignment_resp = AssetAssignmentResponse(
+                    id=current_assignment.id,
+                    asset_id=current_assignment.asset_id,
+                    employee_id=current_assignment.employee_id,
+                    assigned_by=current_assignment.assigned_by,
+                    assigned_at=current_assignment.assigned_at,
+                    returned_at=current_assignment.returned_at,
+                    condition_at_assignment=current_assignment.condition_at_assignment,
+                    condition_at_return=current_assignment.condition_at_return,
+                    notes=current_assignment.notes,
+                    employee_name=current_assignment.employee.full_name if current_assignment.employee else None,
+                    assigned_by_name=current_assignment.assigner.full_name if current_assignment.assigner else None,
+                )
+
+        asset_resp = self._format_asset_response(asset)
+        return AssetDetailResponse(asset=asset_resp, current_assignment=current_assignment_resp)
+
+    def get_asset_assignments(self, asset_id: UUID) -> list[AssetAssignmentResponse]:
+        """
+        GET /assets/{id}/assignments (PRD §5.8): Full assignment history for an asset.
+        """
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder))
+            .filter(Asset.id == asset_id)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        self._check_asset_read_access(asset, allow_manager=True)
+
+        assignments = (
+            self.db.query(AssetAssignment)
+            .options(joinedload(AssetAssignment.employee), joinedload(AssetAssignment.assigner))
+            .filter(AssetAssignment.asset_id == asset.id)
+            .order_by(AssetAssignment.assigned_at.desc())
+            .all()
+        )
+
+        return [
+            AssetAssignmentResponse(
+                id=a.id,
+                asset_id=a.asset_id,
+                employee_id=a.employee_id,
+                assigned_by=a.assigned_by,
+                assigned_at=a.assigned_at,
+                returned_at=a.returned_at,
+                condition_at_assignment=a.condition_at_assignment,
+                condition_at_return=a.condition_at_return,
+                notes=a.notes,
+                employee_name=a.employee.full_name if a.employee else None,
+                assigned_by_name=a.assigner.full_name if a.assigner else None,
+            )
+            for a in assignments
+        ]
+
 
     def _apply_role_scope(self, query, department_id: UUID | None = None):
         """
