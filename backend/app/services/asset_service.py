@@ -365,6 +365,50 @@ class AssetService:
             assigned_by_name=assigner.full_name if assigner else None,
         )
 
+    def get_asset_maintenance(self, asset_id: UUID) -> list[MaintenanceTicketResponse]:
+        """
+        GET /assets/{id}/maintenance (PRD §5.8): Service tickets raised for an asset.
+        - Roles: it_admin, super_admin, auditor, current holder ONLY.
+        - Manager is explicitly excluded per PRD §5.8 (allow_manager=False).
+        """
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder))
+            .filter(Asset.id == asset_id)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        self._check_asset_read_access(asset, allow_manager=False)
+
+        tickets = (
+            self.db.query(MaintenanceTicket)
+            .options(joinedload(MaintenanceTicket.reporter), joinedload(MaintenanceTicket.assignee))
+            .filter(MaintenanceTicket.asset_id == asset.id)
+            .order_by(MaintenanceTicket.created_at.desc())
+            .all()
+        )
+
+        return [
+            MaintenanceTicketResponse(
+                id=t.id,
+                asset_id=t.asset_id,
+                reported_by=t.reported_by,
+                assigned_to=t.assigned_to,
+                issue_description=t.issue_description,
+                priority=t.priority.value if hasattr(t.priority, "value") else str(t.priority),
+                status=t.status.value if hasattr(t.status, "value") else str(t.status),
+                resolved_at=t.resolved_at,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                reporter_name=t.reporter.full_name if t.reporter else None,
+                assignee_name=t.assignee.full_name if t.assignee else None,
+            )
+            for t in tickets
+        ]
+
+
 
 
 

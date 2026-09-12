@@ -21,6 +21,7 @@ from app.schemas.assets import (
     AssetReturnRequest,
     AssetSummaryResponse,
     AssetUpdateRequest,
+    MaintenanceTicketResponse,
 )
 from app.services.asset_service import AssetService
 
@@ -112,6 +113,21 @@ def get_asset_assignments(
     return service.get_asset_assignments(asset_id=id)
 
 
+@router.get("/{id}/maintenance", response_model=list[MaintenanceTicketResponse])
+def get_asset_maintenance(
+    id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MaintenanceTicketResponse]:
+    """
+    GET /api/v1/assets/{id}/maintenance — Service tickets for an asset (PRD §5.8).
+    - Roles: it_admin, super_admin, auditor, current holder ONLY.
+    - Manager is explicitly excluded per PRD §5.8.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.get_asset_maintenance(asset_id=id)
+
+
 @router.post("/{id}/assign", response_model=AssetAssignmentResponse, status_code=status.HTTP_201_CREATED)
 def assign_asset(
     id: UUID,
@@ -142,6 +158,7 @@ def return_asset(
     """
     service = AssetService(db=db, current_user=current_user)
     return service.return_asset(asset_id=id, payload=payload)
+
 
 
 
