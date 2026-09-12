@@ -10,6 +10,7 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.assets import AssetStatus
 from app.schemas.assets import (
+    AssetAssignRequest,
     AssetAssignmentResponse,
     AssetBulkUpdateRequest,
     AssetCreateRequest,
@@ -108,6 +109,23 @@ def get_asset_assignments(
     """
     service = AssetService(db=db, current_user=current_user)
     return service.get_asset_assignments(asset_id=id)
+
+
+@router.post("/{id}/assign", response_model=AssetAssignmentResponse, status_code=status.HTTP_201_CREATED)
+def assign_asset(
+    id: UUID,
+    payload: AssetAssignRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AssetAssignmentResponse:
+    """
+    POST /api/v1/assets/{id}/assign — Assign an in-stock asset to an employee (PRD §5.8).
+    - Roles: it_admin, super_admin.
+    - Concurrency-safe: pessimistic row locking via with_for_update() + status re-check.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.assign_asset(asset_id=id, payload=payload)
+
 
 
 @router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)

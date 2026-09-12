@@ -195,6 +195,93 @@ class AssetService:
             for a in assignments
         ]
 
+    def assign_asset(self, asset_id: UUID, payload: AssetAssignRequest) -> AssetAssignmentResponse:
+        """
+        POST /assets/{id}/assign (PRD §5.8): Assign an in-stock asset to an employee.
+        - Roles: it_admin, super_admin (RBAC action="update").
+        - Concurrency: Row-locks asset via with_for_update() and re-checks status == in_stock.
+        - Rejects with 409 Conflict if asset status != in_stock.
+        - Rejects with 404 Not Found if target employee_id does not exist.
+        """
+        check_permission(self.current_user, "assets", "update", self.db)
+
+        # 1. Acquire row lock for concurrency safety
+        asset = (
+            self.db.query(Asset)
+            .filter(Asset.id == asset_id)
+            .with_for_update()
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        # 2. Re-check status under lock
+        if asset.status != AssetStatus.in_stock:
+            raise ConflictError(
+                f"Asset {asset.asset_tag} cannot be assigned because its status is '{asset.status.value}' (must be 'in_stock')."
+            )
+
+        # 3. Validate target employee existence
+        employee = self.db.query(User).filter(User.id == payload.employee_id).first()
+        if not employee:
+            raise NotFoundError(f"Employee with ID {payload.employee_id} not found")
+
+        now = datetime.now(timezone.utc)
+        asset.status = AssetStatus.assigned
+        asset.current_holder_id = employee.id
+
+        assignment = AssetAssignment(
+            id=uuid.uuid4(),
+            asset_id=asset.id,
+            employee_id=employee.id,
+            assigned_by=self.current_user.user_id,
+            assigned_at=now,
+            returned_at=None,
+            condition_at_assignment=payload.condition_notes,
+            condition_at_return=None,
+            notes=payload.notes,
+            created_at=now,
+        )
+        self.db.add(assignment)
+
+        self.db.add(
+            AuditLog(
+                actor_id=self.current_user.user_id,
+                action="asset.assigned",
+                entity_type="asset",
+                entity_id=asset.id,
+                before_state={"status": AssetStatus.in_stock.value, "current_holder_id": None},
+                after_state={
+                    "status": AssetStatus.assigned.value,
+                    "current_holder_id": str(employee.id),
+                    "assignment_id": str(assignment.id),
+                },
+            )
+        )
+
+        self.db.commit()
+        self.db.refresh(assignment)
+
+        assigner_name = self.current_user.full_name
+        if not assigner_name:
+            assigner = self.db.query(User).filter(User.id == self.current_user.user_id).first()
+            assigner_name = assigner.full_name if assigner else None
+
+        return AssetAssignmentResponse(
+            id=assignment.id,
+            asset_id=assignment.asset_id,
+            employee_id=assignment.employee_id,
+            assigned_by=assignment.assigned_by,
+            assigned_at=assignment.assigned_at,
+            returned_at=assignment.returned_at,
+            condition_at_assignment=assignment.condition_at_assignment,
+            condition_at_return=assignment.condition_at_return,
+            notes=assignment.notes,
+            employee_name=employee.full_name,
+            assigned_by_name=assigner_name,
+        )
+
+
 
     def _apply_role_scope(self, query, department_id: UUID | None = None):
         """
