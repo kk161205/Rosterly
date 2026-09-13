@@ -115,3 +115,73 @@ class AssetSummaryResponse(BaseModel):
     deployed: int
     in_stock: int
     under_maintenance: int
+
+
+# --- Section 5.8 Schemas ---
+
+class AssetAssignRequest(BaseModel):
+    employee_id: UUID
+    condition_notes: str = Field(..., min_length=1)
+    notes: str | None = None
+
+    @field_validator("condition_notes")
+    @classmethod
+    def strip_condition_notes(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Condition notes cannot be empty or whitespace only")
+        return v_stripped
+
+
+class AssetReturnRequest(BaseModel):
+    condition_notes: str = Field(..., min_length=1)
+    notes: str | None = None
+
+    @field_validator("condition_notes")
+    @classmethod
+    def strip_condition_notes(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Condition notes cannot be empty or whitespace only")
+        return v_stripped
+
+
+class AssetAssignmentResponse(BaseModel):
+    id: UUID
+    asset_id: UUID
+    employee_id: UUID
+    assigned_by: UUID
+    assigned_at: datetime
+    returned_at: datetime | None = None
+    condition_at_assignment: str
+    condition_at_return: str | None = None
+    notes: str | None = None
+    employee_name: str | None = None
+    assigned_by_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetDetailResponse(BaseModel):
+    asset: AssetResponse
+    current_assignment: AssetAssignmentResponse | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MaintenanceTicketResponse(BaseModel):
+    id: UUID
+    asset_id: UUID
+    reported_by: UUID
+    assigned_to: UUID | None = None
+    issue_description: str
+    priority: str
+    status: str
+    resolved_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    reporter_name: str | None = None
+    assignee_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+

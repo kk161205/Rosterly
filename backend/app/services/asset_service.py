@@ -14,15 +14,21 @@ from app.models.assets import Asset, AssetAssignment, AssetStatus, DepreciationM
 from app.models.auth import Department, User
 from app.models.system import AuditLog
 from app.schemas.assets import (
+    AssetAssignRequest,
+    AssetAssignmentResponse,
     AssetBulkUpdateRequest,
     AssetCreateRequest,
+    AssetDetailResponse,
     AssetListResponse,
     AssetMetaResponse,
     AssetResponse,
+    AssetReturnRequest,
     AssetSummaryResponse,
     AssetUpdateRequest,
     CurrentHolderNested,
+    MaintenanceTicketResponse,
 )
+from app.services.assets import calculate_current_value
 
 
 class AssetService:
@@ -60,7 +66,7 @@ class AssetService:
             vendor=asset.vendor,
             purchase_date=asset.purchase_date,
             purchase_cost=asset.purchase_cost,
-            current_value=asset.current_value,
+            current_value=calculate_current_value(asset, as_of=today),
             depreciation_method=asset.depreciation_method,
             useful_life_months=asset.useful_life_months,
             warranty_expiry=asset.warranty_expiry,
@@ -73,6 +79,338 @@ class AssetService:
             created_at=asset.created_at,
             updated_at=asset.updated_at,
         )
+
+    def _check_asset_read_access(self, asset: Asset, allow_manager: bool = True) -> None:
+        """
+        Two-layer access control check for Asset read operations (§2.3, PRD §5.8).
+        - Layer 1: Roles it_admin, super_admin, auditor pass unconditionally if check_permission passes.
+        - Layer 2 (Row-level ABAC for manager/employee):
+          - employee: allowed ONLY if asset.current_holder_id == current_user.id.
+          - manager: allowed if asset.current_holder_id == current_user.id OR
+                     (allow_manager is True AND asset.current_holder.manager_id == current_user.id).
+                     For GET /assets/{id}/maintenance, allow_manager=False per PRD §5.8.
+          - Any other role (e.g. hr_admin): falls back to check_permission which raises ForbiddenError.
+        """
+        role = (self.current_user.role or "").lower()
+        if role in ("it_admin", "super_admin", "auditor"):
+            check_permission(self.current_user, "assets", "read", self.db)
+            return
+
+        if role == "employee":
+            if asset.current_holder_id != self.current_user.user_id:
+                raise ForbiddenError("You do not have permission to view this asset")
+            return
+
+        if role == "manager":
+            is_holder = asset.current_holder_id == self.current_user.user_id
+            is_holders_manager = (
+                allow_manager
+                and asset.current_holder is not None
+                and asset.current_holder.manager_id == self.current_user.user_id
+            )
+            if not (is_holder or is_holders_manager):
+                raise ForbiddenError("You do not have permission to view this asset")
+            return
+
+        check_permission(self.current_user, "assets", "read", self.db)
+
+    def get_asset_detail(self, asset_id: UUID) -> AssetDetailResponse:
+        """
+        GET /assets/{id} (PRD §5.8): Full asset record + current assignment.
+        """
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder).joinedload(User.department))
+            .filter(Asset.id == asset_id)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        self._check_asset_read_access(asset, allow_manager=True)
+
+        current_assignment_resp = None
+        if asset.status != AssetStatus.in_stock and asset.current_holder_id is not None:
+            current_assignment = (
+                self.db.query(AssetAssignment)
+                .options(joinedload(AssetAssignment.employee), joinedload(AssetAssignment.assigner))
+                .filter(AssetAssignment.asset_id == asset.id, AssetAssignment.returned_at.is_(None))
+                .first()
+            )
+            if current_assignment:
+                current_assignment_resp = AssetAssignmentResponse(
+                    id=current_assignment.id,
+                    asset_id=current_assignment.asset_id,
+                    employee_id=current_assignment.employee_id,
+                    assigned_by=current_assignment.assigned_by,
+                    assigned_at=current_assignment.assigned_at,
+                    returned_at=current_assignment.returned_at,
+                    condition_at_assignment=current_assignment.condition_at_assignment,
+                    condition_at_return=current_assignment.condition_at_return,
+                    notes=current_assignment.notes,
+                    employee_name=current_assignment.employee.full_name if current_assignment.employee else None,
+                    assigned_by_name=current_assignment.assigner.full_name if current_assignment.assigner else None,
+                )
+
+        asset_resp = self._format_asset_response(asset)
+        return AssetDetailResponse(asset=asset_resp, current_assignment=current_assignment_resp)
+
+    def get_asset_assignments(self, asset_id: UUID) -> list[AssetAssignmentResponse]:
+        """
+        GET /assets/{id}/assignments (PRD §5.8): Full assignment history for an asset.
+        """
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder))
+            .filter(Asset.id == asset_id)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        self._check_asset_read_access(asset, allow_manager=True)
+
+        assignments = (
+            self.db.query(AssetAssignment)
+            .options(joinedload(AssetAssignment.employee), joinedload(AssetAssignment.assigner))
+            .filter(AssetAssignment.asset_id == asset.id)
+            .order_by(AssetAssignment.assigned_at.desc())
+            .all()
+        )
+
+        return [
+            AssetAssignmentResponse(
+                id=a.id,
+                asset_id=a.asset_id,
+                employee_id=a.employee_id,
+                assigned_by=a.assigned_by,
+                assigned_at=a.assigned_at,
+                returned_at=a.returned_at,
+                condition_at_assignment=a.condition_at_assignment,
+                condition_at_return=a.condition_at_return,
+                notes=a.notes,
+                employee_name=a.employee.full_name if a.employee else None,
+                assigned_by_name=a.assigner.full_name if a.assigner else None,
+            )
+            for a in assignments
+        ]
+
+    def assign_asset(self, asset_id: UUID, payload: AssetAssignRequest) -> AssetAssignmentResponse:
+        """
+        POST /assets/{id}/assign (PRD §5.8): Assign an in-stock asset to an employee.
+        - Roles: it_admin, super_admin (RBAC action="update").
+        - Concurrency: Row-locks asset via with_for_update() and re-checks status == in_stock.
+        - Rejects with 409 Conflict if asset status != in_stock.
+        - Rejects with 404 Not Found if target employee_id does not exist.
+        """
+        check_permission(self.current_user, "assets", "update", self.db)
+
+        # 1. Acquire row lock for concurrency safety
+        asset = (
+            self.db.query(Asset)
+            .filter(Asset.id == asset_id)
+            .with_for_update()
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        # 2. Re-check status under lock
+        if asset.status != AssetStatus.in_stock:
+            raise ConflictError(
+                f"Asset {asset.asset_tag} cannot be assigned because its status is '{asset.status.value}' (must be 'in_stock')."
+            )
+
+        # 3. Validate target employee existence
+        employee = self.db.query(User).filter(User.id == payload.employee_id).first()
+        if not employee:
+            raise NotFoundError(f"Employee with ID {payload.employee_id} not found")
+
+        now = datetime.now(timezone.utc)
+        asset.status = AssetStatus.assigned
+        asset.current_holder_id = employee.id
+
+        assignment = AssetAssignment(
+            id=uuid.uuid4(),
+            asset_id=asset.id,
+            employee_id=employee.id,
+            assigned_by=self.current_user.user_id,
+            assigned_at=now,
+            returned_at=None,
+            condition_at_assignment=payload.condition_notes,
+            condition_at_return=None,
+            notes=payload.notes,
+            created_at=now,
+        )
+        self.db.add(assignment)
+
+        self.db.add(
+            AuditLog(
+                actor_id=self.current_user.user_id,
+                action="asset.assigned",
+                entity_type="asset",
+                entity_id=asset.id,
+                before_state={"status": AssetStatus.in_stock.value, "current_holder_id": None},
+                after_state={
+                    "status": AssetStatus.assigned.value,
+                    "current_holder_id": str(employee.id),
+                    "assignment_id": str(assignment.id),
+                },
+            )
+        )
+
+        self.db.commit()
+        self.db.refresh(assignment)
+
+        assigner_name = self.current_user.full_name
+        if not assigner_name:
+            assigner = self.db.query(User).filter(User.id == self.current_user.user_id).first()
+            assigner_name = assigner.full_name if assigner else None
+
+        return AssetAssignmentResponse(
+            id=assignment.id,
+            asset_id=assignment.asset_id,
+            employee_id=assignment.employee_id,
+            assigned_by=assignment.assigned_by,
+            assigned_at=assignment.assigned_at,
+            returned_at=assignment.returned_at,
+            condition_at_assignment=assignment.condition_at_assignment,
+            condition_at_return=assignment.condition_at_return,
+            notes=assignment.notes,
+            employee_name=employee.full_name,
+            assigned_by_name=assigner_name,
+        )
+
+    def return_asset(self, asset_id: UUID, payload: AssetReturnRequest) -> AssetAssignmentResponse:
+        """
+        POST /assets/{id}/return (PRD §5.8): Return an assigned asset to stock.
+        - Roles: it_admin, super_admin (RBAC action="update").
+        - Concurrency: Row-locks asset via with_for_update() and re-checks status == assigned.
+        - Rejects with 409 Conflict if asset is not currently assigned.
+        """
+        check_permission(self.current_user, "assets", "update", self.db)
+
+        # 1. Acquire row lock for concurrency safety
+        asset = (
+            self.db.query(Asset)
+            .filter(Asset.id == asset_id)
+            .with_for_update()
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        # 2. Re-check status under lock
+        if asset.status != AssetStatus.assigned or asset.current_holder_id is None:
+            raise ConflictError(
+                f"Asset {asset.asset_tag} cannot be returned because it is not currently assigned (status: '{asset.status.value}')."
+            )
+
+        # 3. Query active assignment
+        assignment = (
+            self.db.query(AssetAssignment)
+            .filter(AssetAssignment.asset_id == asset.id, AssetAssignment.returned_at.is_(None))
+            .with_for_update()
+            .first()
+        )
+        if not assignment:
+            raise ConflictError(f"No active assignment record found for asset {asset.asset_tag}.")
+
+        now = datetime.now(timezone.utc)
+        previous_holder_id = asset.current_holder_id
+
+        assignment.returned_at = now
+        assignment.condition_at_return = payload.condition_notes
+        if payload.notes:
+            assignment.notes = payload.notes
+
+        asset.status = AssetStatus.in_stock
+        asset.current_holder_id = None
+
+        self.db.add(
+            AuditLog(
+                actor_id=self.current_user.user_id,
+                action="asset.returned",
+                entity_type="asset",
+                entity_id=asset.id,
+                before_state={
+                    "status": AssetStatus.assigned.value,
+                    "current_holder_id": str(previous_holder_id),
+                },
+                after_state={
+                    "status": AssetStatus.in_stock.value,
+                    "current_holder_id": None,
+                    "returned_at": now.isoformat(),
+                },
+            )
+        )
+
+        self.db.commit()
+        self.db.refresh(assignment)
+
+        employee = self.db.query(User).filter(User.id == assignment.employee_id).first()
+        assigner = self.db.query(User).filter(User.id == assignment.assigned_by).first()
+
+        return AssetAssignmentResponse(
+            id=assignment.id,
+            asset_id=assignment.asset_id,
+            employee_id=assignment.employee_id,
+            assigned_by=assignment.assigned_by,
+            assigned_at=assignment.assigned_at,
+            returned_at=assignment.returned_at,
+            condition_at_assignment=assignment.condition_at_assignment,
+            condition_at_return=assignment.condition_at_return,
+            notes=assignment.notes,
+            employee_name=employee.full_name if employee else None,
+            assigned_by_name=assigner.full_name if assigner else None,
+        )
+
+    def get_asset_maintenance(self, asset_id: UUID) -> list[MaintenanceTicketResponse]:
+        """
+        GET /assets/{id}/maintenance (PRD §5.8): Service tickets raised for an asset.
+        - Roles: it_admin, super_admin, auditor, current holder ONLY.
+        - Manager is explicitly excluded per PRD §5.8 (allow_manager=False).
+        """
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder))
+            .filter(Asset.id == asset_id)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with ID {asset_id} not found")
+
+        self._check_asset_read_access(asset, allow_manager=False)
+
+        tickets = (
+            self.db.query(MaintenanceTicket)
+            .options(joinedload(MaintenanceTicket.reporter), joinedload(MaintenanceTicket.assignee))
+            .filter(MaintenanceTicket.asset_id == asset.id)
+            .order_by(MaintenanceTicket.created_at.desc())
+            .all()
+        )
+
+        return [
+            MaintenanceTicketResponse(
+                id=t.id,
+                asset_id=t.asset_id,
+                reported_by=t.reported_by,
+                assigned_to=t.assigned_to,
+                issue_description=t.issue_description,
+                priority=t.priority.value if hasattr(t.priority, "value") else str(t.priority),
+                status=t.status.value if hasattr(t.status, "value") else str(t.status),
+                resolved_at=t.resolved_at,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                reporter_name=t.reporter.full_name if t.reporter else None,
+                assignee_name=t.assignee.full_name if t.assignee else None,
+            )
+            for t in tickets
+        ]
+
+
+
+
 
     def _apply_role_scope(self, query, department_id: UUID | None = None):
         """
