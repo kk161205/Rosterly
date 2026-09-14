@@ -1,6 +1,6 @@
 // Open, admin-extensible field — not a closed union. GET /assets/meta returns
 // the distinct categories currently in use; the Add Asset form also lets an
-// IT admin type a brand-new one. See ROSTERLY_PROJECT_DOCUMENTATION.md §1.9.
+// IT admin type a brand-new one.
 export type AssetCategory = string
 
 export type AssetStatus =
@@ -102,4 +102,54 @@ export interface AssetSummaryStats {
 export interface AssetMetaResponse {
   categories: string[]
   statuses: AssetStatus[]
+}
+
+// --- Section 5.8 Asset Detail & History Interfaces ---
+
+export interface AssetAssignment {
+  id: string
+  asset_id: string
+  employee_id: string
+  assigned_by: string
+  assigned_at: string
+  returned_at?: string | null
+  condition_at_assignment: string
+  condition_at_return?: string | null
+  notes?: string | null
+  employee_name?: string | null
+  assigned_by_name?: string | null
+}
+
+export interface AssetDetailResponse {
+  asset: Asset
+  current_assignment?: AssetAssignment | null
+}
+
+export interface AssetAssignPayload {
+  employee_id: string
+  condition_notes: string
+  notes?: string | null
+}
+
+export interface AssetReturnPayload {
+  condition_notes: string
+  notes?: string | null
+}
+
+export type TicketPriority = 'low' | 'medium' | 'high' | 'critical'
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
+
+export interface MaintenanceTicket {
+  id: string
+  asset_id: string
+  reported_by: string
+  assigned_to?: string | null
+  issue_description: string
+  priority: TicketPriority
+  status: TicketStatus
+  resolved_at?: string | null
+  created_at: string
+  updated_at: string
+  reporter_name?: string | null
+  assignee_name?: string | null
 }
