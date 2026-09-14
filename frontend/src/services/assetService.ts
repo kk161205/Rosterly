@@ -8,6 +8,11 @@ import {
   AssetBulkUpdatePayload,
   AssetMetaResponse,
   AssetSummaryStats,
+  AssetDetailResponse,
+  AssetAssignment,
+  AssetAssignPayload,
+  AssetReturnPayload,
+  MaintenanceTicket,
 } from '@/types/assets'
 import { Department } from '@/types/employee'
 
@@ -29,6 +34,46 @@ export const assetService = {
   },
 
   /**
+   * Fetches single asset record and its active assignment.
+   */
+  async getAssetDetail(id: string): Promise<AssetDetailResponse> {
+    const response = await apiClient.get<AssetDetailResponse>(`/assets/${id}`)
+    return response.data
+  },
+
+  /**
+   * Fetches full chronological assignment history for an asset.
+   */
+  async getAssetAssignments(id: string): Promise<AssetAssignment[]> {
+    const response = await apiClient.get<AssetAssignment[]>(`/assets/${id}/assignments`)
+    return response.data
+  },
+
+  /**
+   * Fetches maintenance / service tickets for an asset.
+   */
+  async getAssetMaintenance(id: string): Promise<MaintenanceTicket[]> {
+    const response = await apiClient.get<MaintenanceTicket[]>(`/assets/${id}/maintenance`)
+    return response.data
+  },
+
+  /**
+   * Assigns an in-stock asset to an employee.
+   */
+  async assignAsset(id: string, payload: AssetAssignPayload): Promise<AssetAssignment> {
+    const response = await apiClient.post<AssetAssignment>(`/assets/${id}/assign`, payload)
+    return response.data
+  },
+
+  /**
+   * Returns an assigned asset back to stock.
+   */
+  async returnAsset(id: string, payload: AssetReturnPayload): Promise<AssetAssignment> {
+    const response = await apiClient.post<AssetAssignment>(`/assets/${id}/return`, payload)
+    return response.data
+  },
+
+  /**
    * Fetches departments for holder department filter dropdown.
    */
   async getDepartments(): Promise<Department[]> {
@@ -37,8 +82,7 @@ export const assetService = {
   },
 
   /**
-   * Real filter-option data for Category (distinct values in use, role-scoped)
-   * and Status (fixed enum) — never hardcode these (rules.md §1.1).
+   * Real filter-option data for Category and Status.
    */
   async getAssetMeta(): Promise<AssetMetaResponse> {
     const response = await apiClient.get<AssetMetaResponse>('/assets/meta')
@@ -46,8 +90,7 @@ export const assetService = {
   },
 
   /**
-   * Real, server-computed aggregate counts for the Summary Ribbon — computed
-   * across the whole role-scoped catalog, not derived from one paginated page.
+   * Real, server-computed aggregate counts for the Summary Ribbon.
    */
   async getAssetSummary(): Promise<AssetSummaryStats> {
     const response = await apiClient.get<{
