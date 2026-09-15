@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { Box, ArrowLeft, ShieldAlert, AlertCircle, RefreshCw } from 'lucide-react'
-import { Button, Card } from '@/components/common/CommonUI'
+import { Box, ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/common/CommonUI'
 
 export const AssetDetailSkeleton: React.FC = () => {
   return (

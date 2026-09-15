@@ -9,19 +9,16 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
 from app.core.errors import AppError, FileInvalidError
 from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment
-from app.models.auth import Department, Role, User, UserStatus
+from app.models.auth import Department, Role, User
 from app.models.lifecycle import (
     Checklist,
     ChecklistItem,
     ChecklistItemStatus,
-    ChecklistStatus,
-    ChecklistType,
     Document,
     DocumentType,
 )

@@ -15,7 +15,6 @@ from app.core.errors import AppError
 from app.core.security import CurrentUser, check_permission
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.system import AuditLog
-from app.schemas.employee_directory import EmployeeDirectoryResponse, EmployeeListItem
 
 
 class EmployeeDirectoryService:

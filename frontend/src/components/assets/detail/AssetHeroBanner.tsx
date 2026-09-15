@@ -1,13 +1,12 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import QRCode from 'qrcode'
 import {
-  QrCode,
   Download,
   Copy,
   Check,
   UserPlus,
   RotateCcw,
   Edit,
-  ExternalLink,
   Laptop,
   Monitor,
   Smartphone,
@@ -16,13 +15,12 @@ import {
   Box,
 } from 'lucide-react'
 import { Button, StatusBadge } from '@/components/common/CommonUI'
-import { Asset, AssetAssignment } from '@/types/assets'
+import { Asset } from '@/types/assets'
 import { UserRole } from '@/types/dashboard'
 import { getStatusVariant } from '@/components/assets/AssetTable'
 
 interface AssetHeroBannerProps {
   asset: Asset
-  currentAssignment?: AssetAssignment | null
   currentRole: UserRole
   onAssignClick: () => void
   onReturnClick: () => void
@@ -41,7 +39,6 @@ export const getCategoryIcon = (category: string) => {
 
 export const AssetHeroBanner: React.FC<AssetHeroBannerProps> = ({
   asset,
-  currentAssignment,
   currentRole,
   onAssignClick,
   onReturnClick,
@@ -49,6 +46,20 @@ export const AssetHeroBanner: React.FC<AssetHeroBannerProps> = ({
 }) => {
   const [copied, setCopied] = useState(false)
   const [isDownloaded, setIsDownloaded] = useState(false)
+  const [downloadError, setDownloadError] = useState(false)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    if (qrCanvasRef.current) {
+      QRCode.toCanvas(qrCanvasRef.current, asset.asset_tag, {
+        width: 72,
+        margin: 1,
+        color: { dark: '#1f2b67', light: '#ffffff' },
+      }).catch(() => {
+        // Canvas render failure leaves the label box empty rather than a fake icon
+      })
+    }
+  }, [asset.asset_tag])
 
   const handleCopyTag = () => {
     navigator.clipboard.writeText(asset.asset_tag)
@@ -56,9 +67,59 @@ export const AssetHeroBanner: React.FC<AssetHeroBannerProps> = ({
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleDownloadQr = () => {
-    setIsDownloaded(true)
-    setTimeout(() => setIsDownloaded(false), 2000)
+  const handleDownloadQr = async () => {
+    try {
+      const qrSize = 320
+      const padding = 32
+      const textBlockHeight = 72
+      const labelCanvas = document.createElement('canvas')
+      labelCanvas.width = qrSize + padding * 2
+      labelCanvas.height = qrSize + padding * 2 + textBlockHeight
+      const ctx = labelCanvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas 2D context unavailable')
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, labelCanvas.width, labelCanvas.height)
+
+      const qrDataUrl = await QRCode.toDataURL(asset.asset_tag, {
+        width: qrSize,
+        margin: 1,
+        color: { dark: '#1f2b67', light: '#ffffff' },
+      })
+      const qrImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = () => reject(new Error('Failed to render QR image'))
+        img.src = qrDataUrl
+      })
+      ctx.drawImage(qrImage, padding, padding, qrSize, qrSize)
+
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#1f2b67'
+      ctx.font = 'bold 22px sans-serif'
+      ctx.fillText(asset.asset_tag, labelCanvas.width / 2, qrSize + padding * 1.6)
+      ctx.fillStyle = '#555b6e'
+      ctx.font = '15px sans-serif'
+      ctx.fillText(asset.name, labelCanvas.width / 2, qrSize + padding * 1.6 + 26)
+
+      const blob: Blob | null = await new Promise((resolve) => labelCanvas.toBlob(resolve, 'image/png'))
+      if (!blob) throw new Error('Failed to encode PNG')
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${asset.asset_tag}-label.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+
+      setIsDownloaded(true)
+      setTimeout(() => setIsDownloaded(false), 2000)
+    } catch {
+      setDownloadError(true)
+      setTimeout(() => setDownloadError(false), 3000)
+    }
   }
 
   const canWrite = currentRole === 'super_admin' || currentRole === 'it_admin'
@@ -71,7 +132,7 @@ export const AssetHeroBanner: React.FC<AssetHeroBannerProps> = ({
         {/* Printable QR Code Label Box */}
         <div className="flex flex-col items-center p-3 bg-surface-container-low border border-outline-variant/60 rounded-lg shadow-2xs flex-shrink-0">
           <div className="w-20 h-20 bg-surface-container-lowest border border-outline-variant/40 rounded flex items-center justify-center text-primary mb-2 shadow-xs">
-            <QrCode className="w-16 h-16 stroke-1" />
+            <canvas ref={qrCanvasRef} className="w-[72px] h-[72px]" aria-label={`QR code for ${asset.asset_tag}`} />
           </div>
           <span className="font-mono text-[10px] font-semibold text-primary">{asset.asset_tag}</span>
           <button
@@ -80,7 +141,7 @@ export const AssetHeroBanner: React.FC<AssetHeroBannerProps> = ({
             className="mt-1.5 text-[11px] font-sans font-medium text-accent hover:underline flex items-center gap-1 cursor-pointer transition-colors"
           >
             <Download className="w-3 h-3" />
-            <span>{isDownloaded ? 'Saved PNG' : 'Download Label'}</span>
+            <span>{downloadError ? 'Download failed' : isDownloaded ? 'Saved PNG' : 'Download Label'}</span>
           </button>
         </div>
 

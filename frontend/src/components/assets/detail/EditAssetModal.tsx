@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { X, Edit, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/CommonUI'
-import { Asset, AssetUpdatePayload, AssetStatus, DepreciationMethod } from '@/types/assets'
+import { Asset, AssetUpdatePayload, AssetStatus } from '@/types/assets'
 
 interface EditAssetModalProps {
   asset: Asset

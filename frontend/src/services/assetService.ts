@@ -13,6 +13,7 @@ import {
   AssetAssignPayload,
   AssetReturnPayload,
   MaintenanceTicket,
+  MaintenanceTicketCreatePayload,
 } from '@/types/assets'
 import { Department } from '@/types/employee'
 
@@ -54,6 +55,14 @@ export const assetService = {
    */
   async getAssetMaintenance(id: string): Promise<MaintenanceTicket[]> {
     const response = await apiClient.get<MaintenanceTicket[]>(`/assets/${id}/maintenance`)
+    return response.data
+  },
+
+  /**
+   * Raises a maintenance ticket for an asset (§5.10 minimal slice used by §5.8's Raise Ticket action).
+   */
+  async createMaintenanceTicket(payload: MaintenanceTicketCreatePayload): Promise<MaintenanceTicket> {
+    const response = await apiClient.post<MaintenanceTicket>('/maintenance-tickets', payload)
     return response.data
   },
 

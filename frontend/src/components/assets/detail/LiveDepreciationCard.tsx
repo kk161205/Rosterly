@@ -1,5 +1,5 @@
 import React from 'react'
-import { DollarSign, TrendingDown, Clock, ShieldAlert, Sparkles, BarChart3 } from 'lucide-react'
+import { DollarSign, TrendingDown, Clock, Sparkles } from 'lucide-react'
 import { Card } from '@/components/common/CommonUI'
 import { Asset } from '@/types/assets'
 

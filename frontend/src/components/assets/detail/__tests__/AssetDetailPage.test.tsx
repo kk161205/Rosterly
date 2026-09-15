@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AssetDetailPage } from '@/pages/AssetDetailPage'
@@ -21,6 +21,7 @@ vi.mock('@/services/assetService', () => ({
     assignAsset: vi.fn(),
     returnAsset: vi.fn(),
     updateAsset: vi.fn(),
+    createMaintenanceTicket: vi.fn(),
   },
 }))
 
@@ -113,10 +114,12 @@ describe('AssetDetailPage Component', () => {
       email: 'admin@rosterly.example',
       full_name: 'IT Admin User',
       role: 'it_admin',
+      permissions: [],
     })
     vi.mocked(assetService.getAssetDetail).mockResolvedValue(mockAssetDetail)
     vi.mocked(assetService.getAssetAssignments).mockResolvedValue(mockAssignments)
     vi.mocked(assetService.getAssetMaintenance).mockResolvedValue(mockTickets)
+    vi.mocked(assetService.createMaintenanceTicket).mockResolvedValue(mockTickets[0])
     vi.mocked(employeeService.getEmployees).mockResolvedValue({
       items: [
         {
@@ -152,9 +155,9 @@ describe('AssetDetailPage Component', () => {
     renderComponent()
 
     await waitFor(() => {
-      expect(screen.getByText('MacBook Pro 16 M3 Max')).toBeInTheDocument()
-      expect(screen.getByText('AST-2026-00042')).toBeInTheDocument()
-      expect(screen.getByText('Apple Inc.')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 1, name: 'MacBook Pro 16 M3 Max' })).toBeInTheDocument()
+      expect(screen.getAllByText('AST-2026-00042').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Apple Inc.').length).toBeGreaterThan(0)
       expect(screen.getByText('Depreciation & Book Value Analysis')).toBeInTheDocument()
       expect(screen.getByText('Hardware & Procurement Specs')).toBeInTheDocument()
     })
@@ -171,10 +174,12 @@ describe('AssetDetailPage Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Historical Custody & Assignment Log/i)).toBeInTheDocument()
-      expect(screen.getByText('Sarah Connor')).toBeInTheDocument()
-      expect(screen.getByText('Brand New In Box')).toBeInTheDocument()
-      expect(screen.getByText('Currently Active')).toBeInTheDocument()
     })
+
+    const historyTable = screen.getByRole('table')
+    expect(within(historyTable).getByText('Sarah Connor')).toBeInTheDocument()
+    expect(within(historyTable).getByText('Brand New In Box')).toBeInTheDocument()
+    expect(within(historyTable).getByText('Currently Active')).toBeInTheDocument()
   })
 
   it('switches tabs to Maintenance History and displays service tickets', async () => {
@@ -215,6 +220,37 @@ describe('AssetDetailPage Component', () => {
           condition_notes: 'Returned in Good Working Condition',
         })
       )
+    })
+  })
+
+  it('opens Raise Ticket modal from Maintenance History and submits a real ticket', async () => {
+    renderComponent()
+
+    await waitFor(() => {
+      expect(screen.getByText('Maintenance History')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Maintenance History'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Raise Ticket/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Raise Ticket/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Raise Maintenance Ticket/i })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/Describe the hardware defect/i), {
+      target: { value: 'Keyboard backlight not working' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Submit Ticket/i }))
+
+    await waitFor(() => {
+      expect(assetService.createMaintenanceTicket).toHaveBeenCalledWith({
+        asset_id: 'asset-001',
+        issue_description: 'Keyboard backlight not working',
+        priority: 'medium',
+      })
     })
   })
 

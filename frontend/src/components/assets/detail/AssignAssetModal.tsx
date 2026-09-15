@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, UserPlus, Search, Check, AlertCircle, Building } from 'lucide-react'
+import { X, UserPlus, Search, Check, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/CommonUI'
 import { employeeService } from '@/services/employeeService'
 import { Employee } from '@/types/employee'

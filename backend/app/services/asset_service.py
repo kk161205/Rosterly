@@ -1,17 +1,21 @@
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 import math
-from typing import Any
 import uuid
 from uuid import UUID
 
-from sqlalchemy import Column, String, and_, func, or_, text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError, ValidationAppError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.security import CurrentUser, check_permission
-from app.models.assets import Asset, AssetAssignment, AssetStatus, DepreciationMethod, MaintenanceTicket
-from app.models.auth import Department, User
+from app.models.assets import (
+    Asset,
+    AssetAssignment,
+    AssetStatus,
+    MaintenanceStatus,
+    MaintenanceTicket,
+)
+from app.models.auth import User
 from app.models.system import AuditLog
 from app.schemas.assets import (
     AssetAssignRequest,
@@ -26,6 +30,7 @@ from app.schemas.assets import (
     AssetSummaryResponse,
     AssetUpdateRequest,
     CurrentHolderNested,
+    MaintenanceTicketCreateRequest,
     MaintenanceTicketResponse,
 )
 from app.services.assets import calculate_current_value
@@ -408,6 +413,61 @@ class AssetService:
             for t in tickets
         ]
 
+    def create_maintenance_ticket(self, payload: MaintenanceTicketCreateRequest) -> MaintenanceTicketResponse:
+        """
+        POST /maintenance-tickets (PRD §5.10 — minimal slice backing §5.8's "Raise
+        Ticket" action; the rest of §5.10 (list/kanban/PATCH) is a separate,
+        not-yet-built page).
+        - Roles: it_admin, super_admin (check_permission — any asset).
+        - Any other authenticated role: allowed ONLY if the asset is currently
+          assigned to them (ABAC ownership check, per PRD §5.10's "Employee-raised
+          tickets validated server-side: asset_id must be in that employee's
+          active assignments").
+        """
+        asset = self.db.query(Asset).filter(Asset.id == payload.asset_id).first()
+        if not asset:
+            raise NotFoundError(f"Asset with ID {payload.asset_id} not found")
+
+        role = (self.current_user.role or "").lower()
+        if role in ("it_admin", "super_admin"):
+            check_permission(self.current_user, "maintenance_ticket", "create", self.db)
+        elif asset.current_holder_id != self.current_user.user_id:
+            raise ForbiddenError(
+                "You can only raise a maintenance ticket for an asset currently assigned to you"
+            )
+
+        now = datetime.now(timezone.utc)
+        ticket = MaintenanceTicket(
+            id=uuid.uuid4(),
+            asset_id=asset.id,
+            reported_by=self.current_user.user_id,
+            assigned_to=None,
+            issue_description=payload.issue_description,
+            priority=payload.priority,
+            status=MaintenanceStatus.open,
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(ticket)
+        self.db.commit()
+        self.db.refresh(ticket)
+
+        reporter = self.db.query(User).filter(User.id == ticket.reported_by).first()
+
+        return MaintenanceTicketResponse(
+            id=ticket.id,
+            asset_id=ticket.asset_id,
+            reported_by=ticket.reported_by,
+            assigned_to=ticket.assigned_to,
+            issue_description=ticket.issue_description,
+            priority=ticket.priority.value,
+            status=ticket.status.value,
+            resolved_at=ticket.resolved_at,
+            created_at=ticket.created_at,
+            updated_at=ticket.updated_at,
+            reporter_name=reporter.full_name if reporter else None,
+            assignee_name=None,
+        )
 
 
 

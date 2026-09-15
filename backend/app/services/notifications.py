@@ -30,7 +30,6 @@ import logging
 import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from typing import Optional
 
 from sqlalchemy import or_
 

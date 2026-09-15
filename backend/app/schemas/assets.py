@@ -1,11 +1,10 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.assets import AssetStatus, DepreciationMethod
+from app.models.assets import AssetStatus, DepreciationMethod, MaintenancePriority
 
 
 class CurrentHolderNested(BaseModel):
@@ -167,6 +166,22 @@ class AssetDetailResponse(BaseModel):
     current_assignment: AssetAssignmentResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MaintenanceTicketCreateRequest(BaseModel):
+    """POST /maintenance-tickets (PRD §5.10, minimal slice for §5.8's Raise Ticket action)."""
+
+    asset_id: UUID
+    issue_description: str = Field(..., min_length=1)
+    priority: MaintenancePriority = MaintenancePriority.medium
+
+    @field_validator("issue_description")
+    @classmethod
+    def strip_issue_description(cls, v: str) -> str:
+        v_stripped = v.strip()
+        if not v_stripped:
+            raise ValueError("Issue description cannot be empty or whitespace only")
+        return v_stripped
 
 
 class MaintenanceTicketResponse(BaseModel):

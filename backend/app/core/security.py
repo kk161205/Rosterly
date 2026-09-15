@@ -11,8 +11,10 @@ Every authenticated request MUST:
 """
 import hashlib
 import secrets
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 from typing import Optional, Tuple
 
 import bcrypt
@@ -112,9 +114,6 @@ def verify_password_reset_token(token: str) -> Optional[Tuple[str, str]]:
     except JWTError:
         return None
 
-
-import time
-from threading import Lock
 
 # MFA challenge binding — maps a one-time mfa_session_id to the specific user
 # who triggered it, so verify_mfa() can never complete a different user's login.

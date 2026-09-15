@@ -1,16 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
-import {
-  ArrowLeft,
-  RefreshCw,
-  Cpu,
-  History,
-  Wrench,
-  CheckCircle2,
-  AlertOctagon,
-  ShieldCheck,
-  Building,
-} from 'lucide-react'
+import { useParams, Link } from 'react-router-dom'
+import { ArrowLeft, RefreshCw, Cpu, History, Wrench, CheckCircle2 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AssetHeroBanner } from '@/components/assets/detail/AssetHeroBanner'
 import { LiveDepreciationCard } from '@/components/assets/detail/LiveDepreciationCard'
@@ -46,7 +36,6 @@ type TabType = 'specs' | 'history' | 'maintenance'
 
 export const AssetDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
 
   const cachedUser = authStorage.getUser()
   const [currentRole, setCurrentRole] = useState<UserRole>((cachedUser?.role as UserRole) || 'employee')
@@ -157,6 +146,7 @@ export const AssetDetailPage: React.FC = () => {
 
   const handleRaiseTicket = async (payload: { issue_description: string; priority: TicketPriority }) => {
     if (!id) return
+    await assetService.createMaintenanceTicket({ asset_id: id, ...payload })
     triggerToast('Service ticket submitted successfully!')
     setIsRaiseTicketModalOpen(false)
     await loadData()
@@ -233,7 +223,6 @@ export const AssetDetailPage: React.FC = () => {
           {/* Top Hero Banner */}
           <AssetHeroBanner
             asset={asset}
-            currentAssignment={currentAssignment}
             currentRole={currentRole}
             onAssignClick={() => setIsAssignModalOpen(true)}
             onReturnClick={() => setIsReturnModalOpen(true)}

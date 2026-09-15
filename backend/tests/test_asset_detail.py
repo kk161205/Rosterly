@@ -470,3 +470,100 @@ def test_depreciation_calculated_at_multiple_life_points():
     # Point 4: Beyond useful life (30 months elapsed: 2027-07-01) -> floors at $0.00
     val_month30 = calculate_current_value(asset, as_of=date(2027, 7, 1))
     assert val_month30 == Decimal("0.00")
+
+
+# ============================================================================
+# 6. POST /api/v1/maintenance-tickets - §5.10 minimal slice for §5.8's Raise Ticket
+# ============================================================================
+
+def test_create_maintenance_ticket_it_admin_success():
+    """it_admin can raise a ticket for any asset, regardless of who holds it."""
+    admin = create_mock_user(role_name="it_admin")
+    curr_u = set_user_context(admin.id, "it_admin")
+
+    emp = create_mock_user(role_name="employee")
+    asset = create_mock_asset(status=AssetStatus.assigned, current_holder=emp)
+
+    mock_db, asset_query = create_rbac_mock_db([(curr_u.role_id, "maintenance_ticket", "create")])
+    asset_query.first.return_value = asset
+    mock_db.query(User).filter.return_value.first.return_value = admin
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    payload = {"asset_id": str(asset.id), "issue_description": "Trackpad glitch", "priority": "high"}
+    response = client.post("/api/v1/maintenance-tickets", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["asset_id"] == str(asset.id)
+    assert data["issue_description"] == "Trackpad glitch"
+    assert data["priority"] == "high"
+    assert data["status"] == "open"
+
+
+def test_create_maintenance_ticket_current_holder_employee_success():
+    """An employee CAN raise a ticket for an asset currently assigned to them."""
+    emp = create_mock_user(role_name="employee")
+    set_user_context(emp.id, "employee")
+
+    asset = create_mock_asset(status=AssetStatus.assigned, current_holder=emp)
+
+    mock_db, asset_query = create_rbac_mock_db([])
+    asset_query.first.return_value = asset
+    mock_db.query(User).filter.return_value.first.return_value = emp
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    payload = {"asset_id": str(asset.id), "issue_description": "Battery draining fast", "priority": "medium"}
+    response = client.post("/api/v1/maintenance-tickets", json=payload)
+    assert response.status_code == 201
+    assert response.json()["issue_description"] == "Battery draining fast"
+
+
+def test_create_maintenance_ticket_unrelated_employee_denied():
+    """An employee who is NOT the current holder gets 403 Forbidden (ABAC ownership check)."""
+    emp_holder = create_mock_user(role_name="employee")
+    emp_other = create_mock_user(role_name="employee")
+    set_user_context(emp_other.id, "employee")
+
+    asset = create_mock_asset(status=AssetStatus.assigned, current_holder=emp_holder)
+
+    mock_db, asset_query = create_rbac_mock_db([])
+    asset_query.first.return_value = asset
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    payload = {"asset_id": str(asset.id), "issue_description": "Not my asset", "priority": "low"}
+    response = client.post("/api/v1/maintenance-tickets", json=payload)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+def test_create_maintenance_ticket_asset_not_found():
+    """404 when the referenced asset_id does not exist."""
+    admin = create_mock_user(role_name="it_admin")
+    curr_u = set_user_context(admin.id, "it_admin")
+
+    mock_db, asset_query = create_rbac_mock_db([(curr_u.role_id, "maintenance_ticket", "create")])
+    asset_query.first.return_value = None
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    payload = {"asset_id": str(uuid.uuid4()), "issue_description": "Ghost asset", "priority": "low"}
+    response = client.post("/api/v1/maintenance-tickets", json=payload)
+    assert response.status_code == 404
+
+
+def test_create_maintenance_ticket_blank_description_rejected():
+    """Whitespace-only issue_description is rejected by schema validation (400)."""
+    admin = create_mock_user(role_name="it_admin")
+    curr_u = set_user_context(admin.id, "it_admin")
+
+    asset = create_mock_asset(status=AssetStatus.in_stock)
+    mock_db, asset_query = create_rbac_mock_db([(curr_u.role_id, "maintenance_ticket", "create")])
+    asset_query.first.return_value = asset
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    payload = {"asset_id": str(asset.id), "issue_description": "   ", "priority": "low"}
+    response = client.post("/api/v1/maintenance-tickets", json=payload)
+    assert response.status_code == 400

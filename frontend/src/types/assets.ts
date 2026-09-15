@@ -153,3 +153,9 @@ export interface MaintenanceTicket {
   reporter_name?: string | null
   assignee_name?: string | null
 }
+
+export interface MaintenanceTicketCreatePayload {
+  asset_id: string
+  issue_description: string
+  priority: TicketPriority
+}

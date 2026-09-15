@@ -63,11 +63,6 @@ class OnboardingService:
             )
 
         progress = int((completed_count / total_count) * 100) if total_count > 0 else 0
-        checklist_status = (
-            checklist.status.value
-            if hasattr(checklist.status, "value")
-            else str(checklist.status)
-        )
 
         now_utc = datetime.now(timezone.utc)
         return {

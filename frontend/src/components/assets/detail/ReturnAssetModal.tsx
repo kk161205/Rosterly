@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, RotateCcw, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { X, RotateCcw, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/CommonUI'
 import { Asset, AssetReturnPayload, AssetAssignment } from '@/types/assets'
 
@@ -110,6 +110,15 @@ export const ReturnAssetModal: React.FC<ReturnAssetModalProps> = ({
                   <div className="text-[10px] text-outline">{holder.email}</div>
                 </div>
               </div>
+              {currentAssignment && (
+                <div className="pt-1.5 mt-1.5 border-t border-outline-variant/30 text-[10px] text-on-surface-variant space-y-0.5">
+                  <div>
+                    Assigned {new Date(currentAssignment.assigned_at).toLocaleDateString()}
+                    {currentAssignment.assigned_by_name ? ` by ${currentAssignment.assigned_by_name}` : ''}
+                  </div>
+                  <div>Condition at assignment: {currentAssignment.condition_at_assignment}</div>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Wrench, Plus, CheckCircle2, Clock, AlertTriangle, CheckCheck } from 'lucide-react'
+import { Wrench, Plus } from 'lucide-react'
 import { Card, Button, StatusBadge } from '@/components/common/CommonUI'
 import { MaintenanceTicket, TicketPriority, TicketStatus } from '@/types/assets'
 import { UserRole } from '@/types/dashboard'

@@ -278,7 +278,7 @@ def forgot_password(db: DBSession, email: str) -> MessageResponse:
 
     user = db.query(User).filter(User.email == email).first()
     if user:
-        reset_token = create_password_reset_token(user.id)
+        create_password_reset_token(user.id)
         # Never log the raw token (rules.md §5.3) — identifiers only.
         logger.info(f"Password reset requested for user_id={user.id}")
 

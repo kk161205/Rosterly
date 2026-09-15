@@ -1,17 +1,5 @@
 import React from 'react'
-import {
-  Building2,
-  Calendar,
-  DollarSign,
-  ShieldCheck,
-  Clock,
-  Key,
-  FileText,
-  AlertTriangle,
-  ExternalLink,
-  Layers,
-  Cpu,
-} from 'lucide-react'
+import { ShieldCheck, Key, AlertTriangle, Cpu } from 'lucide-react'
 import { Card } from '@/components/common/CommonUI'
 import { Asset } from '@/types/assets'
 
@@ -67,15 +55,6 @@ export const SpecificationsTab: React.FC<SpecificationsTabProps> = ({ asset }) =
               <span className="text-on-surface-variant font-medium">Purchase Cost</span>
               <span className="font-mono font-bold text-primary">
                 ${Number(asset.purchase_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-
-            <div className="py-2.5 flex items-center justify-between">
-              <span className="text-on-surface-variant font-medium">Invoice Record</span>
-              <span className="inline-flex items-center gap-1 text-accent text-[11px] font-medium hover:underline cursor-pointer">
-                <FileText className="w-3.5 h-3.5" />
-                <span>PO-INV-{asset.asset_tag.replace('AST-', '')}.pdf</span>
-                <ExternalLink className="w-2.5 h-2.5" />
               </span>
             </div>
           </div>

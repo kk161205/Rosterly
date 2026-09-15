@@ -1,6 +1,6 @@
 import React from 'react'
-import { UserCheck, Clock, CheckCircle2, History, AlertCircle } from 'lucide-react'
-import { Card, StatusBadge } from '@/components/common/CommonUI'
+import { UserCheck, History } from 'lucide-react'
+import { Card } from '@/components/common/CommonUI'
 import { AssetAssignment } from '@/types/assets'
 
 interface AssignmentHistoryTabProps {
