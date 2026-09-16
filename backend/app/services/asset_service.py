@@ -160,6 +160,48 @@ class AssetService:
         asset_resp = self._format_asset_response(asset)
         return AssetDetailResponse(asset=asset_resp, current_assignment=current_assignment_resp)
 
+    def get_asset_detail_by_tag(self, asset_tag: str) -> AssetDetailResponse:
+        """
+        GET /assets/lookup/{asset_tag} (PRD §5.9): Fast single-field tag lookup for QR scanning.
+        - Roles: it_admin, super_admin ONLY (enforced via check_permission(..., "assets", "lookup", ...)).
+        """
+        check_permission(self.current_user, "assets", "lookup", self.db)
+
+        asset = (
+            self.db.query(Asset)
+            .options(joinedload(Asset.current_holder).joinedload(User.department))
+            .filter(Asset.asset_tag == asset_tag)
+            .first()
+        )
+        if not asset:
+            raise NotFoundError(f"Asset with tag '{asset_tag}' not found")
+
+        current_assignment_resp = None
+        if asset.status != AssetStatus.in_stock and asset.current_holder_id is not None:
+            current_assignment = (
+                self.db.query(AssetAssignment)
+                .options(joinedload(AssetAssignment.employee), joinedload(AssetAssignment.assigner))
+                .filter(AssetAssignment.asset_id == asset.id, AssetAssignment.returned_at.is_(None))
+                .first()
+            )
+            if current_assignment:
+                current_assignment_resp = AssetAssignmentResponse(
+                    id=current_assignment.id,
+                    asset_id=current_assignment.asset_id,
+                    employee_id=current_assignment.employee_id,
+                    assigned_by=current_assignment.assigned_by,
+                    assigned_at=current_assignment.assigned_at,
+                    returned_at=current_assignment.returned_at,
+                    condition_at_assignment=current_assignment.condition_at_assignment,
+                    condition_at_return=current_assignment.condition_at_return,
+                    notes=current_assignment.notes,
+                    employee_name=current_assignment.employee.full_name if current_assignment.employee else None,
+                    assigned_by_name=current_assignment.assigner.full_name if current_assignment.assigner else None,
+                )
+
+        asset_resp = self._format_asset_response(asset)
+        return AssetDetailResponse(asset=asset_resp, current_assignment=current_assignment_resp)
+
     def get_asset_assignments(self, asset_id: UUID) -> list[AssetAssignmentResponse]:
         """
         GET /assets/{id}/assignments (PRD §5.8): Full assignment history for an asset.

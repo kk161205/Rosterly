@@ -85,6 +85,21 @@ def get_asset_summary(
     return service.get_asset_summary()
 
 
+@router.get("/lookup/{asset_tag}", response_model=AssetDetailResponse)
+def lookup_asset_by_tag(
+    asset_tag: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AssetDetailResponse:
+    """
+    GET /api/v1/assets/lookup/{asset_tag} — Fast QR tag lookup (PRD §5.9).
+    - Roles: it_admin, super_admin ONLY (403 for auditor/manager/employee).
+    - Returns 404 if tag does not exist.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.get_asset_detail_by_tag(asset_tag=asset_tag)
+
+
 @router.get("/{id}", response_model=AssetDetailResponse)
 def get_asset_detail(
     id: UUID,
