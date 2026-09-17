@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.assets import AssetStatus, DepreciationMethod, MaintenancePriority
+from app.models.assets import AssetStatus, DepreciationMethod, MaintenancePriority, MaintenanceStatus
 
 
 class CurrentHolderNested(BaseModel):
@@ -199,4 +199,34 @@ class MaintenanceTicketResponse(BaseModel):
     assignee_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MaintenanceTicketUpdateRequest(BaseModel):
+    """PATCH /maintenance-tickets/{id} (PRD §5.10)."""
+
+    status: MaintenanceStatus | None = None
+    priority: MaintenancePriority | None = None
+    assigned_to: UUID | None = None
+    issue_description: str | None = Field(None, min_length=1)
+
+    @field_validator("issue_description")
+    @classmethod
+    def strip_issue_description(cls, v: str | None) -> str | None:
+        if v is not None:
+            v_stripped = v.strip()
+            if not v_stripped:
+                raise ValueError("Issue description cannot be empty or whitespace only")
+            return v_stripped
+        return v
+
+
+class MaintenanceTicketListResponse(BaseModel):
+    """GET /maintenance-tickets (PRD §5.10)."""
+
+    items: list[MaintenanceTicketResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
 
