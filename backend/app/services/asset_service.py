@@ -31,7 +31,9 @@ from app.schemas.assets import (
     AssetUpdateRequest,
     CurrentHolderNested,
     MaintenanceTicketCreateRequest,
+    MaintenanceTicketListResponse,
     MaintenanceTicketResponse,
+    MaintenanceTicketUpdateRequest,
 )
 from app.services.assets import calculate_current_value
 
@@ -455,16 +457,81 @@ class AssetService:
             for t in tickets
         ]
 
+    def list_maintenance_tickets(
+        self,
+        status: MaintenanceStatus | None = None,
+        priority: MaintenancePriority | None = None,
+        assigned_to: UUID | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> MaintenanceTicketListResponse:
+        """
+        GET /maintenance-tickets (PRD §5.10): List maintenance tickets with filtering & pagination.
+        - Roles: it_admin, super_admin, auditor see ALL tickets (enforced via check_permission).
+        - employee (or other non-admin roles): sees ONLY tickets where reported_by == self.current_user.user_id.
+        """
+        role = (self.current_user.role or "").lower()
+        query = self.db.query(MaintenanceTicket).options(
+            joinedload(MaintenanceTicket.reporter),
+            joinedload(MaintenanceTicket.assignee),
+        )
+
+        if role in ("it_admin", "super_admin", "auditor"):
+            check_permission(self.current_user, "maintenance_ticket", "read", self.db)
+        else:
+            # Row-level ABAC: view own reported tickets only
+            query = query.filter(MaintenanceTicket.reported_by == self.current_user.user_id)
+
+        if status is not None:
+            query = query.filter(MaintenanceTicket.status == status)
+        if priority is not None:
+            query = query.filter(MaintenanceTicket.priority == priority)
+        if assigned_to is not None:
+            query = query.filter(MaintenanceTicket.assigned_to == assigned_to)
+
+        total = query.count()
+        total_pages = math.ceil(total / page_size) if total > 0 else 0
+
+        tickets = (
+            query.order_by(MaintenanceTicket.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        items = [
+            MaintenanceTicketResponse(
+                id=t.id,
+                asset_id=t.asset_id,
+                reported_by=t.reported_by,
+                assigned_to=t.assigned_to,
+                issue_description=t.issue_description,
+                priority=t.priority.value if hasattr(t.priority, "value") else str(t.priority),
+                status=t.status.value if hasattr(t.status, "value") else str(t.status),
+                resolved_at=t.resolved_at,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                reporter_name=t.reporter.full_name if t.reporter else None,
+                assignee_name=t.assignee.full_name if t.assignee else None,
+            )
+            for t in tickets
+        ]
+
+        return MaintenanceTicketListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        )
+
     def create_maintenance_ticket(self, payload: MaintenanceTicketCreateRequest) -> MaintenanceTicketResponse:
         """
-        POST /maintenance-tickets (PRD §5.10 — minimal slice backing §5.8's "Raise
-        Ticket" action; the rest of §5.10 (list/kanban/PATCH) is a separate,
-        not-yet-built page).
+        POST /maintenance-tickets (PRD §5.10).
         - Roles: it_admin, super_admin (check_permission — any asset).
         - Any other authenticated role: allowed ONLY if the asset is currently
-          assigned to them (ABAC ownership check, per PRD §5.10's "Employee-raised
-          tickets validated server-side: asset_id must be in that employee's
-          active assignments").
+          assigned to them (ABAC ownership check: asset_assignments row with
+          employee_id == caller AND returned_at IS NULL).
         """
         asset = self.db.query(Asset).filter(Asset.id == payload.asset_id).first()
         if not asset:
@@ -473,10 +540,20 @@ class AssetService:
         role = (self.current_user.role or "").lower()
         if role in ("it_admin", "super_admin"):
             check_permission(self.current_user, "maintenance_ticket", "create", self.db)
-        elif asset.current_holder_id != self.current_user.user_id:
-            raise ForbiddenError(
-                "You can only raise a maintenance ticket for an asset currently assigned to you"
+        else:
+            active_assignment = (
+                self.db.query(AssetAssignment)
+                .filter(
+                    AssetAssignment.asset_id == payload.asset_id,
+                    AssetAssignment.employee_id == self.current_user.user_id,
+                    AssetAssignment.returned_at.is_(None),
+                )
+                .first()
             )
+            if not active_assignment:
+                raise ForbiddenError(
+                    "You can only raise a maintenance ticket for an asset currently assigned to you"
+                )
 
         now = datetime.now(timezone.utc)
         ticket = MaintenanceTicket(
@@ -502,8 +579,8 @@ class AssetService:
             reported_by=ticket.reported_by,
             assigned_to=ticket.assigned_to,
             issue_description=ticket.issue_description,
-            priority=ticket.priority.value,
-            status=ticket.status.value,
+            priority=ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority),
+            status=ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status),
             resolved_at=ticket.resolved_at,
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
