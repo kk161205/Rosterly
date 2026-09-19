@@ -588,6 +588,69 @@ class AssetService:
             assignee_name=None,
         )
 
+    def update_maintenance_ticket(
+        self,
+        ticket_id: UUID,
+        payload: MaintenanceTicketUpdateRequest,
+    ) -> MaintenanceTicketResponse:
+        """
+        PATCH /maintenance-tickets/{id} (PRD §5.10): Update maintenance ticket details.
+        - Roles: it_admin, super_admin ONLY (enforced via check_permission(..., "maintenance_ticket", "update", ...)).
+        - Auto-sets resolved_at when status='resolved'; clears resolved_at when un-resolving to open/in_progress.
+        """
+        check_permission(self.current_user, "maintenance_ticket", "update", self.db)
+
+        ticket = self.db.query(MaintenanceTicket).filter(MaintenanceTicket.id == ticket_id).first()
+        if not ticket:
+            raise NotFoundError(f"Maintenance ticket with ID {ticket_id} not found")
+
+        now = datetime.now(timezone.utc)
+
+        if payload.priority is not None:
+            ticket.priority = payload.priority
+
+        if payload.issue_description is not None:
+            ticket.issue_description = payload.issue_description
+
+        if payload.assigned_to is not None:
+            assignee_user = self.db.query(User).filter(User.id == payload.assigned_to).first()
+            if not assignee_user:
+                raise NotFoundError(f"Assigned technician with ID {payload.assigned_to} not found")
+            ticket.assigned_to = payload.assigned_to
+
+        if payload.status is not None and payload.status != ticket.status:
+            if payload.status == MaintenanceStatus.resolved:
+                ticket.status = MaintenanceStatus.resolved
+                ticket.resolved_at = now
+            elif payload.status in (MaintenanceStatus.open, MaintenanceStatus.in_progress):
+                ticket.status = payload.status
+                ticket.resolved_at = None
+            else:
+                ticket.status = payload.status
+
+        ticket.updated_at = now
+        self.db.add(ticket)
+        self.db.commit()
+        self.db.refresh(ticket)
+
+        reporter = self.db.query(User).filter(User.id == ticket.reported_by).first()
+        assignee = self.db.query(User).filter(User.id == ticket.assigned_to).first() if ticket.assigned_to else None
+
+        return MaintenanceTicketResponse(
+            id=ticket.id,
+            asset_id=ticket.asset_id,
+            reported_by=ticket.reported_by,
+            assigned_to=ticket.assigned_to,
+            issue_description=ticket.issue_description,
+            priority=ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority),
+            status=ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status),
+            resolved_at=ticket.resolved_at,
+            created_at=ticket.created_at,
+            updated_at=ticket.updated_at,
+            reporter_name=reporter.full_name if reporter else None,
+            assignee_name=assignee.full_name if assignee else None,
+        )
+
 
 
 

@@ -13,6 +13,7 @@ from app.schemas.assets import (
     MaintenanceTicketCreateRequest,
     MaintenanceTicketListResponse,
     MaintenanceTicketResponse,
+    MaintenanceTicketUpdateRequest,
 )
 from app.services.asset_service import AssetService
 
@@ -58,4 +59,21 @@ def create_maintenance_ticket(
     """
     service = AssetService(db=db, current_user=current_user)
     return service.create_maintenance_ticket(payload)
+
+
+@router.patch("/{id}", response_model=MaintenanceTicketResponse)
+def update_maintenance_ticket(
+    id: UUID,
+    payload: MaintenanceTicketUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MaintenanceTicketResponse:
+    """
+    PATCH /api/v1/maintenance-tickets/{id} — Update maintenance ticket details (PRD §5.10).
+    - Roles: it_admin, super_admin ONLY (403 for employee/auditor/manager).
+    - Auto-sets resolved_at when status='resolved'; clears resolved_at when un-resolving to open/in_progress.
+    """
+    service = AssetService(db=db, current_user=current_user)
+    return service.update_maintenance_ticket(ticket_id=id, payload=payload)
+
 
