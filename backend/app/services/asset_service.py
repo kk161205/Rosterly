@@ -12,6 +12,7 @@ from app.models.assets import (
     Asset,
     AssetAssignment,
     AssetStatus,
+    MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
 )
@@ -540,6 +541,8 @@ class AssetService:
         role = (self.current_user.role or "").lower()
         if role in ("it_admin", "super_admin"):
             check_permission(self.current_user, "maintenance_ticket", "create", self.db)
+        elif asset.current_holder_id == self.current_user.user_id:
+            pass
         else:
             active_assignment = (
                 self.db.query(AssetAssignment)
