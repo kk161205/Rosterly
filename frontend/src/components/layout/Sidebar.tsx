@@ -16,6 +16,10 @@ import {
   UserCog,
   Lock,
   ChevronUp,
+  QrCode,
+  FileText,
+  Shield,
+  BarChart3,
 } from 'lucide-react'
 import { authStorage } from '@/utils/authStorage'
 import { UserRole } from '@/types/dashboard'
@@ -41,40 +45,43 @@ interface NavGroup {
   items: NavItem[]
 }
 
-// PRD §4 Global Frontend Shell Architecture — categorical navigation groups.
-// Item -> group mapping is a judgment call made against what actually exists
-// in the current nav list (see task report for the reasoning per group).
 const NAV_GROUPS: NavGroup[] = [
   {
     label: 'CORE OPERATIONS',
     items: [
       { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
       { name: 'Employees', path: '/employees', icon: Users, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
+      { name: 'Analytics', path: '/analytics', icon: BarChart3, roleAccess: ['manager', 'hr_admin', 'it_admin', 'super_admin', 'auditor'] },
     ],
   },
   {
     label: 'ASSET GOVERNANCE',
     items: [
       { name: 'Asset Inventory', path: '/assets', icon: Box, roleAccess: ['manager', 'it_admin', 'super_admin', 'auditor'] },
-      { name: 'Maintenance & Tickets', path: '/maintenance', icon: Wrench, roleAccess: ['it_admin', 'super_admin'] },
+      { name: 'QR Check-In/Out', path: '/assets/qr', icon: QrCode, roleAccess: ['employee', 'manager', 'it_admin', 'super_admin'] },
+      { name: 'Maintenance & Tickets', path: '/maintenance', icon: Wrench, roleAccess: ['employee', 'manager', 'it_admin', 'super_admin'] },
     ],
   },
   {
     label: 'WORKFLOWS & APPROVALS',
     items: [
+      { name: 'Request Portal', path: '/requests', icon: FileText, roleAccess: ['employee', 'manager', 'hr_admin', 'it_admin', 'super_admin'] },
+      { name: 'Approvals Queue', path: '/approvals', icon: CheckSquare, badge: 'P0', roleAccess: ['manager', 'hr_admin', 'super_admin'] },
       { name: 'Onboarding Workflow', path: '/onboarding', icon: UserPlus, roleAccess: ['hr_admin', 'it_admin', 'manager', 'super_admin'] },
       { name: 'Offboarding Workflow', path: '/offboarding', icon: UserMinus, roleAccess: ['hr_admin', 'it_admin', 'super_admin'] },
-      { name: 'Approvals Queue', path: '/approvals', icon: CheckSquare, badge: 'P0', roleAccess: ['manager', 'hr_admin', 'super_admin'] },
     ],
   },
   {
     label: 'ADMINISTRATION',
     items: [
+      { name: 'User Management', path: '/users', icon: UserCog, roleAccess: ['super_admin', 'hr_admin', 'it_admin'] },
+      { name: 'Roles & Permissions', path: '/roles', icon: Shield, roleAccess: ['super_admin'] },
       { name: 'Audit & Compliance', path: '/audit', icon: ShieldCheck, roleAccess: ['super_admin', 'auditor'] },
       { name: 'System Settings', path: '/settings', icon: Settings, roleAccess: ['super_admin'] },
     ],
   },
 ]
+
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentRole,
