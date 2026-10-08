@@ -146,4 +146,13 @@ export const assetService = {
   async deleteAsset(id: string): Promise<void> {
     await apiClient.delete(`/assets/${id}`)
   },
+
+  /**
+   * Looks up an asset by barcode / asset tag for QR scanner flows.
+   */
+  async lookupAssetByTag(assetTag: string): Promise<AssetDetailResponse> {
+    const response = await apiClient.get<AssetDetailResponse>(`/assets/lookup?tag=${encodeURIComponent(assetTag)}`)
+    return response.data
+  },
 }
+
