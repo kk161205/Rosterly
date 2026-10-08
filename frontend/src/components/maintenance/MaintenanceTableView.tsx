@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ChevronRight,
   User,
-  AlertCircle,
   Inbox,
 } from 'lucide-react';
 import type {

@@ -1,20 +1,13 @@
 import React, { useState } from 'react';
 import {
   X,
-  Wrench,
-  Clock,
   CheckCircle2,
-  DollarSign,
-  User,
   AlertTriangle,
   FileText,
-  Calendar,
-  Layers,
 } from 'lucide-react';
 import type {
   MaintenanceTicketItem,
   MaintenanceTicketStatus,
-  MaintenancePriority,
 } from '../../types/maintenance';
 
 interface TicketDetailDrawerProps {

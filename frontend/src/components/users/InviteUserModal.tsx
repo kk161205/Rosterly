@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UserPlus, AlertTriangle, Send, Mail } from 'lucide-react';
+import { X, UserPlus, AlertTriangle, Send } from 'lucide-react';
 import type { InviteUserPayload } from '../../types/users';
 
 interface InviteUserModalProps {

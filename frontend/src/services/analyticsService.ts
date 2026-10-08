@@ -3,7 +3,6 @@ import type {
   AnalyticsSummaryStats,
   AssetUtilizationMetric,
   DepartmentCostMetric,
-  HeadcountAssetMetric,
   LicenseEntitlementMetric,
 } from '../types/analytics';
 

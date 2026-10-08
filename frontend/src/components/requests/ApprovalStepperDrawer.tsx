@@ -5,8 +5,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Building2,
-  Calendar,
   Layers,
   FileText,
 } from 'lucide-react';

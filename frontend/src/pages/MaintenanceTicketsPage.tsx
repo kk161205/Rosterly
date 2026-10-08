@@ -6,7 +6,6 @@ import {
   LayoutGrid,
   List,
   Search,
-  Filter,
   RefreshCw,
   AlertTriangle,
   Clock,
@@ -21,7 +20,6 @@ import { maintenanceService } from '../services/maintenanceService';
 import type {
   MaintenanceTicketItem,
   MaintenanceTicketStatus,
-  MaintenancePriority,
   CreateMaintenanceTicketPayload,
 } from '../types/maintenance';
 

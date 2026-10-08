@@ -42,6 +42,7 @@ export const AssetQRScannerPage: React.FC = () => {
     if (!scannedAsset) return;
     await assetService.assignAsset(scannedAsset.asset.id, {
       employee_id: employeeId,
+      condition_notes: notes || 'Assigned in functional condition',
       notes,
     });
     setSuccessToast(
@@ -55,7 +56,7 @@ export const AssetQRScannerPage: React.FC = () => {
   const handleCheckIn = async (condition: string, notes?: string) => {
     if (!scannedAsset) return;
     await assetService.returnAsset(scannedAsset.asset.id, {
-      condition,
+      condition_notes: condition + (notes ? ` - ${notes}` : ''),
       notes,
     });
     setSuccessToast(
@@ -65,6 +66,7 @@ export const AssetQRScannerPage: React.FC = () => {
     const updated = await assetService.getAssetDetail(scannedAsset.asset.id);
     setScannedAsset(updated);
   };
+
 
   const handleRaiseMaintenance = () => {
     if (!scannedAsset) return;

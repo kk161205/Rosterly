@@ -4,11 +4,9 @@ import {
   UserPlus,
   RefreshCw,
   Search,
-  Filter,
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
-  Lock,
 } from 'lucide-react';
 import { UserGovernanceTable } from '../components/users/UserGovernanceTable';
 import { InviteUserModal } from '../components/users/InviteUserModal';

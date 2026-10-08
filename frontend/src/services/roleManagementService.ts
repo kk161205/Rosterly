@@ -2,7 +2,6 @@ import { apiClient } from '@/lib/api-client';
 import type {
   RoleWithPermissions,
   PermissionGroup,
-  PermissionItem,
   CreateRolePayload,
   UpdateRolePermissionsPayload,
 } from '../types/roles';

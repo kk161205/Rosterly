@@ -1,5 +1,5 @@
 import React from 'react';
-import { KeyRound, Calendar, DollarSign, AlertCircle } from 'lucide-react';
+import { KeyRound, Calendar } from 'lucide-react';
 import type { LicenseEntitlementMetric } from '../../types/analytics';
 
 interface LicenseEntitlementGaugesProps {
@@ -18,8 +18,10 @@ export const LicenseEntitlementGauges: React.FC<LicenseEntitlementGaugesProps> =
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {licenses.map((lic) => {
-        const pct = Math.round(lic.utilization_percentage || ((lic.assigned_seats / (lic.total_seats || 1)) * 100));
-        const unused = lic.total_seats - lic.assigned_seats;
+        const pct = Math.round(
+          lic.utilization_percentage ||
+            ((lic.assigned_seats / (lic.total_seats || 1)) * 100)
+        );
         const isWasteRisk = pct < 60;
 
         return (

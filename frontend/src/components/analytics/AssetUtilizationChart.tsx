@@ -1,5 +1,4 @@
 import React from 'react';
-import { Laptop, Server, Smartphone, HardDrive, Cpu, AlertCircle } from 'lucide-react';
 import type { AssetUtilizationMetric } from '../../types/analytics';
 
 interface AssetUtilizationChartProps {

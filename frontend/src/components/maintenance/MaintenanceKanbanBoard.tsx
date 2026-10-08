@@ -4,11 +4,8 @@ import {
   Wrench,
   Package,
   CheckCircle2,
-  AlertTriangle,
   User,
   DollarSign,
-  Calendar,
-  MoreVertical,
 } from 'lucide-react';
 import type {
   MaintenanceTicketItem,

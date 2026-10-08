@@ -1,14 +1,11 @@
 import React from 'react';
 import {
-  User,
-  Shield,
   ShieldCheck,
   LogOut,
   Ban,
   RotateCcw,
   CheckCircle2,
   Clock,
-  KeyRound,
   Inbox,
 } from 'lucide-react';
 import type { UserAccountItem, UserAccountStatus } from '../../types/users';

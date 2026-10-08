@@ -3,7 +3,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   ChevronRight,
   Inbox,
 } from 'lucide-react';
@@ -13,14 +12,12 @@ interface MyRequestsTableProps {
   requests: RequestItem[];
   loading: boolean;
   onSelectRequest: (request: RequestItem) => void;
-  onCancelRequest?: (id: number | string) => void;
 }
 
 export const MyRequestsTable: React.FC<MyRequestsTableProps> = ({
   requests,
   loading,
   onSelectRequest,
-  onCancelRequest,
 }) => {
   const getStatusBadge = (status: RequestStatus) => {
     switch (status) {

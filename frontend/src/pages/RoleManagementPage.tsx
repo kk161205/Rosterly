@@ -3,7 +3,6 @@ import {
   Shield,
   Plus,
   Save,
-  Trash2,
   Users,
   RefreshCw,
   AlertTriangle,

@@ -6,8 +6,6 @@ import {
   Wrench,
   CheckCircle2,
   Calendar,
-  Building2,
-  Layers,
   ShieldAlert,
   ArrowRightLeft,
   RotateCcw,
@@ -29,8 +27,8 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({
   onRaiseTicket,
   onResetScan,
 }) => {
-  const { asset, active_assignment } = assetData;
-  const isAssigned = !!active_assignment;
+  const { asset, current_assignment } = assetData;
+  const isAssigned = !!current_assignment;
 
   const [actionLoading, setActionLoading] = useState(false);
   const [employeeId, setEmployeeId] = useState('');
@@ -76,10 +74,10 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({
             In Stock (Available)
           </span>
         );
-      case 'deployed':
+      case 'assigned':
         return (
           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-500 border border-blue-500/20">
-            Deployed (Assigned)
+            Assigned (Deployed)
           </span>
         );
       case 'under_maintenance':
@@ -111,10 +109,10 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({
               {getStatusBadge()}
             </div>
             <h2 className="text-xl font-bold text-foreground mt-1">
-              {asset.manufacturer} {asset.model}
+              {asset.name}
             </h2>
             <p className="text-xs text-muted-foreground capitalize">
-              Category: {asset.category} • Serial: {asset.serial_number || 'N/A'}
+              Category: {asset.category} • Serial: {asset.serial_number || 'N/A'} • Vendor: {asset.vendor}
             </p>
           </div>
         </div>
@@ -144,17 +142,16 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-foreground">
-                {active_assignment?.employee?.name || 'Assigned Employee'}
+                {current_assignment?.employee_name || current_assignment?.employee_id || 'Assigned Holder'}
               </p>
               <p className="text-xs text-muted-foreground">
-                {active_assignment?.employee?.email || ''} • Dept:{' '}
-                {active_assignment?.employee?.department || 'General'}
+                Assigned by {current_assignment?.assigned_by_name || current_assignment?.assigned_by}
               </p>
             </div>
             <div className="text-right text-xs text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Since {new Date(active_assignment?.assigned_at || '').toLocaleDateString()}</span>
+                <span>Since {new Date(current_assignment?.assigned_at || '').toLocaleDateString()}</span>
               </div>
             </div>
           </div>
