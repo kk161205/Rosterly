@@ -101,7 +101,8 @@ class RequestApproval(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     request_id = Column(UUID(as_uuid=True), ForeignKey("requests.id", ondelete="CASCADE"), nullable=False)
-    approver_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    approver_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    approver_role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), nullable=True)
     step_order = Column(Integer, nullable=False)
     status = Column(Enum(ApprovalStatus, name="approval_status_enum", native_enum=False), default=ApprovalStatus.pending, nullable=False)
     decision_at = Column(DateTime(timezone=True), nullable=True)
@@ -110,3 +111,4 @@ class RequestApproval(Base):
 
     request = relationship("Request", back_populates="approvals")
     approver = relationship("User", foreign_keys=[approver_id])
+    approver_role = relationship("Role", foreign_keys=[approver_role_id])
