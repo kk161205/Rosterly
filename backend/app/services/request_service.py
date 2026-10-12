@@ -378,6 +378,418 @@ class RequestService:
         self.db.commit()
         return self._format_request_detail(req.id)
 
+    def get_pending_approvals(
+        self,
+        request_type: Optional[RequestType] = None,
+        priority: Optional[RequestPriority] = None,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> RequestListResponse:
+        """
+        GET /requests/pending-approval (PRD §5.12):
+        RBAC: check_permission(request, approve) (manager, hr_admin, it_admin, super_admin).
+        Filter: current-step pending rows where approver_id == caller OR
+        (role-queue step AND caller holds that role). Excludes caller's own requests.
+        """
+        check_permission(self.current_user, "request", "approve", self.db)
+
+        query = (
+            self.db.query(Request)
+            .join(
+                RequestApproval,
+                and_(
+                    RequestApproval.request_id == Request.id,
+                    RequestApproval.step_order == Request.current_step,
+                    RequestApproval.status == ApprovalStatus.pending,
+                ),
+            )
+            .options(
+                joinedload(Request.requester).joinedload(User.department),
+                joinedload(Request.related_asset),
+            )
+            .filter(
+                Request.status == RequestStatus.pending,
+                Request.requester_id != self.current_user.user_id,
+                or_(
+                    RequestApproval.approver_id == self.current_user.user_id,
+                    and_(
+                        RequestApproval.approver_id.is_(None),
+                        RequestApproval.approver_role_id == self.current_user.role_id,
+                    ),
+                ),
+            )
+        )
+
+        if request_type:
+            query = query.filter(Request.request_type == request_type)
+        if priority:
+            query = query.filter(Request.priority == priority)
+
+        total = query.count()
+        items = (
+            query.order_by(Request.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        return RequestListResponse(
+            items=[self._format_request_summary(r) for r in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    def approve_request(self, request_id: uuid.UUID, data: ApprovalAction) -> RequestDetailResponse:
+        """
+        POST /requests/{id}/approve (PRD §5.12):
+        Locks the request row with with_for_update.
+        Re-checks step is still pending, caller is eligible AFTER locking, 409 if already acted.
+        Prevents self-approval. Advances current_step or sets status=approved on final step.
+        """
+        check_permission(self.current_user, "request", "approve", self.db)
+
+        req = (
+            self.db.query(Request)
+            .filter(Request.id == request_id)
+            .with_for_update()
+            .first()
+        )
+        if not req:
+            raise NotFoundError(f"Request with ID {request_id} not found")
+
+        # Self-approval guard
+        if req.requester_id == self.current_user.user_id:
+            raise ForbiddenError("Requesters cannot approve their own requests")
+
+        # Confirm caller is a participant on some step of this request BEFORE revealing request status.
+        # Otherwise return 403 (no 409 for non-participants).
+        all_steps = (
+            self.db.query(RequestApproval)
+            .filter(RequestApproval.request_id == req.id)
+            .all()
+        )
+
+        manager_role = self.db.query(Role).filter(Role.name == "manager").first()
+        manager_role_id = manager_role.id if manager_role else None
+
+        caller_user_id = self.current_user.user_id
+        caller_role_id = self.current_user.role_id
+
+        def _is_step_participant(step: RequestApproval) -> bool:
+            # Direct assignment or past acting approver
+            if step.approver_id is not None and step.approver_id == caller_user_id:
+                return True
+            # Manager steps require approver_id == caller; role-based participation
+            # applies only to role-queue steps (steps with approver_id IS NULL or
+            # acted steps whose approver_role_id is not the manager role)
+            is_manager_step = (
+                (manager_role_id is not None and step.approver_role_id == manager_role_id)
+                or (getattr(step, "approver_role", None) and getattr(step.approver_role, "name", None) == "manager")
+            )
+            if is_manager_step:
+                return False
+
+            if (
+                caller_role_id is not None
+                and step.approver_role_id is not None
+                and step.approver_role_id == caller_role_id
+            ):
+                return True
+            return False
+
+        is_participant = any(_is_step_participant(step) for step in all_steps)
+        if not is_participant:
+            raise ForbiddenError("You are not an authorized approver for this request")
+
+        if req.status != RequestStatus.pending:
+            raise ConflictError(
+                message=f"Request is already in '{req.status.value}' state",
+                code="already_acted",
+            )
+
+        # Current step row with lock
+        current_step_row = (
+            self.db.query(RequestApproval)
+            .filter(
+                RequestApproval.request_id == req.id,
+                RequestApproval.step_order == req.current_step,
+            )
+            .with_for_update()
+            .first()
+        )
+        if not current_step_row or current_step_row.status != ApprovalStatus.pending:
+            raise ConflictError(
+                message="Current approval step is not pending or has already been acted upon",
+                code="already_acted",
+            )
+
+        # Check caller eligibility AFTER locking
+        if current_step_row.approver_id is not None:
+            if current_step_row.approver_id != caller_user_id:
+                raise ForbiddenError("You are not the assigned approver for this step")
+        else:
+            if (
+                caller_role_id is None
+                or current_step_row.approver_role_id is None
+                or current_step_row.approver_role_id != caller_role_id
+            ):
+                raise ForbiddenError("You do not hold the required role for this approval step")
+
+        now = datetime.now(timezone.utc)
+        current_step_row.approver_id = self.current_user.user_id
+        current_step_row.status = ApprovalStatus.approved
+        current_step_row.decision_at = now
+        current_step_row.comments = data.comments
+
+        # Check if final step
+        total_steps = (
+            self.db.query(func.count(RequestApproval.id))
+            .filter(RequestApproval.request_id == req.id)
+            .scalar()
+            or 1
+        )
+
+        if req.current_step >= total_steps:
+            req.status = RequestStatus.approved
+            # Notify requester of full approval
+            self.db.add(
+                Notification(
+                    id=uuid.uuid4(),
+                    user_id=req.requester_id,
+                    type="request_status_change",
+                    title="Request Approved",
+                    message=f"Your request '{req.title}' has been fully approved.",
+                    related_entity_type="request",
+                    related_entity_id=req.id,
+                    channel=NotificationChannel.in_app,
+                    is_critical=False,
+                )
+            )
+        else:
+            req.current_step += 1
+            # Notify next step approver(s)
+            next_step_row = (
+                self.db.query(RequestApproval)
+                .filter(
+                    RequestApproval.request_id == req.id,
+                    RequestApproval.step_order == req.current_step,
+                )
+                .first()
+            )
+            if next_step_row:
+                if next_step_row.approver_id:
+                    if next_step_row.approver_id != req.requester_id:
+                        self.db.add(
+                            Notification(
+                                id=uuid.uuid4(),
+                                user_id=next_step_row.approver_id,
+                                type="approval_needed",
+                                title="Request Pending Approval",
+                                message=f"Request '{req.title}' is awaiting your approval (Step {req.current_step}).",
+                                related_entity_type="request",
+                                related_entity_id=req.id,
+                                channel=NotificationChannel.in_app,
+                                is_critical=False,
+                            )
+                        )
+                elif next_step_row.approver_role_id:
+                    role_users = (
+                        self.db.query(User)
+                        .filter(
+                            User.role_id == next_step_row.approver_role_id,
+                            User.status == UserStatus.active,
+                            User.id != req.requester_id,
+                        )
+                        .all()
+                    )
+                    for u in role_users:
+                        self.db.add(
+                            Notification(
+                                id=uuid.uuid4(),
+                                user_id=u.id,
+                                type="approval_needed",
+                                title="Request Pending Approval",
+                                message=f"Request '{req.title}' is awaiting your role's approval (Step {req.current_step}).",
+                                related_entity_type="request",
+                                related_entity_id=req.id,
+                                channel=NotificationChannel.in_app,
+                                is_critical=False,
+                            )
+                        )
+
+        # Audit log entry
+        self.db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="request.approved" if req.status == RequestStatus.approved else "request.step_approved",
+                entity_type="request",
+                entity_id=req.id,
+                before_state={"current_step": req.current_step - (0 if req.status == RequestStatus.approved else 1), "status": RequestStatus.pending.value},
+                after_state={"current_step": req.current_step, "status": req.status.value},
+                ip_address=self.ip_address,
+            )
+        )
+
+        self.db.commit()
+        return self._format_request_detail(req.id)
+
+    def reject_request(self, request_id: uuid.UUID, data: RejectAction) -> RequestDetailResponse:
+        """
+        POST /requests/{id}/reject (PRD §5.12):
+        Locks the request row with with_for_update.
+        Requires non-empty comments.
+        Sets status=rejected, marks remaining steps as skipped, notifies requester.
+        """
+        check_permission(self.current_user, "request", "approve", self.db)
+
+        if not data.comments or not data.comments.strip():
+            raise ValidationAppError(
+                "Comments are mandatory when rejecting a request",
+                field_errors={"comments": "Rejection comments are required"},
+            )
+
+        req = (
+            self.db.query(Request)
+            .filter(Request.id == request_id)
+            .with_for_update()
+            .first()
+        )
+        if not req:
+            raise NotFoundError(f"Request with ID {request_id} not found")
+
+        # Self-rejection guard
+        if req.requester_id == self.current_user.user_id:
+            raise ForbiddenError("Requesters cannot reject their own requests")
+
+        # Confirm caller is a participant on some step of this request BEFORE revealing request status.
+        # Otherwise return 403 (no 409 for non-participants).
+        all_steps = (
+            self.db.query(RequestApproval)
+            .filter(RequestApproval.request_id == req.id)
+            .all()
+        )
+
+        manager_role = self.db.query(Role).filter(Role.name == "manager").first()
+        manager_role_id = manager_role.id if manager_role else None
+
+        caller_user_id = self.current_user.user_id
+        caller_role_id = self.current_user.role_id
+
+        def _is_step_participant(step: RequestApproval) -> bool:
+            # Direct assignment or past acting approver
+            if step.approver_id is not None and step.approver_id == caller_user_id:
+                return True
+            # Manager steps require approver_id == caller; role-based participation
+            # applies only to role-queue steps (steps with approver_id IS NULL or
+            # acted steps whose approver_role_id is not the manager role)
+            is_manager_step = (
+                (manager_role_id is not None and step.approver_role_id == manager_role_id)
+                or (getattr(step, "approver_role", None) and getattr(step.approver_role, "name", None) == "manager")
+            )
+            if is_manager_step:
+                return False
+
+            if (
+                caller_role_id is not None
+                and step.approver_role_id is not None
+                and step.approver_role_id == caller_role_id
+            ):
+                return True
+            return False
+
+        is_participant = any(_is_step_participant(step) for step in all_steps)
+        if not is_participant:
+            raise ForbiddenError("You are not an authorized approver for this request")
+
+        if req.status != RequestStatus.pending:
+            raise ConflictError(
+                message=f"Request is already in '{req.status.value}' state",
+                code="already_acted",
+            )
+
+        current_step_row = (
+            self.db.query(RequestApproval)
+            .filter(
+                RequestApproval.request_id == req.id,
+                RequestApproval.step_order == req.current_step,
+            )
+            .with_for_update()
+            .first()
+        )
+        if not current_step_row or current_step_row.status != ApprovalStatus.pending:
+            raise ConflictError(
+                message="Current approval step is not pending or has already been acted upon",
+                code="already_acted",
+            )
+
+        # Check caller eligibility AFTER locking
+        if current_step_row.approver_id is not None:
+            if current_step_row.approver_id != caller_user_id:
+                raise ForbiddenError("You are not the assigned approver for this step")
+        else:
+            if (
+                caller_role_id is None
+                or current_step_row.approver_role_id is None
+                or current_step_row.approver_role_id != caller_role_id
+            ):
+                raise ForbiddenError("You do not hold the required role for this approval step")
+
+        now = datetime.now(timezone.utc)
+        current_step_row.approver_id = self.current_user.user_id
+        current_step_row.status = ApprovalStatus.rejected
+        current_step_row.decision_at = now
+        current_step_row.comments = data.comments.strip()
+
+        # Mark all subsequent steps as skipped
+        subsequent_steps = (
+            self.db.query(RequestApproval)
+            .filter(
+                RequestApproval.request_id == req.id,
+                RequestApproval.step_order > req.current_step,
+            )
+            .all()
+        )
+        for s in subsequent_steps:
+            s.status = ApprovalStatus.skipped
+            s.decision_at = now
+            s.comments = "Skipped due to prior step rejection"
+
+        req.status = RequestStatus.rejected
+
+        # Notify requester
+        self.db.add(
+            Notification(
+                id=uuid.uuid4(),
+                user_id=req.requester_id,
+                type="request_status_change",
+                title="Request Rejected",
+                message=f"Your request '{req.title}' was rejected: {data.comments.strip()}",
+                related_entity_type="request",
+                related_entity_id=req.id,
+                channel=NotificationChannel.in_app,
+                is_critical=False,
+            )
+        )
+
+        # Audit log entry
+        self.db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="request.rejected",
+                entity_type="request",
+                entity_id=req.id,
+                before_state={"status": RequestStatus.pending.value},
+                after_state={"status": RequestStatus.rejected.value, "reason": data.comments.strip()},
+                ip_address=self.ip_address,
+            )
+        )
+
+        self.db.commit()
+        return self._format_request_detail(req.id)
+
     def _format_request_summary(self, req: Request) -> RequestResponse:
         requester_name = req.requester.full_name if req.requester else None
         requester_email = req.requester.email if req.requester else None

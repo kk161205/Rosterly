@@ -262,14 +262,26 @@ class DashboardService:
         user_id = self.user.user_id
         dept_id = self.user.department_id
 
-        # 1. Pending Approvals Queue
+        # 1. Pending Approvals Queue (current-step match + role-queue eligibility, excluding self-requests)
+        pending_approvals_filter = (
+            RequestApproval.status == ApprovalStatus.pending,
+            Request.status == RequestStatus.pending,
+            Request.current_step == RequestApproval.step_order,
+            Request.requester_id != user_id,
+            or_(
+                RequestApproval.approver_id == user_id,
+                and_(
+                    RequestApproval.approver_id.is_(None),
+                    RequestApproval.approver_role_id == self.user.role_id,
+                ),
+            ),
+        )
+
         pending_approvals = (
             self.db.query(RequestApproval)
+            .join(Request, Request.id == RequestApproval.request_id)
             .options(joinedload(RequestApproval.request).joinedload(Request.requester))
-            .filter(
-                RequestApproval.approver_id == user_id,
-                RequestApproval.status == ApprovalStatus.pending,
-            )
+            .filter(*pending_approvals_filter)
             .order_by(RequestApproval.created_at.desc())
             .limit(10)
             .all()
@@ -288,10 +300,8 @@ class DashboardService:
 
         req_approvals_count = (
             self.db.query(func.count(RequestApproval.id))
-            .filter(
-                RequestApproval.approver_id == user_id,
-                RequestApproval.status == ApprovalStatus.pending,
-            )
+            .join(Request, Request.id == RequestApproval.request_id)
+            .filter(*pending_approvals_filter)
             .scalar()
             or 0
         )

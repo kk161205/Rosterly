@@ -59,6 +59,25 @@ def get_my_requests(
     return service.get_my_requests(status=status, page=page, page_size=page_size)
 
 
+@router.get("/pending-approval", response_model=RequestListResponse, status_code=status.HTTP_200_OK)
+def get_pending_approvals(
+    request: Request,
+    type: Optional[RequestType] = Query(None, description="Filter by request type"),
+    priority: Optional[RequestPriority] = Query(None, description="Filter by priority"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=100, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    GET /requests/pending-approval (PRD §5.12):
+    Approvals Queue: actionable current-step requests routed to caller.
+    Registered BEFORE /{id} to avoid route shadowing.
+    """
+    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    return service.get_pending_approvals(request_type=type, priority=priority, page=page, page_size=page_size)
+
+
 @router.get("/{id}", response_model=RequestDetailResponse, status_code=status.HTTP_200_OK)
 def get_request_detail(
     id: uuid.UUID,
@@ -88,3 +107,35 @@ def cancel_request(
     """
     service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
     return service.cancel_request(id)
+
+
+@router.post("/{id}/approve", response_model=RequestDetailResponse, status_code=status.HTTP_200_OK)
+def approve_request(
+    id: uuid.UUID,
+    request: Request,
+    data: ApprovalAction = ApprovalAction(),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    POST /requests/{id}/approve (PRD §5.12):
+    Approve the current step. Row locked; 409 if already acted. Advances step or marks approved.
+    """
+    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    return service.approve_request(id, data)
+
+
+@router.post("/{id}/reject", response_model=RequestDetailResponse, status_code=status.HTTP_200_OK)
+def reject_request(
+    id: uuid.UUID,
+    data: RejectAction,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    POST /requests/{id}/reject (PRD §5.12):
+    Reject request with mandatory comments. Stops further steps and marks remaining as skipped.
+    """
+    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    return service.reject_request(id, data)
