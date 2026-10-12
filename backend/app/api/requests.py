@@ -73,3 +73,18 @@ def get_request_detail(
     """
     service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
     return service.get_request_detail(id)
+
+
+@router.post("/{id}/cancel", response_model=RequestDetailResponse, status_code=status.HTTP_200_OK)
+def cancel_request(
+    id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    POST /requests/{id}/cancel (PRD §5.11):
+    Requester cancels own request while pending. Closes open approval steps.
+    """
+    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    return service.cancel_request(id)

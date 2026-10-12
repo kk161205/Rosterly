@@ -317,6 +317,67 @@ class RequestService:
 
         return self._format_request_detail_from_model(req)
 
+    def cancel_request(self, request_id: uuid.UUID) -> RequestDetailResponse:
+        """
+        POST /requests/{id}/cancel (PRD §5.11):
+        Requester only, only while status is pending (including mid-chain).
+        Locks row with with_for_update, re-checks pending status, closes open
+        pending approval rows with status 'skipped', and logs audit entry.
+        """
+        check_permission(self.current_user, "request", "update", self.db)
+
+        req = (
+            self.db.query(Request)
+            .filter(Request.id == request_id)
+            .with_for_update()
+            .first()
+        )
+        if not req:
+            raise NotFoundError(f"Request with ID {request_id} not found")
+
+        if req.requester_id != self.current_user.user_id:
+            raise ForbiddenError("Only the requester can cancel this request")
+
+        if req.status != RequestStatus.pending:
+            raise ConflictError(
+                message=f"Cannot cancel request in '{req.status.value}' state. Only pending requests can be cancelled.",
+                code="invalid_state",
+            )
+
+        # Close open approval rows
+        pending_approvals = (
+            self.db.query(RequestApproval)
+            .filter(
+                RequestApproval.request_id == req.id,
+                RequestApproval.status == ApprovalStatus.pending,
+            )
+            .all()
+        )
+        now = datetime.now(timezone.utc)
+        for pa in pending_approvals:
+            pa.status = ApprovalStatus.skipped
+            pa.decision_at = now
+            pa.comments = "Cancelled by requester"
+
+        req.status = RequestStatus.cancelled
+
+        # Audit log entry
+        self.db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="request.cancelled",
+                entity_type="request",
+                entity_id=req.id,
+                before_state={"status": RequestStatus.pending.value},
+                after_state={"status": RequestStatus.cancelled.value},
+                ip_address=self.ip_address,
+            )
+        )
+
+        self.db.commit()
+        return self._format_request_detail(req.id)
+
     def _format_request_summary(self, req: Request) -> RequestResponse:
         requester_name = req.requester.full_name if req.requester else None
         requester_email = req.requester.email if req.requester else None
