@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.security import CurrentUser, check_permission
-from app.models.assets import Asset, AssetStatus
+from app.models.assets import Asset, AssetStatus, SoftwareLicense
 from app.models.auth import Department, User
 from app.schemas.analytics import (
     AssetUtilizationResponse,
@@ -26,6 +26,8 @@ from app.schemas.analytics import (
     DepartmentUtilizationItem,
     HeadcountAssetRatioItem,
     HeadcountAssetRatioResponse,
+    LicenseUsageItem,
+    LicenseUsageResponse,
 )
 
 MAX_DATE_RANGE_DAYS = 365 * 5  # 5-year maximum window
@@ -306,4 +308,72 @@ class AnalyticsService:
             )
 
         return HeadcountAssetRatioResponse(series=series)
+
+    def get_license_usage(self) -> LicenseUsageResponse:
+        """
+        GET /analytics/license-usage (PRD §5.15):
+        Reports seat consumption vs. purchased quotas per software license.
+        - total_seats > 0: actual percentage (can exceed 100%).
+        - Warning threshold: strictly > 90.0% (status 'warning'), else 'ok'.
+        - total_seats == 0 and assigned == 0: 0.0%, status 'ok'.
+        - total_seats == 0 and assigned > 0: 0.0%, status 'warning'.
+        Access: super_admin, it_admin, auditor.
+        """
+        check_permission(self.current_user, "analytics", "license_usage", self.db)
+
+        rows = (
+            self.db.query(
+                SoftwareLicense.id.label("license_id"),
+                SoftwareLicense.name.label("name"),
+                SoftwareLicense.vendor.label("vendor"),
+                SoftwareLicense.total_seats.label("total_seats"),
+                SoftwareLicense.cost_per_seat.label("cost_per_seat"),
+                func.count(
+                    case((Asset.status == AssetStatus.assigned, Asset.id), else_=None)
+                ).label("assigned_seats"),
+            )
+            .outerjoin(Asset, Asset.license_id == SoftwareLicense.id)
+            .group_by(
+                SoftwareLicense.id,
+                SoftwareLicense.name,
+                SoftwareLicense.vendor,
+                SoftwareLicense.total_seats,
+                SoftwareLicense.cost_per_seat,
+            )
+            .order_by(SoftwareLicense.name.asc())
+            .all()
+        )
+
+        if not rows:
+            return LicenseUsageResponse(items=[])
+
+        items: list[LicenseUsageItem] = []
+        for row in rows:
+            tot = row.total_seats
+            asgn = row.assigned_seats
+            avail = tot - asgn
+
+            if tot > 0:
+                rate = round((asgn / tot) * 100, 2)
+                stat = "warning" if rate > 90.0 else "ok"
+            else:
+                rate = 0.0
+                stat = "warning" if asgn > 0 else "ok"
+
+            items.append(
+                LicenseUsageItem(
+                    license_id=row.license_id,
+                    name=row.name,
+                    vendor=row.vendor,
+                    total_seats=tot,
+                    assigned_seats=asgn,
+                    available_seats=avail,
+                    utilization_rate=rate,
+                    cost_per_seat=row.cost_per_seat,
+                    status=stat,
+                )
+            )
+
+        return LicenseUsageResponse(items=items)
+
 

@@ -17,6 +17,7 @@ from app.schemas.analytics import (
     AssetUtilizationResponse,
     CostByDepartmentResponse,
     HeadcountAssetRatioResponse,
+    LicenseUsageResponse,
 )
 from app.services.analytics_service import AnalyticsService
 
@@ -69,4 +70,13 @@ def get_headcount_asset_ratio(
         from_date=from_date,
         to_date=to_date,
     )
+
+
+@router.get("/license-usage", response_model=LicenseUsageResponse)
+def get_license_usage(
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> LicenseUsageResponse:
+    """GET /analytics/license-usage (PRD §5.15): License quota usage. super_admin, it_admin, auditor."""
+    return service.get_license_usage()
+
 
