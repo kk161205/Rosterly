@@ -1,41 +1,78 @@
 """
-Roles API — small addition backing the Employee Directory / Profile edit
-forms' "System Access Role" picker (§5.3/§5.4), which previously hardcoded
-role names with no way to resolve them to the role_id UUID PATCH
-/employees/{id} actually requires. Not a page-specific route in the original
-doc — mirrors GET /departments' openness (any authenticated user, no RBAC
-gate) since the 6 seeded system roles (§3.1) aren't sensitive data.
+Roles & Permissions API — PRD §5.13 (Role & Permission Management).
+All endpoints restricted to super_admin via check_permission.
 """
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
-from app.models.auth import Role
+from app.schemas.roles import (
+    RoleCreateRequest,
+    RolePermissionsResponse,
+    RolePermissionsUpdateRequest,
+    RoleResponse,
+)
+from app.services.role_management_service import RoleManagementService
 
 router = APIRouter()
 
 
-class RoleItem(BaseModel):
-    id: UUID
-    name: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-@router.get("", response_model=list[RoleItem])
-@router.get("/", response_model=list[RoleItem])
-def get_roles(
+def get_role_service(
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[RoleItem]:
-    """Get the full list of system roles (§3.1's 6 seeded roles), regardless
-    of current membership — unlike /employees/filters' role list, which only
-    includes roles that already have at least one user (a filter-with-no-
-    matches would be meaningless there, but an edit form needs every role
-    selectable even for one with zero current members)."""
-    roles = db.query(Role).order_by(Role.name.asc()).all()
-    return roles
+) -> RoleManagementService:
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    return RoleManagementService(db=db, current_user=current_user, ip_address=client_ip)
+
+
+@router.get("", response_model=list[RoleResponse])
+@router.get("/", response_model=list[RoleResponse])
+def get_roles(
+    service: RoleManagementService = Depends(get_role_service),
+) -> list[RoleResponse]:
+    """GET /roles (PRD §5.13): List all roles including user_count. super_admin only."""
+    return service.get_roles()
+
+
+@router.post("", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
+def create_role(
+    payload: RoleCreateRequest,
+    service: RoleManagementService = Depends(get_role_service),
+) -> RoleResponse:
+    """POST /roles (PRD §5.13): Create custom role. super_admin only."""
+    return service.create_role(payload=payload)
+
+
+@router.get("/{id}/permissions", response_model=RolePermissionsResponse)
+def get_role_permissions(
+    id: UUID,
+    service: RoleManagementService = Depends(get_role_service),
+) -> RolePermissionsResponse:
+    """GET /roles/{id}/permissions (PRD §5.13): View role permissions matrix. super_admin only."""
+    return service.get_role_permissions(role_id=id)
+
+
+@router.put("/{id}/permissions", response_model=RolePermissionsResponse)
+def replace_role_permissions(
+    id: UUID,
+    payload: RolePermissionsUpdateRequest,
+    service: RoleManagementService = Depends(get_role_service),
+) -> RolePermissionsResponse:
+    """PUT /roles/{id}/permissions (PRD §5.13): Replace role permissions. super_admin only."""
+    return service.replace_role_permissions(role_id=id, payload=payload)
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_role(
+    id: UUID,
+    service: RoleManagementService = Depends(get_role_service),
+) -> Response:
+    """DELETE /roles/{id} (PRD §5.13): Delete role with safety guards. super_admin only."""
+    service.delete_role(role_id=id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

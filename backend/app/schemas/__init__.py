@@ -39,6 +39,34 @@ from app.schemas.onboarding import (
     ChecklistResponse,
     OnboardingCreateRequest,
 )
+from app.schemas.roles import (
+    PermissionItemResponse,
+    RoleCreateRequest,
+    RoleItem,
+    RolePermissionsResponse,
+    RolePermissionsUpdateRequest,
+    RoleResponse,
+)
+from app.schemas.users import (
+    AssignableRoleResponse,
+    UserCreateRequest,
+    UserListItemResponse,
+    UserListResponse,
+    UserResponse,
+    UserRoleUpdateRequest,
+    UserStatusUpdateRequest,
+)
+from app.schemas.analytics import (
+    AssetUtilizationResponse,
+    CategoryUtilizationItem,
+    CostByDepartmentResponse,
+    DepartmentCostItem,
+    DepartmentUtilizationItem,
+    HeadcountAssetRatioItem,
+    HeadcountAssetRatioResponse,
+    LicenseUsageItem,
+    LicenseUsageResponse,
+)
 
 __all__ = [
     "LoginRequest",
@@ -75,7 +103,31 @@ __all__ = [
     "AssetMetaResponse",
     "AssetSummaryResponse",
     "MaintenanceTicketResponse",
+    "RoleItem",
+    "RoleResponse",
+    "RoleCreateRequest",
+    "PermissionItemResponse",
+    "RolePermissionsResponse",
+    "RolePermissionsUpdateRequest",
+    "UserCreateRequest",
+    "UserRoleUpdateRequest",
+    "UserStatusUpdateRequest",
+    "UserListItemResponse",
+    "UserListResponse",
+    "UserResponse",
+    "AssignableRoleResponse",
+    "CategoryUtilizationItem",
+    "DepartmentUtilizationItem",
+    "AssetUtilizationResponse",
+    "DepartmentCostItem",
+    "CostByDepartmentResponse",
+    "HeadcountAssetRatioItem",
+    "HeadcountAssetRatioResponse",
+    "LicenseUsageItem",
+    "LicenseUsageResponse",
 ]
+
+
 
 
 
