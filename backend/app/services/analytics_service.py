@@ -24,6 +24,8 @@ from app.schemas.analytics import (
     CostByDepartmentResponse,
     DepartmentCostItem,
     DepartmentUtilizationItem,
+    HeadcountAssetRatioItem,
+    HeadcountAssetRatioResponse,
 )
 
 MAX_DATE_RANGE_DAYS = 365 * 5  # 5-year maximum window
@@ -227,3 +229,81 @@ class AnalyticsService:
         ]
 
         return CostByDepartmentResponse(series=series)
+
+    def get_headcount_asset_ratio(
+        self,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> HeadcountAssetRatioResponse:
+        """
+        GET /analytics/headcount-asset-ratio (PRD §5.15):
+        Multi-line trend of headcount vs. non-retired assets over time buckets.
+        - Buckets: Daily for <= 31 days; weekly (7-day step) for > 31 days.
+        - Historical headcount: User.date_of_joining <= D and (date_of_exit is null or date_of_exit > D).
+        - Asset count: purchase_date <= D and status != 'retired'.
+          (Note: limitation of available history: current non-retired status is used as approximation).
+        - Zero headcount protection: ratio = 0.0 when headcount == 0.
+        Access: super_admin, hr_admin, auditor.
+        """
+        check_permission(self.current_user, "analytics", "headcount_asset_ratio", self.db)
+        resolved_from, resolved_to = resolve_date_range(from_date, to_date)
+
+        # Generate bucket milestone dates
+        total_days = (resolved_to - resolved_from).days
+        step_days = 1 if total_days <= 31 else 7
+
+        bucket_dates: list[date] = []
+        curr = resolved_from
+        while curr < resolved_to:
+            bucket_dates.append(curr)
+            curr += timedelta(days=step_days)
+        if not bucket_dates or bucket_dates[-1] != resolved_to:
+            bucket_dates.append(resolved_to)
+
+        # SQL aggregate counts without N+1: evaluate all buckets via conditional counts
+        user_selects = [
+            func.count(
+                case(
+                    (
+                        (User.date_of_joining <= d)
+                        & (User.date_of_exit.is_(None) | (User.date_of_exit > d)),
+                        1,
+                    ),
+                    else_=None,
+                )
+            ).label(f"hc_{i}")
+            for i, d in enumerate(bucket_dates)
+        ]
+
+        asset_selects = [
+            func.count(
+                case(
+                    (
+                        (Asset.purchase_date <= d) & (Asset.status != AssetStatus.retired),
+                        1,
+                    ),
+                    else_=None,
+                )
+            ).label(f"ac_{i}")
+            for i, d in enumerate(bucket_dates)
+        ]
+
+        user_row = self.db.query(*user_selects).first()
+        asset_row = self.db.query(*asset_selects).first()
+
+        series: list[HeadcountAssetRatioItem] = []
+        for i, d in enumerate(bucket_dates):
+            hc = user_row[i] if user_row and user_row[i] is not None else 0
+            ac = asset_row[i] if asset_row and asset_row[i] is not None else 0
+            ratio = round(ac / hc, 2) if hc > 0 else 0.0
+            series.append(
+                HeadcountAssetRatioItem(
+                    date=d.isoformat(),
+                    headcount=hc,
+                    asset_count=ac,
+                    ratio=ratio,
+                )
+            )
+
+        return HeadcountAssetRatioResponse(series=series)
+

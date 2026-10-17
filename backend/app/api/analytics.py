@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.schemas.analytics import (
     AssetUtilizationResponse,
     CostByDepartmentResponse,
+    HeadcountAssetRatioResponse,
 )
 from app.services.analytics_service import AnalyticsService
 
@@ -55,3 +56,17 @@ def get_cost_by_department(
         from_date=from_date,
         to_date=to_date,
     )
+
+
+@router.get("/headcount-asset-ratio", response_model=HeadcountAssetRatioResponse)
+def get_headcount_asset_ratio(
+    from_date: Optional[date] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[date] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> HeadcountAssetRatioResponse:
+    """GET /analytics/headcount-asset-ratio (PRD §5.15): Ratio trend over time. super_admin, hr_admin, auditor."""
+    return service.get_headcount_asset_ratio(
+        from_date=from_date,
+        to_date=to_date,
+    )
+
