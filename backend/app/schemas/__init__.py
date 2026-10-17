@@ -39,6 +39,23 @@ from app.schemas.onboarding import (
     ChecklistResponse,
     OnboardingCreateRequest,
 )
+from app.schemas.roles import (
+    PermissionItemResponse,
+    RoleCreateRequest,
+    RoleItem,
+    RolePermissionsResponse,
+    RolePermissionsUpdateRequest,
+    RoleResponse,
+)
+from app.schemas.users import (
+    AssignableRoleResponse,
+    UserCreateRequest,
+    UserListItemResponse,
+    UserListResponse,
+    UserResponse,
+    UserRoleUpdateRequest,
+    UserStatusUpdateRequest,
+)
 
 __all__ = [
     "LoginRequest",
@@ -75,7 +92,21 @@ __all__ = [
     "AssetMetaResponse",
     "AssetSummaryResponse",
     "MaintenanceTicketResponse",
+    "RoleItem",
+    "RoleResponse",
+    "RoleCreateRequest",
+    "PermissionItemResponse",
+    "RolePermissionsResponse",
+    "RolePermissionsUpdateRequest",
+    "UserCreateRequest",
+    "UserRoleUpdateRequest",
+    "UserStatusUpdateRequest",
+    "UserListItemResponse",
+    "UserListResponse",
+    "UserResponse",
+    "AssignableRoleResponse",
 ]
+
 
 
 
