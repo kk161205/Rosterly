@@ -12,6 +12,7 @@ from app.api import (
     offboarding,
     onboarding,
     roles,
+    users,
 )
 from app.core.config import settings
 from app.core.errors import (
@@ -50,6 +51,8 @@ app.include_router(
     prefix=settings.API_V1_PREFIX + "/maintenance-tickets",
     tags=["maintenance-tickets"],
 )
+app.include_router(users.router, prefix=settings.API_V1_PREFIX + "/users", tags=["users"])
+
 
 
 @app.get("/health")
