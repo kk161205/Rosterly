@@ -56,6 +56,17 @@ from app.schemas.users import (
     UserRoleUpdateRequest,
     UserStatusUpdateRequest,
 )
+from app.schemas.analytics import (
+    AssetUtilizationResponse,
+    CategoryUtilizationItem,
+    CostByDepartmentResponse,
+    DepartmentCostItem,
+    DepartmentUtilizationItem,
+    HeadcountAssetRatioItem,
+    HeadcountAssetRatioResponse,
+    LicenseUsageItem,
+    LicenseUsageResponse,
+)
 
 __all__ = [
     "LoginRequest",
@@ -105,7 +116,17 @@ __all__ = [
     "UserListResponse",
     "UserResponse",
     "AssignableRoleResponse",
+    "CategoryUtilizationItem",
+    "DepartmentUtilizationItem",
+    "AssetUtilizationResponse",
+    "DepartmentCostItem",
+    "CostByDepartmentResponse",
+    "HeadcountAssetRatioItem",
+    "HeadcountAssetRatioResponse",
+    "LicenseUsageItem",
+    "LicenseUsageResponse",
 ]
+
 
 
 
