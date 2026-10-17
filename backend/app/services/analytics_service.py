@@ -113,7 +113,6 @@ class AnalyticsService:
             .join(Department, User.department_id == Department.id)
             .filter(
                 Asset.status != AssetStatus.retired,
-                Asset.purchase_date >= resolved_from,
                 Asset.purchase_date <= resolved_to,
             )
         )
