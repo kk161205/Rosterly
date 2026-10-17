@@ -5,7 +5,7 @@ All endpoints restricted to super_admin via check_permission.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.security import CurrentUser, get_current_user
@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.schemas.roles import (
     RoleCreateRequest,
     RolePermissionsResponse,
+    RolePermissionsUpdateRequest,
     RoleResponse,
 )
 from app.services.role_management_service import RoleManagementService
@@ -55,3 +56,23 @@ def get_role_permissions(
 ) -> RolePermissionsResponse:
     """GET /roles/{id}/permissions (PRD §5.13): View role permissions matrix. super_admin only."""
     return service.get_role_permissions(role_id=id)
+
+
+@router.put("/{id}/permissions", response_model=RolePermissionsResponse)
+def replace_role_permissions(
+    id: UUID,
+    payload: RolePermissionsUpdateRequest,
+    service: RoleManagementService = Depends(get_role_service),
+) -> RolePermissionsResponse:
+    """PUT /roles/{id}/permissions (PRD §5.13): Replace role permissions. super_admin only."""
+    return service.replace_role_permissions(role_id=id, payload=payload)
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_role(
+    id: UUID,
+    service: RoleManagementService = Depends(get_role_service),
+) -> Response:
+    """DELETE /roles/{id} (PRD §5.13): Delete role with safety guards. super_admin only."""
+    service.delete_role(role_id=id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
