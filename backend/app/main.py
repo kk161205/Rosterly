@@ -3,6 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
+    analytics,
     assets,
     auth,
     dashboard,
@@ -52,6 +53,7 @@ app.include_router(
     tags=["maintenance-tickets"],
 )
 app.include_router(users.router, prefix=settings.API_V1_PREFIX + "/users", tags=["users"])
+app.include_router(analytics.router, prefix=settings.API_V1_PREFIX + "/analytics", tags=["analytics"])
 
 
 
