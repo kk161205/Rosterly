@@ -1,0 +1,130 @@
+from datetime import date, datetime
+from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
+from app.models.auth import UserStatus
+from app.models.lifecycle import DocumentType
+
+
+class ReportingNode(BaseModel):
+    """Shared shape for the reporting-hierarchy tree (§5.4 Overview Tab)."""
+
+    id: UUID
+    full_name: str
+    designation: str
+    department: Optional[str] = None
+    role: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RoleRef(BaseModel):
+    id: UUID
+    name: str
+
+
+class EmployeeProfileResponse(BaseModel):
+    id: UUID
+    employee_code: str
+    full_name: str
+    email: str
+    role_id: UUID
+    role_name: str  # primary role
+    additional_roles: list[RoleRef] = []  # §5.14 multi-role
+    department_id: Optional[UUID] = None
+    department_name: Optional[str] = None
+    manager_id: Optional[UUID] = None
+    manager_name: Optional[str] = None
+    manager: Optional[ReportingNode] = None
+    direct_reports: list[ReportingNode] = []
+    designation: str
+    phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    status: UserStatus
+    date_of_joining: date
+    date_of_exit: Optional[date] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeProfileUpdateRequest(BaseModel):
+    phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    address: Optional[str] = None
+    full_name: Optional[str] = None
+    designation: Optional[str] = None
+    department_id: Optional[UUID] = None
+    role_id: Optional[UUID] = None
+    status: Optional[UserStatus] = None
+    manager_id: Optional[UUID] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DocumentResponse(BaseModel):
+    id: UUID
+    employee_id: UUID
+    doc_type: DocumentType
+    file_name: str
+    file_url: str
+    is_confidential: bool
+    uploaded_by: UUID
+    uploaded_by_name: Optional[str] = None
+    uploaded_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetAssignmentItem(BaseModel):
+    id: UUID
+    asset_id: UUID
+    asset_tag: str
+    asset_name: str
+    category: str
+    serial_number: Optional[str] = None
+    assigned_by: UUID
+    assigned_by_name: Optional[str] = None
+    assigned_at: datetime
+    returned_at: Optional[datetime] = None
+    condition_at_assignment: str
+    condition_at_return: Optional[str] = None
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeAssetsResponse(BaseModel):
+    current: list[AssetAssignmentItem] = []
+    history: list[AssetAssignmentItem] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChecklistItemDetailResponse(BaseModel):
+    id: UUID
+    title: str
+    category: str
+    owner_role: str
+    status: str
+    due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LifecycleChecklistResponse(BaseModel):
+    id: UUID
+    type: str
+    status: str
+    progress_percentage: int
+    total_items: int
+    completed_items: int
+    items: list[ChecklistItemDetailResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+

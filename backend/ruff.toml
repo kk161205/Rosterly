@@ -1,0 +1,7 @@
+# Lint baseline (run: python -m ruff check app tests alembic)
+line-length = 120
+target-version = "py311"
+
+[lint]
+# Pyflakes (unused/undefined names), exception chaining, modern typing imports
+select = ["F", "B904", "UP035"]

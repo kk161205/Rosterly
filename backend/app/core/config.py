@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
 
     DATABASE_URL: str = "postgresql://rosterly:changeme@localhost:5432/rosterly"
-    REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
@@ -27,9 +26,16 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_ADDRESS: str = "noreply@rosterly.example"
+    # Master switch for outgoing email (invites, password resets, critical
+    # notifications). Off until real SMTP credentials are supplied — with it
+    # off, emails are built but never sent.
+    EMAIL_DELIVERY_ENABLED: bool = False
+    # Base URL of the frontend, used to build set-password / reset links in emails.
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    INVITE_TOKEN_EXPIRE_HOURS: int = 72
 
+    # Document vault upload limit (§7 rule 8). Allowed types are fixed by the spec: PDF, PNG, JPG.
     MAX_UPLOAD_SIZE_MB: int = 10
-    ALLOWED_UPLOAD_TYPES: str = "application/pdf,image/png,image/jpeg"
 
 
 settings = Settings()

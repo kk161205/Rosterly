@@ -60,6 +60,28 @@ class RolePermission(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class UserRole(Base):
+    """An additional role held by a user, on top of users.role_id (§5.14)."""
+
+    __tablename__ = "user_roles"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), primary_key=True, index=True)
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class RoleConflict(Base):
+    """Two roles one person may not hold together (§5.14), e.g. auditor + it_admin.
+    Stored once per pair; checks look in both directions."""
+
+    __tablename__ = "role_conflicts"
+
+    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    conflicts_with_role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class Department(Base):
     __tablename__ = "departments"
 
@@ -97,6 +119,16 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     role = relationship("Role", back_populates="users")
+    # Multi-role (§5.14, revised 18 Oct 2026): the primary role above plus any
+    # additional roles. Effective access is the union of all of them.
+    additional_roles = relationship(
+        "Role",
+        secondary="user_roles",
+        primaryjoin="User.id == UserRole.user_id",
+        secondaryjoin="Role.id == UserRole.role_id",
+        order_by="Role.name",
+        viewonly=True,
+    )
     department = relationship("Department", foreign_keys=[department_id], back_populates="members")
     manager = relationship("User", foreign_keys=[manager_id], remote_side=[id])
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")

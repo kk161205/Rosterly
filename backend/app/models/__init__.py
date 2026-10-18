@@ -15,9 +15,11 @@ from app.models.auth import (
     LoginAttempt,
     Permission,
     Role,
+    RoleConflict,
     RolePermission,
     Session,
     User,
+    UserRole,
     UserStatus,
 )
 from app.models.leave_attendance import (
@@ -57,6 +59,8 @@ __all__ = [
     "Base",
     # Auth
     "Role",
+    "RoleConflict",
+    "UserRole",
     "Permission",
     "RolePermission",
     "Department",
