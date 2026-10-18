@@ -2,116 +2,134 @@
 
 > Unified Asset & Employee Management Portal
 
-Rosterly is an enterprise-grade platform designed for managing employee lifecycles, physical and digital assets, automated multi-step approval workflows, and intelligent natural-language operations.
+[![CI](https://github.com/kk161205/Rosterly/actions/workflows/ci.yml/badge.svg)](https://github.com/kk161205/Rosterly/actions/workflows/ci.yml)
+
+Rosterly manages employees, IT assets and access as one connected lifecycle: onboarding and offboarding across HR, IT and Facilities, asset tracking from purchase to retirement, requests routed through configurable approval chains, and zero-trust access control — in one self-hosted web app.
 
 ---
 
-## 📋 Project Status
+## Project status
 
-Phase 1 core platform — authentication, employee management, and asset inventory are built, backed by a real Postgres schema with RBAC/ABAC enforcement, zero-trust sessions, and audit logging.
+Phase 1 (spec §5.1–§5.15) is complete: a FastAPI backend on PostgreSQL with RBAC/ABAC enforcement, zero-trust sessions and audit logging, and a React frontend in the "Quiet Workbench" design.
 
-**Implemented pages:**
-- ✅ Login (multi-step auth: password, MFA, forgot/reset password, lockout)
-- ✅ Dashboard (role-aware home for employee / manager / hr_admin / it_admin / super_admin / auditor)
-- ✅ Employee Directory (list + org-chart views, department/role/status filtering)
-- ✅ Employee Profile Detail (overview, document vault, assigned assets, lifecycle tabs)
-- ✅ Onboarding Workflow (task board, progress tracking, AI-assisted checklist suggestions)
-- ✅ Offboarding Workflow (asset reclamation, access revocation, termination flow)
-- ✅ Asset Inventory (catalog, bulk actions, admin-extensible categories, depreciation tracking)
+| Area | What's built |
+| :--- | :--- |
+| **Sign-in** | Password, MFA, forgot/reset password, lockout, invite links |
+| **Home** | Each role's key numbers plus "Waiting on you" — pre-checked approvals, checklist tasks and tickets, actioned in place |
+| **People** | Directory and org chart, profiles (documents, assets, lifecycle), onboarding and offboarding checklists |
+| **Assets** | Inventory with a side panel, full record with depreciation and a printable QR label, camera QR scanner, maintenance tickets (table and board) |
+| **Requests** | Unified request portal with cost-tiered approval chains; one person decides at most one step of a request |
+| **Analytics** | Money we can save, where the money went, what to budget for, what needs chasing, where we're slow — totals first, records in a side panel with CSV export |
+| **Access** | Users and invites, roles and the permission matrix, **multi-role** access (a primary role plus additional roles, merged permissions, configurable role conflicts) |
 
-**Not yet built:** Asset Detail, QR Check-In/Check-Out, Maintenance Tickets, Unified Request Portal, Approvals Queue, Approval Chain Configuration, Software License Tracking, Leave & Attendance, Analytics, and the AI Assistant panel.
-
-**Current test coverage:** 165 backend tests (pytest) and 34 frontend tests (Vitest) passing, plus a clean TypeScript build (`tsc -b`).
+**Later phases:** notifications centre, audit log viewer, approval-chain and licence admin pages, leave and attendance, the AI assistant (`ai-service/` is a scaffold), landing page.
 
 ---
 
-## 🏛 Architecture Overview
+## Tech stack
 
-The repository is organized as a modular monorepo:
+| Layer | Technology |
+| :--- | :--- |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, Radix UI; Vitest + Testing Library |
+| Backend | Python 3.13, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2; pytest, ruff |
+| Database | PostgreSQL 18 (the shared development/test database runs on Neon and holds demo data only) |
+| Background jobs | Celery with Redis — nightly depreciation, warranty/AMC expiry, email dispatch |
+
+**Pinned versions:** Python **3.13.5**, Node **22.14.0**, PostgreSQL **18**. Backend packages are pinned in `backend/requirements.txt`; frontend packages are locked by `frontend/package-lock.json`. CI uses exactly these versions.
+
+---
+
+## Repository layout
 
 ```text
-rosterly/
-├── backend/       # FastAPI — Core platform API (Auth, RBAC/ABAC, Business Logic)
-├── frontend/      # React 19 + TypeScript + Vite — Modern UI dashboard
-├── ai-service/    # FastAPI + LangGraph — AI query assistant & orchestration
-├── docker-compose.yml # Multi-container local development orchestration
+Rosterly/
+├── .github/workflows/ci.yml   # CI: backend, migrations on PostgreSQL, frontend
+├── backend/
+│   ├── app/
+│   │   ├── core/              # config, security (zero-trust auth, RBAC), role policy, Celery
+│   │   ├── models/            # SQLAlchemy models
+│   │   └── modules/<feature>/ # router.py + service.py + schemas.py per feature
+│   ├── alembic/               # migrations
+│   └── tests/                 # pytest suites per feature
+├── frontend/
+│   └── src/
+│       ├── app/               # routes
+│       ├── shell/             # sidebar, Ctrl K palette, section tabs, user menu
+│       ├── ui/                # design-system primitives (buttons, fields, tables, dialogs…)
+│       ├── features/<feature>/# pages, components, services, types, tests
+│       └── lib/               # API client, formatting, URL filters
+├── ai-service/                # scaffold for the AI module (later phase)
 └── README.md
 ```
 
-### Services Breakdown
-
-* **Backend (`/backend`)**:
-  * FastAPI core API with Pydantic v2 validation and standardized error envelopes.
-  * SQLAlchemy ORM with PostgreSQL database persistence and Alembic migrations.
-  * Celery beat & worker orchestration for background processing (depreciation recalculations, warranty expiry tracking, email dispatch).
-  * Zero-trust session tracking and live role verification.
-
-* **Frontend (`/frontend`)**:
-  * React 19, TypeScript, and Vite with path aliasing (`@/*`).
-  * Modern design system powered by Tailwind CSS tokens, Hanken Grotesk, Inter, and JetBrains Mono typography.
-  * TanStack Query for server-state caching and Axios HTTP client.
-
-* **AI Service (`/ai-service`)**:
-  * Independent LangGraph/FastAPI service for natural-language analytics and onboarding workflow suggestions.
-  * Strict least-privilege architecture: zero direct database access, forwarding authenticated user tokens to the core backend.
-
 ---
 
-## 🚀 Quick Start (Local Development)
+## Running locally
 
 ### 1. Prerequisites
-* [Docker](https://www.docker.com/) and Docker Compose
-* (Optional for bare-metal run) Python 3.12+ and Node.js 20+
+- Python 3.13.5
+- Node.js 22.14.0 (npm 10)
+- PostgreSQL 18, or a Neon connection string
+- Redis — only if you run the Celery worker for background jobs
 
-### 2. Environment Configuration
-
-Copy the example environment files for each service:
-
+### 2. Backend
 ```bash
-# Backend configuration
-cp backend/.env.example backend/.env
-
-# Frontend configuration
-cp frontend/.env.example frontend/.env
-
-# AI Service configuration
-cp ai-service/.env.example ai-service/.env
+cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate   ·   macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # set DATABASE_URL and JWT_SECRET_KEY
+alembic upgrade head          # create / update the schema and seed roles and permissions
+uvicorn app.main:app --reload --port 8000
 ```
+API docs: <http://localhost:8000/docs>. Background jobs (optional): `celery -A app.core.celery_app worker --beat`.
 
-### 3. Launch via Docker Compose
-
+### 3. Frontend
 ```bash
-docker compose up --build
+cd frontend
+npm ci
+cp .env.example .env          # VITE_API_BASE_URL defaults to http://localhost:8000/api/v1
+npm run dev
 ```
+App: <http://localhost:5173>.
 
-### 4. Service Endpoints
-
-| Service | URL | Notes |
-| :--- | :--- | :--- |
-| **Frontend** | [http://localhost:5173](http://localhost:5173) | Main user interface |
-| **Backend API** | [http://localhost:8000](http://localhost:8000) | Core API (Docs at `/docs`) |
-| **AI Service** | [http://localhost:8100](http://localhost:8100) | AI module API |
-| **PostgreSQL** | `localhost:5432` | Primary database (`rosterly`) |
-| **Redis** | `localhost:6379` | Cache & Celery message broker |
+Email delivery is off until real SMTP credentials are set and `EMAIL_DELIVERY_ENABLED=true` in `backend/.env`.
 
 ---
 
-## 🧪 Testing
+## Tests and checks
 
-### Backend Tests (pytest — 165 passing)
+These are the same commands CI runs.
+
 ```bash
+# Backend
 cd backend
-python -m pytest
+ruff check app tests
+pytest                        # 302 tests, self-contained (SQLite)
+
+# Frontend
+cd frontend
+npm run lint
+npm test                      # 67 tests
+npm run build                 # type-check + production build
 ```
 
-### Frontend Tests (Vitest — 34 passing)
-```bash
-cd frontend
-npx vitest run
-```
+---
 
-### Frontend Typecheck & Build
-```bash
-cd frontend
-npm run build
-```
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
+
+| Job | Steps |
+| :--- | :--- |
+| Backend · lint and tests | Python 3.13.5 → `pip install -r requirements.txt` → `ruff check` → `pytest` |
+| Backend · migrations on PostgreSQL 18 | PostgreSQL 18 service → `alembic upgrade head`, `downgrade base`, `upgrade head` |
+| Frontend · lint, tests and build | Node 22.14.0 → `npm ci` → `npm run lint` → `npm test` → `npm run build` → production build kept as an artifact |
+
+There is no deployment target yet, so delivery currently stops at the build artifact.
+
+---
+
+## Team
+
+Team 145, Dept. of CEA, GLA University, Mathura — Kushagra Kulshrestha, Venu Gopal, Bharti Singh.
