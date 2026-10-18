@@ -23,10 +23,6 @@ export default defineConfig({
     hookTimeout: 10000,
   },
   server: {
-    host: true,
     port: 5173,
-    watch: {
-      usePolling: true, // needed for file change detection inside Docker
-    },
   },
 })

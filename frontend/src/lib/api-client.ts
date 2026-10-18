@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import { authStorage } from '@/utils/authStorage'
+import { authStorage } from '@/lib/authStorage'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || '/api/v1'
 
@@ -120,15 +120,3 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   }
 )
-
-export interface ApiErrorShape {
-  error: {
-    code: string
-    message: string
-    field_errors: Record<string, string> | null
-  }
-}
-
-export function isApiError(error: unknown): error is AxiosError<ApiErrorShape> {
-  return axios.isAxiosError(error) && !(!error.response?.data?.error)
-}

@@ -6,6 +6,98 @@
    can't express. Default to utility classes using the generated tokens in
    tailwind.config.js — see rules.md §2 rule 2. */
 
+@layer base {
+  body {
+    @apply bg-ground font-sans text-body text-ink antialiased;
+  }
+
+  /* One visible focus style everywhere (DESIGN.md, Accessibility): 2px navy ring. */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-navy;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Open dropdown lists (every SelectField) follow the design system where the
+   browser supports styleable selects (Chromium 135+, incl. Edge); elsewhere the
+   native list is kept. The closed control keeps its underline classes. */
+@supports (appearance: base-select) {
+  select.select-styled,
+  select.select-styled::picker(select) {
+    appearance: base-select;
+  }
+  select.select-styled {
+    @apply flex items-center justify-between gap-2;
+    /* base-select adds its own button chrome; keep our plain underline */
+    border-radius: 0;
+    background: transparent;
+  }
+  select.select-styled::picker-icon {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.25rem;
+    border-right: 1.5px solid theme('colors.muted');
+    border-bottom: 1.5px solid theme('colors.muted');
+    transform: translateY(-25%) rotate(45deg);
+    transition: transform 150ms;
+  }
+  select.select-styled:open::picker-icon {
+    transform: translateY(25%) rotate(-135deg);
+  }
+  select.select-styled::picker(select) {
+    margin-top: 0.375rem;
+    padding: 0.375rem;
+    max-height: 20rem;
+    border: 1px solid theme('colors.line');
+    border-radius: theme('borderRadius.card');
+    background: theme('colors.paper');
+    color: theme('colors.ink');
+    box-shadow: none;
+  }
+  select.select-styled option {
+    @apply flex min-h-9 cursor-pointer items-center gap-2 rounded-soft px-3 text-body text-ink;
+    font-family: theme('fontFamily.sans');
+  }
+  select.select-styled option:hover,
+  select.select-styled option:focus-visible {
+    background: theme('colors.row-hover');
+    outline: none;
+  }
+  select.select-styled option:checked {
+    @apply font-semibold;
+    background: transparent;
+  }
+  select.select-styled option::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: theme('colors.navy');
+  }
+}
+
+@layer utilities {
+  /* Horizontal tab rows that scroll on narrow screens fade at the right edge,
+     so it's clear more tabs exist. Applied only while the row overflows. */
+  .fade-x {
+    mask-image: linear-gradient(to right, #000 85%, transparent);
+  }
+  /* Tab rows scroll sideways by touch/trackpad without showing a scrollbar */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 :root {
   /* Tailwind's arbitrary-value utilities (e.g. bg-[radial-gradient(...)]) can't
      reference a theme color by name — only this handful of tokens that are
