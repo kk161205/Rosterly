@@ -32,9 +32,6 @@ yarn-error.log*
 .idea/
 *.swp
 
-# Docker
-*.pid
-
 # Logs
 *.log
 logs/
