@@ -21,7 +21,7 @@ from app.core.role_policy import (
 )
 from app.core.security import CurrentUser, check_permission, roles_granting
 from app.models.assets import Asset, AssetAssignment
-from app.models.auth import Department, Role, User
+from app.models.auth import Department, Role, User, UserStatus
 from app.models.lifecycle import (
     Checklist,
     ChecklistItem,
@@ -320,7 +320,24 @@ class EmployeeProfileService:
                     target_user.role_id = role_obj.id
                     set_additional_roles(self.db, target_user, extra, self.current_user.user_id)
 
-            if "status" in set_fields and payload.status is not None:
+            if "status" in set_fields and payload.status is not None and payload.status != before_status:
+                # Same account-status rules as PATCH /users/{id}/status: only
+                # active/inactive are set by hand; onboarding, offboarding and
+                # termination belong to their workflows, and an account that is
+                # leaving (or has left) is never moved back from here.
+                if payload.status not in (UserStatus.active, UserStatus.inactive):
+                    raise AppError(
+                        status_code=400,
+                        code="invalid_status",
+                        message="Status can only be set to 'active' or 'inactive' here.",
+                        field_errors={"status": "Use active or inactive."},
+                    )
+                if before_status in (UserStatus.offboarding, UserStatus.terminated):
+                    raise AppError(
+                        status_code=400,
+                        code="invalid_status_transition",
+                        message=f"Cannot change status of user in '{before_status.value}' status.",
+                    )
                 target_user.status = payload.status
 
             if "manager_id" in set_fields:

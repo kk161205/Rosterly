@@ -89,6 +89,8 @@ export const EditProfileDialog: React.FC<{
 
   const roleChanging = full && form.role_id !== profile.role_id
   const statusChanging = full && form.status !== profile.status
+  // Same rule as the server: only active/inactive are set by hand, and a leaving account is never moved back
+  const statusLocked = profile.status === 'offboarding' || profile.status === 'terminated'
 
   return (
     <Dialog
@@ -150,10 +152,12 @@ export const EditProfileDialog: React.FC<{
             />
             <SelectField
               label="Status"
-              options={['active', 'onboarding', 'offboarding', 'inactive'].map((s) => ({ value: s, label: roleLabel(s) }))}
+              options={[...new Set(['active', 'inactive', profile.status])].map((s) => ({ value: s, label: roleLabel(s) }))}
               value={form.status ?? ''}
               onChange={set('status')}
               error={errors.status}
+              disabled={statusLocked}
+              hint={statusLocked ? 'Set by offboarding; it can’t be changed here.' : undefined}
             />
           </div>
         )}

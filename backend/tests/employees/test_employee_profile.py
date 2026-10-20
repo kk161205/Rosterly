@@ -1315,3 +1315,61 @@ def test_phone_only_change_does_not_revoke_sessions():
             payload=EmployeeProfileUpdateRequest(phone="+1888888888"),
         )
         mock_logout_all.assert_not_called()
+
+
+# ============================================================================
+# Status edits through the profile follow the account-status rules
+# (same as PATCH /users/{id}/status): only active/inactive by hand, and an
+# account that is offboarding or terminated is never moved from here.
+# ============================================================================
+
+def _patch_status(target, new_status):
+    hr = make_current_user("hr_admin")
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = target
+    service = EmployeeProfileService(db=mock_db, current_user=hr)
+    with patch(
+        "app.modules.employees.profile_service.logout_all_user_sessions"
+    ) as mock_logout_all, patch.object(
+        EmployeeProfileService, "get_employee_profile", return_value={"id": target.id}
+    ):
+        service.patch_employee_profile(
+            employee_id=target.id,
+            payload=EmployeeProfileUpdateRequest(status=new_status),
+        )
+    return mock_logout_all
+
+
+@pytest.mark.parametrize("new_status", ["onboarding", "offboarding", "terminated"])
+def test_profile_status_rejects_workflow_states(new_status):
+    target = make_target_user(status=UserStatus.active)
+    with pytest.raises(Exception) as exc_info:
+        _patch_status(target, new_status)
+    assert getattr(exc_info.value, "status_code", None) == 400
+    assert getattr(exc_info.value, "code", None) == "invalid_status"
+    assert target.status == UserStatus.active
+
+
+@pytest.mark.parametrize("current", [UserStatus.offboarding, UserStatus.terminated])
+def test_profile_status_never_reactivates_leaving_accounts(current):
+    target = make_target_user(status=current)
+    with pytest.raises(Exception) as exc_info:
+        _patch_status(target, "active")
+    assert getattr(exc_info.value, "status_code", None) == 400
+    assert getattr(exc_info.value, "code", None) == "invalid_status_transition"
+    assert target.status == current
+
+
+def test_profile_status_deactivation_allowed_and_revokes_sessions():
+    target = make_target_user(status=UserStatus.active)
+    mock_logout_all = _patch_status(target, "inactive")
+    assert target.status == UserStatus.inactive
+    mock_logout_all.assert_called_once()
+
+
+def test_profile_status_unchanged_value_is_accepted_for_offboarding_account():
+    # The edit form may send the current status back with other fields; that is not a status change.
+    target = make_target_user(status=UserStatus.offboarding)
+    mock_logout_all = _patch_status(target, "offboarding")
+    assert target.status == UserStatus.offboarding
+    mock_logout_all.assert_not_called()

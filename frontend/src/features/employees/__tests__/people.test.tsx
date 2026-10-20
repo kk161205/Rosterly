@@ -194,6 +194,31 @@ describe('Profile (§5.4)', () => {
     await waitFor(() => expect(profileService.updateEmployeeProfile).toHaveBeenCalledWith('p2', { phone: '+91 90000 00000' }))
   })
 
+  it('offers only active or inactive as a status when HR edits a profile', async () => {
+    mockUser('hr_admin', ['employee:read', 'employee:update'])
+    vi.mocked(employeeService.getDepartments).mockResolvedValue([])
+    vi.mocked(employeeService.getRoles).mockResolvedValue([])
+    renderPage(<EmployeeProfilePage />, { route: '/employees/p2', path: '/employees/:id' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }))
+    const status = within(await screen.findByRole('dialog')).getByLabelText('Status') as HTMLSelectElement
+    expect(Array.from(status.options).map((o) => o.value)).toEqual(['active', 'inactive'])
+    expect(status).not.toBeDisabled()
+  })
+
+  it('locks the status of someone who is being offboarded', async () => {
+    mockUser('hr_admin', ['employee:read', 'employee:update'])
+    vi.mocked(employeeService.getDepartments).mockResolvedValue([])
+    vi.mocked(employeeService.getRoles).mockResolvedValue([])
+    vi.mocked(profileService.getEmployeeProfile).mockResolvedValue({ ...profile, status: 'offboarding' })
+    renderPage(<EmployeeProfilePage />, { route: '/employees/p2', path: '/employees/:id' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }))
+    const dialog = await screen.findByRole('dialog')
+    const status = within(dialog).getByLabelText('Status') as HTMLSelectElement
+    expect(status).toBeDisabled()
+    expect(status.value).toBe('offboarding')
+    expect(within(dialog).getByText('Set by offboarding; it can’t be changed here.')).toBeInTheDocument()
+  })
+
   it('switches to the equipment tab', async () => {
     mockUser('hr_admin', ['employee:read'])
     vi.mocked(profileService.getEmployeeAssets).mockResolvedValue({
