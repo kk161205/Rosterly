@@ -19,6 +19,7 @@ from app.modules.employees import departments_router
 from app.modules.employees import router as employees_router
 from app.modules.inbox import router as inbox_router
 from app.modules.lifecycle import offboarding_router, onboarding_router
+from app.modules.notifications import router as notifications_router
 from app.modules.requests import router as requests_router
 
 app = FastAPI(title="Rosterly API", version="0.1.0")
@@ -53,6 +54,7 @@ ROUTES = [
     ("/permissions", permissions_router, "roles"),
     ("/users", users_router, "users"),
     ("/analytics", analytics_router, "analytics"),
+    ("/notifications", notifications_router, "notifications"),
 ]
 
 for path, module, tag in ROUTES:
