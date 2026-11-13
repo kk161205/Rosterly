@@ -88,6 +88,8 @@ class Request(Base):
     priority = Column(Enum(RequestPriority, name="request_priority_enum", native_enum=False), default=RequestPriority.medium, nullable=False)
     status = Column(Enum(RequestStatus, name="request_status_enum", native_enum=False), default=RequestStatus.pending, nullable=False)
     current_step = Column(Integer, default=1, nullable=False)
+    # Template the approval chain was copied from at creation (PRD 5.18). Null on rows that pre-date it.
+    approval_chain_template_id = Column(UUID(as_uuid=True), ForeignKey("approval_chain_templates.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
