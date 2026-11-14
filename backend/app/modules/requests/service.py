@@ -142,6 +142,7 @@ class RequestService:
             priority=data.priority,
             status=RequestStatus.pending,
             current_step=next(st.step_order for st in ordered_steps if st.id not in skip_step_ids),
+            approval_chain_template_id=template.id,
         )
         self.db.add(new_request)
 
