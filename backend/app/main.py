@@ -11,6 +11,7 @@ from app.core.errors import (
 )
 from app.modules.admin import permissions_router, roles_router, users_router
 from app.modules.analytics import router as analytics_router
+from app.modules.approval_chains import router as approval_chains_router
 from app.modules.assets import maintenance_router
 from app.modules.assets import router as assets_router
 from app.modules.audit import router as audit_router
@@ -57,6 +58,7 @@ ROUTES = [
     ("/analytics", analytics_router, "analytics"),
     ("/notifications", notifications_router, "notifications"),
     ("/audit-logs", audit_router, "audit"),
+    ("/approval-chains", approval_chains_router, "approval-chains"),
 ]
 
 for path, module, tag in ROUTES:
