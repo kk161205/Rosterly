@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -52,6 +53,8 @@ class LeaveRequest(Base):
     status = Column(Enum(LeaveStatus, name="leave_status_enum", native_enum=False), default=LeaveStatus.pending, nullable=False)
     approver_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reason = Column(Text, nullable=True)
+    # Approver's note on approve/reject, shown in the history table's note drawer.
+    decision_comments = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -75,6 +78,7 @@ class LeaveBalance(Base):
 
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"
+    __table_args__ = (UniqueConstraint("employee_id", "date", name="uq_attendance_records_employee_date"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     employee_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
