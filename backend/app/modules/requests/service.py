@@ -12,10 +12,10 @@ from app.core.errors import (
     NotFoundError,
     ValidationAppError,
 )
-from app.core.role_policy import user_holds_role_ids
+from app.core.approver_resolution import step_recipient_ids
 from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset
-from app.models.auth import Role, User, UserStatus
+from app.models.auth import Role, User
 from app.models.requests import (
     ApprovalChainStep,
     ApprovalChainTemplate,
@@ -750,21 +750,7 @@ class RequestService:
         """In-app approval_needed notification (§6) for one step: its assigned
         manager, or every active member of its role queue. The requester is
         never notified about their own request (self-action rule)."""
-        if step.approver_id:
-            recipient_ids = [step.approver_id] if step.approver_id != exclude_user_id else []
-        elif step.approver_role_id:
-            recipient_ids = [
-                u.id
-                for u in self.db.query(User)
-                .filter(
-                    user_holds_role_ids([step.approver_role_id]),
-                    User.status == UserStatus.active,
-                    User.id != exclude_user_id,
-                )
-                .all()
-            ]
-        else:
-            recipient_ids = []
+        recipient_ids = step_recipient_ids(self.db, step.approver_id, step.approver_role_id, exclude_user_id)
 
         for user_id in recipient_ids:
             self.db.add(

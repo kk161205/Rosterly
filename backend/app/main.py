@@ -20,6 +20,7 @@ from app.modules.dashboard import router as dashboard_router
 from app.modules.employees import departments_router
 from app.modules.employees import router as employees_router
 from app.modules.inbox import router as inbox_router
+from app.modules.leave import router as leave_router
 from app.modules.licenses import router as licenses_router
 from app.modules.lifecycle import offboarding_router, onboarding_router
 from app.modules.notifications import router as notifications_router
@@ -61,6 +62,7 @@ ROUTES = [
     ("/audit-logs", audit_router, "audit"),
     ("/approval-chains", approval_chains_router, "approval-chains"),
     ("/software-licenses", licenses_router, "software-licenses"),
+    ("/leave-requests", leave_router, "leave"),
 ]
 
 for path, module, tag in ROUTES:
