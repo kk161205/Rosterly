@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
 from app.core.security import CurrentUser, check_permission
-from app.models.assets import Asset, AssetAssignment, AssetStatus, MaintenanceTicket, SoftwareLicense
+from app.models.assets import Asset, AssetAssignment, AssetStatus, MaintenanceTicket
 from app.models.auth import Department, User
 from app.models.lifecycle import Checklist, ChecklistItemStatus, ChecklistStatus, ChecklistType
 from app.models.requests import ApprovalStatus, Request, RequestApproval, RequestStatus
@@ -39,6 +39,7 @@ from app.modules.analytics.schemas import (
     UnusedLicenceItem,
     UpcomingJoiner,
 )
+from app.modules.licenses.usage import license_seats_query
 
 MAX_DATE_RANGE_DAYS = 365 * 5  # 5-year maximum window
 IDLE_THRESHOLD_DAYS = 90  # in stock this long = idle equipment
@@ -136,15 +137,7 @@ class AnalyticsService:
         check_permission(self.current_user, "analytics", "savings", self.db)
         today = date.today()
 
-        rows = (
-            self.db.query(
-                SoftwareLicense,
-                func.count(case((Asset.status == AssetStatus.assigned, Asset.id), else_=None)).label("assigned"),
-            )
-            .outerjoin(Asset, Asset.license_id == SoftwareLicense.id)
-            .group_by(SoftwareLicense.id)
-            .all()
-        )
+        rows = license_seats_query(self.db).all()  # shared seats_used definition (§1.18)
         licences: list[UnusedLicenceItem] = []
         for lic, assigned in rows:
             unused = max(lic.total_seats - assigned, 0)
