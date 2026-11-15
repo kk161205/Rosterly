@@ -4,8 +4,9 @@ Schema:
 - leave_requests.decision_comments: nullable TEXT, the approver's note shown in
   the history table's note drawer (the table had no place for it).
 - attendance_records: UNIQUE (employee_id, date) — one record per person per
-  day, so two concurrent check-ins cannot both succeed. Fails (and rolls back)
-  if duplicate rows already exist.
+  day, so two concurrent check-ins cannot both succeed. Counts duplicate rows
+  and raises RuntimeError before constraint creation so an operator can resolve
+  them without data loss.
 
 Permissions (idempotent):
 - (leave_request, approve) -> manager, hr_admin, super_admin
@@ -71,6 +72,26 @@ def upgrade() -> None:
         )
 
     op.add_column("leave_requests", sa.Column("decision_comments", sa.Text(), nullable=True))
+
+    duplicate_rows = bind.execute(
+        sa.text(
+            "SELECT employee_id, date, COUNT(*) AS cnt "
+            "FROM attendance_records "
+            "GROUP BY employee_id, date "
+            "HAVING COUNT(*) > 1"
+        )
+    ).fetchall()
+    if duplicate_rows:
+        total_dupe_rows = sum(int(r[2]) for r in duplicate_rows)
+        excess_rows = sum(int(r[2]) - 1 for r in duplicate_rows)
+        distinct_pairs = len(duplicate_rows)
+        raise RuntimeError(
+            f"Migration d6f8b0c2e4a6: cannot proceed — found {total_dupe_rows} duplicate "
+            f"(employee_id, date) rows ({excess_rows} duplicate row(s) across {distinct_pairs} "
+            f"distinct (employee_id, date) combination(s)) in attendance_records. "
+            f"The operator must resolve them before applying the unique constraint."
+        )
+
     op.create_unique_constraint(UQ_NAME, "attendance_records", ["employee_id", "date"])
 
     permission_ids: dict[tuple[str, str], uuid.UUID] = {}
