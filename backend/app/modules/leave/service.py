@@ -12,7 +12,7 @@ Days are business days (Mon-Fri), inclusive of both ends, excluding dates on
 which the employee already has an attendance_records row with status `holiday`.
 """
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
@@ -214,6 +214,7 @@ class LeaveService:
             end_date=end,
             status=LeaveStatus.pending,
             reason=data.reason,
+            created_at=datetime.now(timezone.utc),
         )
         self.db.add(leave)
 
