@@ -11,14 +11,19 @@ from app.core.errors import (
 )
 from app.modules.admin import permissions_router, roles_router, users_router
 from app.modules.analytics import router as analytics_router
+from app.modules.approval_chains import router as approval_chains_router
 from app.modules.assets import maintenance_router
 from app.modules.assets import router as assets_router
+from app.modules.audit import router as audit_router
 from app.modules.auth import router as auth_router
 from app.modules.dashboard import router as dashboard_router
 from app.modules.employees import departments_router
 from app.modules.employees import router as employees_router
 from app.modules.inbox import router as inbox_router
+from app.modules.leave import attendance_router, router as leave_router
+from app.modules.licenses import router as licenses_router
 from app.modules.lifecycle import offboarding_router, onboarding_router
+from app.modules.notifications import router as notifications_router
 from app.modules.requests import router as requests_router
 
 app = FastAPI(title="Rosterly API", version="0.1.0")
@@ -53,6 +58,12 @@ ROUTES = [
     ("/permissions", permissions_router, "roles"),
     ("/users", users_router, "users"),
     ("/analytics", analytics_router, "analytics"),
+    ("/notifications", notifications_router, "notifications"),
+    ("/audit-logs", audit_router, "audit"),
+    ("/approval-chains", approval_chains_router, "approval-chains"),
+    ("/software-licenses", licenses_router, "software-licenses"),
+    ("/leave-requests", leave_router, "leave"),
+    ("/attendance", attendance_router, "attendance"),
 ]
 
 for path, module, tag in ROUTES:

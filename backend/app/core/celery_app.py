@@ -1,8 +1,9 @@
 """
-Celery app + beat schedule for the three scheduled jobs defined in
+Celery app + beat schedule for the scheduled jobs defined in
 project doc §6:
   - Nightly depreciation job (assets.current_value recalculation)
   - Daily warranty/AMC expiry check (30-day-out notifications)
+  - Daily software-license renewal check (30-day-out notifications)
   - Email dispatch worker (short interval, sends queued notifications)
 
 Task implementations live in their feature modules (app/modules/...) — this
@@ -20,6 +21,7 @@ from app.core.config import settings
 # messages would be rejected as unregistered.
 TASK_MODULES = [
     "app.modules.assets.jobs",
+    "app.modules.licenses.jobs",
     "app.modules.notifications.dispatch",
 ]
 
@@ -38,6 +40,10 @@ celery_app.conf.beat_schedule = {
     "daily-warranty-expiry-check": {
         "task": "app.modules.assets.jobs.check_warranty_amc_expiry",
         "schedule": crontab(hour=3, minute=0),
+    },
+    "daily-license-renewal-check": {
+        "task": "app.modules.licenses.jobs.check_license_renewals",
+        "schedule": crontab(hour=4, minute=0),
     },
     "email-dispatch-worker": {
         "task": "app.modules.notifications.dispatch.dispatch_pending_emails",

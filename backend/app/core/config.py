@@ -37,5 +37,11 @@ class Settings(BaseSettings):
     # Document vault upload limit (§7 rule 8). Allowed types are fixed by the spec: PDF, PNG, JPG.
     MAX_UPLOAD_SIZE_MB: int = 10
 
+    # Leave & Attendance (§5.20). Manual check-in/out is a config decision, not fixed by the PRD:
+    # off -> POST /attendance/check-in and /check-out return 403 manual_checkin_disabled.
+    ATTENDANCE_MANUAL_CHECKIN_ENABLED: bool = True
+    # Timezone that defines "today" for attendance and leave balances.
+    ATTENDANCE_TIMEZONE: str = "Asia/Kolkata"
+
 
 settings = Settings()
