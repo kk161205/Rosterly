@@ -15,14 +15,19 @@ import {
   Skeleton,
 } from '@/ui'
 import { useCurrentUser, hasPermission } from '@/features/auth/hooks/useCurrentUser'
-import { useLicenses } from '@/features/licenses/hooks/useLicenses'
+import { useLicenses, useLicenseMutations } from '@/features/licenses/hooks/useLicenses'
 import { LicenseSummaryCards } from '@/features/licenses/components/LicenseSummaryCards'
 import { LicenseSeatDrawer } from '@/features/licenses/components/LicenseSeatDrawer'
+import { LicenseModal } from '@/features/licenses/components/LicenseModal'
 import {
   computeLicenseMetrics,
   getUtilizationTone,
 } from '@/features/licenses/lib/licenseCalculations'
-import type { LicenseItem } from '@/features/licenses/types/licenses'
+import type {
+  LicenseCreate,
+  LicenseItem,
+  LicenseUpdate,
+} from '@/features/licenses/types/licenses'
 
 export const SoftwareLicensesPage: React.FC = () => {
   const { user } = useCurrentUser()
@@ -31,19 +36,42 @@ export const SoftwareLicensesPage: React.FC = () => {
   const [page, setPage] = useState(1)
   const pageSize = 25
   const [selectedLicense, setSelectedLicense] = useState<LicenseItem | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingLicense, setEditingLicense] = useState<LicenseItem | null>(null)
 
   const { data, isLoading, isError, error, refetch } = useLicenses(page, pageSize)
+  const { createLicense, updateLicense } = useLicenseMutations()
 
   const items = data?.items || []
   const total = data?.total || 0
   const metrics = computeLicenseMetrics(items)
 
   const handleOpenAdd = () => {
-    // Modal will be wired in Commit 24
+    setEditingLicense(null)
+    setIsModalOpen(true)
   }
 
-  const handleOpenEdit = (_license: LicenseItem) => {
-    // Modal will be wired in Commit 24
+  const handleOpenEdit = (license: LicenseItem) => {
+    setEditingLicense(license)
+    setIsModalOpen(true)
+  }
+
+  const handleSave = async ({
+    isEdit,
+    id,
+    createData,
+    updateData,
+  }: {
+    isEdit: boolean
+    id?: string
+    createData?: LicenseCreate
+    updateData?: LicenseUpdate
+  }) => {
+    if (isEdit && id && updateData) {
+      await updateLicense.mutateAsync({ id, data: updateData })
+    } else if (createData) {
+      await createLicense.mutateAsync(createData)
+    }
   }
 
   return (
@@ -196,6 +224,14 @@ export const SoftwareLicensesPage: React.FC = () => {
       <LicenseSeatDrawer
         license={selectedLicense}
         onClose={() => setSelectedLicense(null)}
+      />
+
+      <LicenseModal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        license={editingLicense}
+        onSave={handleSave}
+        isPending={createLicense.isPending || updateLicense.isPending}
       />
     </div>
   )
