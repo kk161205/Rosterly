@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApprovalChainConfigPage } from '@/features/approvalChains/pages/ApprovalChainConfigPage'
 import { approvalChainService } from '@/features/approvalChains/services/approvalChainService'
