@@ -33,7 +33,8 @@ export const ChainTemplateModal: React.FC<ChainTemplateModalProps> = ({
   isPending,
 }) => {
   const isEdit = Boolean(template)
-  const { data: roles = [] } = useAssignableRoles()
+  const { data: rolesData } = useAssignableRoles()
+  const roles = rolesData || []
 
   const [requestType, setRequestType] = useState<ChainRequestType>('asset_request')
   const [name, setName] = useState('')
@@ -48,6 +49,7 @@ export const ChainTemplateModal: React.FC<ChainTemplateModalProps> = ({
   }))
 
   useEffect(() => {
+    if (!open) return
     if (template) {
       setRequestType(template.request_type)
       setName(template.name)
@@ -64,11 +66,10 @@ export const ChainTemplateModal: React.FC<ChainTemplateModalProps> = ({
       setName('')
       setMinAmount('')
       setIsActive(true)
-      // Default to 1 step if roles available
       setSteps(roles.length > 0 ? [{ step_order: 1, approver_role_id: roles[0].id }] : [])
     }
     setError(null)
-  }, [template, roles, open])
+  }, [template, open])
 
   const addStep = () => {
     if (roles.length === 0) return
