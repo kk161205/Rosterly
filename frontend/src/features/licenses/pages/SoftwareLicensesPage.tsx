@@ -17,6 +17,7 @@ import {
 import { useCurrentUser, hasPermission } from '@/features/auth/hooks/useCurrentUser'
 import { useLicenses } from '@/features/licenses/hooks/useLicenses'
 import { LicenseSummaryCards } from '@/features/licenses/components/LicenseSummaryCards'
+import { LicenseSeatDrawer } from '@/features/licenses/components/LicenseSeatDrawer'
 import {
   computeLicenseMetrics,
   getUtilizationTone,
@@ -191,6 +192,11 @@ export const SoftwareLicensesPage: React.FC = () => {
           <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} />
         </div>
       )}
+
+      <LicenseSeatDrawer
+        license={selectedLicense}
+        onClose={() => setSelectedLicense(null)}
+      />
     </div>
   )
 }
