@@ -8,6 +8,7 @@ import {
   Td,
   RowButton,
   Pagination,
+  Button,
   EmptyState,
   ErrorState,
   Skeleton,
@@ -17,6 +18,8 @@ import {
 import { useAuditLogs } from '@/features/audit/hooks/useAuditLogs'
 import { AuditActionChip } from '@/features/audit/components/AuditActionChip'
 import { AuditDiffDrawer } from '@/features/audit/components/AuditDiffDrawer'
+import { exportAuditCsv } from '@/features/audit/lib/exportAuditCsv'
+import { Download } from 'lucide-react'
 import type { AuditLogItem } from '@/features/audit/types/audit'
 
 const ACTION_OPTIONS = [
@@ -64,6 +67,18 @@ export const AuditLogViewerPage: React.FC = () => {
       <PageHeader
         title="Audit Log"
         description="System-wide activity stream for compliance, security review, and data change inspection."
+        actions={
+          items.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => exportAuditCsv(items)}
+            >
+              <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Export Audit CSV
+            </Button>
+          )
+        }
       />
 
       {/* Filter toolbar */}
