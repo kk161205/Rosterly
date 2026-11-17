@@ -147,13 +147,11 @@ export const AuditLogViewerPage: React.FC = () => {
         <div className="flex flex-col gap-4">
           <Table label="Audit events">
             <THead>
-              <Tr>
-                <Th>Timestamp</Th>
-                <Th>Actor</Th>
-                <Th>Action</Th>
-                <Th>Target Resource</Th>
-                <Th>Client IP</Th>
-              </Tr>
+              <Th>Timestamp</Th>
+              <Th>Actor</Th>
+              <Th>Action</Th>
+              <Th>Target Resource</Th>
+              <Th>Client IP</Th>
             </THead>
             <tbody>
               {items.map((log) => {
