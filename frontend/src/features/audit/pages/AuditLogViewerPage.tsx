@@ -16,6 +16,7 @@ import {
 } from '@/ui'
 import { useAuditLogs } from '@/features/audit/hooks/useAuditLogs'
 import { AuditActionChip } from '@/features/audit/components/AuditActionChip'
+import { AuditDiffDrawer } from '@/features/audit/components/AuditDiffDrawer'
 import type { AuditLogItem } from '@/features/audit/types/audit'
 
 const ACTION_OPTIONS = [
@@ -207,6 +208,8 @@ export const AuditLogViewerPage: React.FC = () => {
           />
         </div>
       )}
+
+      <AuditDiffDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
     </div>
   )
 }
