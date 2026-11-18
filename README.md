@@ -21,8 +21,13 @@ Phase 1 (spec §5.1–§5.15) is complete: a FastAPI backend on PostgreSQL with 
 | **Requests** | Unified request portal with cost-tiered approval chains; one person decides at most one step of a request |
 | **Analytics** | Money we can save, where the money went, what to budget for, what needs chasing, where we're slow — totals first, records in a side panel with CSV export |
 | **Access** | Users and invites, roles and the permission matrix, **multi-role** access (a primary role plus additional roles, merged permissions, configurable role conflicts) |
+| **Notifications** | Live notification bell flyout in shell and mobile header, full-page notification center, date grouping, mark read/all read, deep links |
+| **Audit Logs** | Chronological audit log stream, action/entity/actor filtering, side-by-side JSON & field diff inspection drawer, compliance CSV export |
+| **Approval Chains** | Configurable multi-step approval pipelines, horizontal visual workflow stepper, step reordering, in-flight request safeguards |
+| **Licenses** | Software license quota metric cards, utilization percentage, cost and renewal schedules, seat holder inspector drawer |
+| **Leave & Attendance** | Leave balance metric gauges, digital clock check-in widget, leave request history, pending approval queue, out-of-office schedule, attendance heatmap |
 
-**Later phases:** notifications centre, audit log viewer, approval-chain and licence admin pages, leave and attendance, the AI assistant (`ai-service/` is a scaffold), landing page.
+**Later phases:** the AI assistant (`ai-service/` is a scaffold), landing page.
 
 ---
 
@@ -110,7 +115,7 @@ pytest                        # 302 tests, self-contained (SQLite)
 # Frontend
 cd frontend
 npm run lint
-npm test                      # 67 tests
+npm test                      # 94 tests across 16 test files
 npm run build                 # type-check + production build
 ```
 
