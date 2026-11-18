@@ -9,6 +9,7 @@ import { IconButton, Logo } from '@/ui'
 import { CommandPalette } from '@/shell/CommandPalette'
 import { SectionTabs } from '@/shell/SectionTabs'
 import { Sidebar } from '@/shell/Sidebar'
+import { NotificationFlyout } from '@/features/notifications/components/NotificationFlyout'
 import { activeLink, activeSection, visibleNav } from '@/shell/nav'
 
 /**
@@ -62,7 +63,8 @@ export const AppShell: React.FC = () => {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-sidebar px-4 py-2 lg:hidden">
           <Logo markClassName="h-6 w-6" />
-          <div className="flex items-center">
+          <div className="flex items-center gap-1">
+            <NotificationFlyout align="right" onNavigate={() => setDrawerOpen(false)} />
             <IconButton label="Search" onClick={openSearch}>
               <Search className="h-5 w-5" />
             </IconButton>

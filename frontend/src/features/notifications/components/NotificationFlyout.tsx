@@ -10,10 +10,15 @@ import { cn } from '@/ui'
 
 interface NotificationFlyoutProps {
   className?: string
+  align?: 'left' | 'right'
   onNavigate?: () => void
 }
 
-export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({ className, onNavigate }) => {
+export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({
+  className,
+  align = 'right',
+  onNavigate,
+}) => {
   const [isOpen, setIsOpen] = useState(false)
   const flyoutRef = useRef<HTMLDivElement>(null)
 
@@ -63,7 +68,10 @@ export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({ classNam
         <div
           role="dialog"
           aria-label="Notification center preview"
-          className="absolute right-0 top-full z-50 mt-2 w-80 sm:w-96 rounded-card border border-line bg-paper shadow-lg focus:outline-none"
+          className={cn(
+            'absolute top-full z-50 mt-2 w-80 sm:w-96 rounded-card border border-line bg-paper shadow-lg focus:outline-none',
+            align === 'left' ? 'left-0' : 'right-0',
+          )}
         >
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <div className="flex items-center gap-2">
