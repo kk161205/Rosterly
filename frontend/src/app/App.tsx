@@ -21,6 +21,11 @@ const OffboardingWorkflowPage = page(() => import('@/features/lifecycle/pages/Of
 const AnalyticsPage = page(() => import('@/features/analytics/pages/AnalyticsPage'), 'AnalyticsPage')
 const UserManagementPage = page(() => import('@/features/admin/pages/UserManagementPage'), 'UserManagementPage')
 const RoleManagementPage = page(() => import('@/features/admin/pages/RoleManagementPage'), 'RoleManagementPage')
+const NotificationCenterPage = page(() => import('@/features/notifications/pages/NotificationCenterPage'), 'NotificationCenterPage')
+const AuditLogViewerPage = page(() => import('@/features/audit/pages/AuditLogViewerPage'), 'AuditLogViewerPage')
+const ApprovalChainConfigPage = page(() => import('@/features/approvalChains/pages/ApprovalChainConfigPage'), 'ApprovalChainConfigPage')
+const SoftwareLicensesPage = page(() => import('@/features/licenses/pages/SoftwareLicensesPage'), 'SoftwareLicensesPage')
+const LeaveAttendancePage = page(() => import('@/features/leave/pages/LeaveAttendancePage'), 'LeaveAttendancePage')
 
 const PageLoading = () => (
   <div className="flex flex-col gap-4" aria-label="Loading page">
@@ -55,6 +60,11 @@ function App() {
           <Route path="/analytics" element={withSuspense(<AnalyticsPage />)} />
           <Route path="/users" element={withSuspense(<UserManagementPage />)} />
           <Route path="/roles" element={withSuspense(<RoleManagementPage />)} />
+          <Route path="/notifications" element={withSuspense(<NotificationCenterPage />)} />
+          <Route path="/audit-logs" element={withSuspense(<AuditLogViewerPage />)} />
+          <Route path="/approval-chains" element={withSuspense(<ApprovalChainConfigPage />)} />
+          <Route path="/licenses" element={withSuspense(<SoftwareLicensesPage />)} />
+          <Route path="/leave" element={withSuspense(<LeaveAttendancePage />)} />
         </Route>
 
         {/* Home holds the numbers and the Inbox (§5.2, §5.2a); older links land there */}
