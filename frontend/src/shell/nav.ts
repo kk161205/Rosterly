@@ -38,9 +38,10 @@ const NAV: NavSection[] = [
   },
   {
     label: 'Assets',
-    match: ['/assets'],
+    match: ['/assets', '/licenses'],
     links: [
       { label: 'Inventory', path: '/assets', visible: can('assets:read') },
+      { label: 'Licences', path: '/licenses', visible: can('software_license:read') },
       { label: 'Scan a QR code', path: '/assets/qr', visible: can('assets:lookup') },
     ],
   },
@@ -57,15 +58,19 @@ const NAV: NavSection[] = [
   },
   {
     label: 'Requests',
-    match: ['/requests'],
-    links: [{ label: 'Requests', path: '/requests', visible: anyOf('request:create', 'request:read') }],
+    match: ['/requests', '/approval-chains'],
+    links: [
+      { label: 'Requests', path: '/requests', visible: anyOf('request:create', 'request:read') },
+      { label: 'Approval Chains', path: '/approval-chains', visible: can('approval_chain:read') },
+    ],
   },
   {
     label: 'People',
-    match: ['/employees', '/onboarding', '/offboarding'],
+    match: ['/employees', '/leave', '/onboarding', '/offboarding'],
     links: [
       // The directory is open to every signed-in user (§5.3); profiles check employee:read
       { label: 'Directory', path: '/employees', visible: () => true },
+      { label: 'Leave & Attendance', path: '/leave', visible: () => true },
       { label: 'Onboarding', path: '/onboarding', visible: lifecycle },
       { label: 'Offboarding', path: '/offboarding', visible: lifecycle },
     ],
@@ -89,10 +94,11 @@ const NAV: NavSection[] = [
   },
   {
     label: 'Access',
-    match: ['/users', '/roles'],
+    match: ['/users', '/roles', '/audit-logs'],
     links: [
       { label: 'Users', path: '/users', visible: can('user:read') },
       { label: 'Roles', path: '/roles', visible: can('role:read') },
+      { label: 'Audit Log', path: '/audit-logs', visible: can('audit_log:read') },
     ],
   },
 ]
