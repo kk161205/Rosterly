@@ -1,8 +1,8 @@
 """
 Onboarding Workflow Service — handles creation, retrieval, item status updating with cascading
-completion logic, and listing of onboarding checklists (§5.5).
+completion logic, and listing of onboarding checklists.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import uuid
 from typing import Any, Optional
 from uuid import UUID
@@ -10,10 +10,13 @@ from uuid import UUID
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.clock import local_today
 from app.core.errors import AppError
+from app.core.password_tokens import link_minutes
 from app.core.role_policy import user_holds_role_names
 from app.core.security import CurrentUser, check_permission
-from app.models.auth import Role, User
+from app.models.assets import Asset, AssetAssignment, LicenseAssignment, SoftwareLicense
+from app.models.auth import Department, PasswordTokenPurpose, Role, User, UserStatus
 from app.models.lifecycle import (
     Checklist,
     ChecklistItem,
@@ -22,10 +25,27 @@ from app.models.lifecycle import (
     ChecklistType,
 )
 from app.models.system import AuditLog, Notification, NotificationChannel
+from app.modules.admin.user_service import UserManagementService
+from app.modules.notifications.email import send_invite_email, set_password_link
+
+
+# Every new joiner's checklist starts with these; the usual equipment and
+# licences for people like them are added on top (`extra_items`).
+STANDARD_ITEMS: list[tuple[str, str]] = [
+    ("Collect Signed Employment Contract & ID Proof", "hr_admin"),
+    ("Provision Corporate Email and SSO Accounts", "it_admin"),
+    ("Issue Laptop, Monitor, and Hardware Accessories", "it_admin"),
+    ("Assign Workspace & Physical Access Credentials", "hr_admin"),
+    ("Schedule Team Intro and Orientation Session", "hr_admin"),
+]
+# What counts as "got in their first weeks" for the recommendations.
+FIRST_WEEKS_BEFORE = timedelta(days=14)
+FIRST_WEEKS_AFTER = timedelta(days=60)
+HISTORY_LIMIT = 100
 
 
 class OnboardingService:
-    """Service providing core business logic for Onboarding Workflow (§5.5)."""
+    """Service providing core business logic for Onboarding Workflow."""
 
     def __init__(self, db: Session, current_user: CurrentUser, ip_address: str | None = None):
         self.db = db
@@ -91,14 +111,14 @@ class OnboardingService:
             "items": items_data,
         }
 
-    def create_onboarding_checklist(self, employee_id: UUID) -> dict[str, Any]:
+    def create_onboarding_checklist(self, employee_id: UUID, commit: bool = True, extra_items: Optional[list] = None) -> dict[str, Any]:
         """
-        POST /onboarding — create an onboarding checklist with fixed default items (§5.5).
+        POST /onboarding — create an onboarding checklist with fixed default items.
         Allowed roles: hr_admin, super_admin only.
         """
-        # RBAC (project doc §3.2 step 2): POST /onboarding (§5.5) is restricted to
+        # RBAC (step 2): POST /onboarding is restricted to
         # hr_admin/super_admin. Checklists are a lifecycle sub-resource of
-        # `employee` (schema §1.14 — checklists.employee_id) — mapped to
+        # `employee` (schema — checklists.employee_id) — mapped to
         # (resource="employee", action="create") per the brief's guidance to fold
         # checklist actions into the employee resource rather than inventing a
         # `checklist` resource.
@@ -151,14 +171,18 @@ class OnboardingService:
         self.db.add(checklist)
         self.db.flush()
 
-        # Seed fixed default items (PRD §5.5)
-        default_items = [
-            ("Collect Signed Employment Contract & ID Proof", hr_role_id, 1),
-            ("Provision Corporate Email and SSO Accounts", it_role_id, 2),
-            ("Issue Laptop, Monitor, and Hardware Accessories", it_role_id, 3),
-            ("Assign Workspace & Physical Access Credentials", hr_role_id, 4),
-            ("Schedule Team Intro and Orientation Session", hr_role_id, 5),
-        ]
+        # The standard items, then any extra ones — the usual equipment and
+        # licences for people like them, or HR's own — without duplicates.
+        role_ids = {"hr_admin": hr_role_id, "it_admin": it_role_id}
+        default_items = [(name, role_ids[owner], i) for i, (name, owner) in enumerate(STANDARD_ITEMS, start=1)]
+        seen = {name.lower() for name, _ in STANDARD_ITEMS}
+        added: list[str] = []
+        for extra in extra_items or []:
+            name = extra.task_name.strip()
+            if name and name.lower() not in seen:
+                seen.add(name.lower())
+                added.append(name)
+                default_items.append((name, role_ids[extra.owner], len(default_items) + 1))
 
         for task_name, owner_role_id, sort_order in default_items:
             item = ChecklistItem(
@@ -174,7 +198,7 @@ class OnboardingService:
             self.db.add(item)
 
         # Dispatch real DB notifications to IT Admin and HR Admin — "Facilities" has
-        # no seed role in this system (RBAC §3.1 only has 6 roles), so facilities-
+        # no seed role in this system (RBAC only has 6 roles), so facilities-
         # owned tasks are attributed to hr_admin (see the template above) and HR is
         # notified alongside IT rather than the un-modelled "Facilities" recipient.
         notify_roles = self.db.query(User).filter(
@@ -202,17 +226,110 @@ class OnboardingService:
             action="onboarding.checklist_created",
             entity_type="checklist",
             entity_id=checklist.id,
-            after_state={"employee_id": str(employee_id), "type": "onboarding"},
+            after_state={"employee_id": str(employee_id), "type": "onboarding", **({"extra_items": added} if added else {})},
             ip_address=self.ip_address,
         )
         self.db.add(audit_log)
 
-        self.db.commit()
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
         return self._format_checklist_response(checklist)
+
+    def add_new_joiner(self, payload) -> dict[str, Any]:
+        """POST /onboarding/new-joiner.
+
+        One step for HR: creates the account (status `onboarding`, role defaults
+        to employee) and its onboarding checklist in one transaction, and
+        returns a single-use set-password link to hand over. The link is
+        emailed too when email delivery is on. The person can sign in once
+        they've set a password, and becomes `active` when the checklist is done.
+        """
+        check_permission(self.current_user, "employee", "create", self.db)
+        user, token = UserManagementService(self.db, self.current_user, self.ip_address).create_account(
+            full_name=payload.full_name,
+            email=payload.email,
+            role_id=payload.role_id,
+            department_id=payload.department_id,
+            manager_id=payload.manager_id,
+            designation=payload.designation,
+            date_of_joining=payload.date_of_joining,
+            status=UserStatus.onboarding,
+        )
+        checklist = self.create_onboarding_checklist(user.id, commit=False, extra_items=payload.extra_items)
+        self.db.commit()
+        email_sent = send_invite_email(user.email, user.full_name, token)
+        return {
+            "checklist": checklist,
+            "set_password_link": set_password_link(token),
+            "link_expires_in_minutes": link_minutes(PasswordTokenPurpose.invite),
+            "email_sent": email_sent,
+        }
+
+    def joiner_history(self) -> dict[str, Any]:
+        """GET /onboarding/joiner-history: what recent joiners received in their first
+        weeks — equipment categories and licences — with where they sat, but not who they
+        are. Read-only; for HR (the people who add joiners). The AI service turns it into
+        the usual items for a new joiner."""
+        check_permission(self.current_user, "employee", "create", self.db)
+        since = local_today() - timedelta(days=3 * 365)
+        joiners = (
+            self.db.query(User.id, User.designation, User.date_of_joining, User.department_id, Department.name)
+            .outerjoin(Department, Department.id == User.department_id)
+            .filter(User.date_of_joining >= since, User.date_of_joining <= local_today())
+            .order_by(User.date_of_joining.desc())
+            .limit(HISTORY_LIMIT)
+            .all()
+        )
+        ids = [j.id for j in joiners]
+        joined = {j.id: j.date_of_joining for j in joiners}
+
+        def first_weeks(user_id: UUID, when: datetime) -> bool:
+            start = datetime.combine(joined[user_id], datetime.min.time(), tzinfo=timezone.utc)
+            when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+            return start - FIRST_WEEKS_BEFORE <= when <= start + FIRST_WEEKS_AFTER
+
+        assets: dict[UUID, set[str]] = {i: set() for i in ids}
+        for user_id, category, assigned_at in (
+            self.db.query(AssetAssignment.employee_id, Asset.category, AssetAssignment.assigned_at)
+            .join(Asset, Asset.id == AssetAssignment.asset_id)
+            .filter(AssetAssignment.employee_id.in_(ids))
+            .all()
+            if ids
+            else []
+        ):
+            if first_weeks(user_id, assigned_at) and category and category != "software_license":
+                assets[user_id].add(category)
+        licences: dict[UUID, dict[str, str]] = {i: {} for i in ids}
+        for user_id, licence_id, name, assigned_at in (
+            self.db.query(LicenseAssignment.user_id, SoftwareLicense.id, SoftwareLicense.name, LicenseAssignment.assigned_at)
+            .join(SoftwareLicense, SoftwareLicense.id == LicenseAssignment.license_id)
+            .filter(LicenseAssignment.user_id.in_(ids))
+            .all()
+            if ids
+            else []
+        ):
+            if first_weeks(user_id, assigned_at):
+                licences[user_id][str(licence_id)] = name
+        return {
+            "joiners": [
+                {
+                    "department_id": j.department_id,
+                    "department_name": j.name,
+                    "designation": j.designation,
+                    "joined_on": j.date_of_joining,
+                    "asset_categories": sorted(assets[j.id]),
+                    "licences": [{"id": k, "name": v} for k, v in sorted(licences[j.id].items(), key=lambda kv: kv[1])],
+                }
+                for j in joiners
+            ],
+            "standard_items": [name for name, _ in STANDARD_ITEMS],
+        }
 
     def get_onboarding_checklist(self, checklist_id: UUID) -> dict[str, Any]:
         """
-        GET /onboarding/{checklist_id} — detail view of onboarding checklist (§5.5).
+        GET /onboarding/{checklist_id} — detail view of onboarding checklist.
         Allowed roles: hr_admin, it_admin, super_admin, assigned manager.
         """
         checklist = (
@@ -237,7 +354,7 @@ class OnboardingService:
 
         # NOT ported to check_permission(): this is an OR of a role-only clause
         # (hr_admin/it_admin/super_admin) and a dynamic ABAC clause (the specific
-        # employee's assigned manager, §3.2 step 3) — the overall gate depends on
+        # employee's assigned manager, step 3) — the overall gate depends on
         # more than the caller's role, so per step 2 of the brief it stays a
         # dynamic check rather than being split. Its role-only allowed set also
         # differs from every other "employee read" grant in this file (see report).
@@ -262,13 +379,13 @@ class OnboardingService:
         self, checklist_id: UUID, item_id: UUID, new_status: ChecklistItemStatus
     ) -> dict[str, Any]:
         """
-        PATCH /onboarding/{checklist_id}/items/{item_id} — status update with cascading completion (§5.5).
+        PATCH /onboarding/{checklist_id}/items/{item_id} — status update with cascading completion.
         Allowed roles: matching owner_role_id user, hr_admin, super_admin.
         Pessimistic row lock on Checklist prevents race conditions on concurrent final item completion.
         """
         # NOT ported to check_permission(): "matching owner_role_id OR
         # hr_admin/super_admin" is the brief's own canonical example of a dynamic
-        # ABAC check (§3.2 step 3) — is_matching_role depends on this specific
+        # ABAC check (step 3) — is_matching_role depends on this specific
         # checklist item's owner_role_id, not just the caller's role — so the
         # whole gate, including its role-only half, is left exactly as-is.
 
@@ -276,7 +393,7 @@ class OnboardingService:
         # caller with a legitimate offboarding checklist ID can't have it
         # processed by the onboarding endpoint instead — that would run
         # onboarding's cascading-completion logic and skip offboarding's
-        # asset-return side effect entirely (rules.md §1.2 cross-workflow fix).
+        # asset-return side effect entirely (cross-workflow fix).
         checklist = (
             self.db.query(Checklist)
             .filter(
@@ -344,6 +461,22 @@ class OnboardingService:
         if all_done:
             checklist.status = ChecklistStatus.completed
             checklist.completed_at = now
+            # A new joiner becomes active once their onboarding is done.
+            joiner = self.db.query(User).filter(User.id == checklist.employee_id).first()
+            if joiner is not None and joiner.status == UserStatus.onboarding:
+                joiner.status = UserStatus.active
+                self.db.add(
+                    AuditLog(
+                        id=uuid.uuid4(),
+                        actor_id=self.current_user.user_id,
+                        action="user.onboarding_completed",
+                        entity_type="user",
+                        entity_id=joiner.id,
+                        before_state={"status": UserStatus.onboarding.value},
+                        after_state={"status": UserStatus.active.value},
+                        ip_address=self.ip_address,
+                    )
+                )
         else:
             checklist.status = ChecklistStatus.in_progress
             checklist.completed_at = None
@@ -409,12 +542,12 @@ class OnboardingService:
         page_size: int = 25,
     ) -> dict[str, Any]:
         """
-        GET /onboarding — list active / completed onboarding checklists (§5.5).
+        GET /onboarding — list active / completed onboarding checklists.
         Allowed roles: hr_admin/super_admin (full); it_admin (checklists with at
         least one item owned by the IT role — "view + complete own tasks" per
-        §5.5's Access line); manager (checklists for their own direct reports —
+        Access line); manager (checklists for their own direct reports
         "view own report's progress"). Previously this endpoint 403'd it_admin
-        and manager entirely despite §5.5 explicitly granting them access,
+        and manager entirely despite explicitly granting them access,
         leaving the Onboarding page a dead-end error screen for both roles.
         """
         query = (
@@ -427,7 +560,7 @@ class OnboardingService:
             .filter(Checklist.type == ChecklistType.onboarding)
         )
 
-        # Multi-role (§5.14): each held role adds what it can see; widest wins.
+        # Multi-role: each held role adds what it can see; widest wins.
         cu = self.current_user
         if not cu.has_role("hr_admin", "super_admin"):
             visible = []
@@ -451,7 +584,7 @@ class OnboardingService:
         offset = (page - 1) * page_size
 
         checklists = (
-            query.order_by(Checklist.created_at.desc()).offset(offset).limit(page_size).all()
+            query.order_by(Checklist.created_at.desc(), Checklist.id.desc()).offset(offset).limit(page_size).all()
         )
         formatted_checklists = [self._format_checklist_response(c) for c in checklists]
 

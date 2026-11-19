@@ -1,5 +1,5 @@
 """
-Comprehensive Unit & Integration Tests for Onboarding Workflow API (§5.5).
+Comprehensive Unit & Integration Tests for Onboarding Workflow API.
 Verifies 100% of allowed and denied permission matrix cells, default template seeding,
 cascading checklist completion logic, notification dispatch, audit logging, and edge cases.
 """
@@ -413,7 +413,7 @@ def test_get_onboarding_list_hr_admin_allowed():
 
 @pytest.mark.parametrize("denied_role", ["employee", "auditor"])
 def test_get_onboarding_list_denied_roles(denied_role):
-    """Roles with no view right at all on this list (§5.5's Access line only
+    """Roles with no view right at all on this list (Access line only
     grants hr_admin/super_admin/it_admin/manager) get 403 on GET /onboarding."""
     user_id = uuid.uuid4()
     set_user_context(user_id, denied_role)
@@ -431,7 +431,7 @@ def test_get_onboarding_list_denied_roles(denied_role):
 @pytest.mark.parametrize("scoped_role", ["it_admin", "manager"])
 def test_get_onboarding_list_scoped_roles_allowed(scoped_role):
     """it_admin ("view + complete own tasks") and manager ("view own report's
-    progress") get a scoped 200, not a 403 — §5.5's Access line explicitly
+    progress") get a scoped 200, not a 403 — Access line explicitly
     grants both view rights; this endpoint previously 403'd them entirely,
     leaving the Onboarding page a dead-end error screen for both roles."""
     user_id = uuid.uuid4()
