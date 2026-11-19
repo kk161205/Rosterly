@@ -4,6 +4,7 @@ import { Search } from 'lucide-react'
 import { Logo, cn } from '@/ui'
 import type { VisibleSection } from '@/shell/nav'
 import { UserMenu } from '@/shell/UserMenu'
+import { NotificationFlyout } from '@/features/notifications/components/NotificationFlyout'
 import type { UserProfile } from '@/features/auth/types/auth'
 
 interface SidebarProps {
@@ -30,9 +31,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   className,
 }) => (
   <div className={cn('flex h-full flex-col bg-sidebar px-3 pb-4 pt-5', className)}>
-    <Link to="/home" onClick={onNavigate} className="mb-5 rounded-pill px-3 py-1" aria-label="Rosterly, go to Home">
-      <Logo markClassName="h-6 w-6" />
-    </Link>
+    <div className="mb-5 flex items-center justify-between px-3 py-1">
+      <Link to="/home" onClick={onNavigate} className="rounded-pill" aria-label="Rosterly, go to Home">
+        <Logo markClassName="h-6 w-6" />
+      </Link>
+      <NotificationFlyout align="left" onNavigate={onNavigate} />
+    </div>
 
     <button
       type="button"

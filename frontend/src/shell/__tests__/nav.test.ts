@@ -15,7 +15,7 @@ describe('shell navigation', () => {
   it('opens People on the directory for everyone, as the API does (§5.3)', () => {
     const people = visibleNav(user('it_admin', ['assets:read'])).find((s) => s.label === 'People')!
     expect(people.path).toBe('/employees')
-    expect(people.links.map((l) => l.label)).toEqual(['Directory', 'Onboarding', 'Offboarding'])
+    expect(people.links.map((l) => l.label)).toEqual(['Directory', 'Leave & Attendance', 'Onboarding', 'Offboarding'])
   })
 
   it('sends a section to the first page the user can open', () => {
@@ -36,8 +36,8 @@ describe('shell navigation', () => {
   it('lifecycle tabs follow the backend role rule, not a permission', () => {
     const people = (role: string) =>
       visibleNav(user(role, [])).find((s) => s.label === 'People')?.links.map((l) => l.label)
-    expect(people('hr_admin')).toEqual(['Directory', 'Onboarding', 'Offboarding'])
-    expect(people('employee')).toEqual(['Directory'])
+    expect(people('hr_admin')).toEqual(['Directory', 'Leave & Attendance', 'Onboarding', 'Offboarding'])
+    expect(people('employee')).toEqual(['Directory', 'Leave & Attendance'])
   })
 
   it('matches the most specific tab for nested paths', () => {
