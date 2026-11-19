@@ -1,5 +1,5 @@
 """
-Shared world for the §5.20 Leave & Attendance tests: real in-memory SQLite.
+Shared world for the Leave & Attendance tests: real in-memory SQLite.
 
 People (all active):
   admin   super_admin
@@ -27,8 +27,8 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import Base, get_db
 from app.main import app
 from app.models.auth import Department, Permission, Role, RolePermission, User, UserRole, UserStatus
-from app.models.leave_attendance import AttendanceRecord, LeaveBalance, LeaveRequest, LeaveType
-from app.models.system import AuditLog, Notification
+from app.models.leave_attendance import AttendanceRecord, Holiday, LeaveBalance, LeaveRequest, LeaveType
+from app.models.system import AuditLog, CompanySetting, Notification
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -56,8 +56,8 @@ def db():
 def world():
     app.dependency_overrides[get_db] = _override_get_db
     s = TestingSessionLocal()
-    for model in (AuditLog, Notification, AttendanceRecord, LeaveBalance, LeaveRequest, UserRole, User,
-                  Department, RolePermission, Permission, Role):
+    for model in (CompanySetting, AuditLog, Notification, AttendanceRecord, LeaveBalance, LeaveRequest, LeaveType, Holiday, UserRole,
+                  User, Department, RolePermission, Permission, Role):
         s.query(model).delete()
     s.commit()
 
@@ -65,10 +65,22 @@ def world():
     s.add_all(roles.values())
     s.flush()
     perm = Permission(id=uuid.uuid4(), resource="leave_request", action="approve")
-    s.add(perm)
+    manage = Permission(id=uuid.uuid4(), resource="leave_policy", action="manage")
+    s.add_all([perm, manage])
     s.flush()
     s.add_all(RolePermission(role_id=roles[n].id, permission_id=perm.id)
               for n in ("manager", "hr_admin", "super_admin"))
+    s.add_all(RolePermission(role_id=roles[n].id, permission_id=manage.id) for n in ("hr_admin", "super_admin"))
+
+    # Leave types: an allowance of 0 keeps balances exactly what each test seeds;
+    # unpaid has no limit.
+    types = {}
+    for order, (name, annual) in enumerate((("sick", "0"), ("casual", "0"), ("earned", "0"), ("unpaid", None))):
+        types[name] = LeaveType(id=uuid.uuid4(), name=name, annual_days=Decimal(annual) if annual else None,
+                                carry_forward_max=Decimal("0"), is_paid=name != "unpaid", pro_rate_on_join=True,
+                                is_active=True, sort_order=order)
+    s.add_all(types.values())
+    s.flush()
 
     d1 = Department(id=uuid.uuid4(), name="Engineering")
     d2 = Department(id=uuid.uuid4(), name="Finance")
@@ -98,7 +110,7 @@ def world():
     itadm = user("itadm", "it_admin")
 
     for ltype, days in (("sick", "5"), ("casual", "1"), ("earned", "10")):
-        s.add(LeaveBalance(id=uuid.uuid4(), employee_id=emp.id, leave_type=LeaveType(ltype), year=2026,
+        s.add(LeaveBalance(id=uuid.uuid4(), employee_id=emp.id, leave_type_id=types[ltype].id, year=2026,
                            balance_days=Decimal(days)))
     s.commit()
 
@@ -109,6 +121,7 @@ def world():
         "roles": {n: r.id for n, r in roles.items()},
         "role_of": {k: v.role.name if v.role else None for k, v in people.items()},
         "dept_of": {k: v.department_id for k, v in people.items()},
+        "types": {n: t.id for n, t in types.items()},
     }
     s.close()
     yield state

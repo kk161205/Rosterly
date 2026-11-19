@@ -1,5 +1,5 @@
 """
-Attendance API — project doc §5.20.
+Attendance API.
 """
 from datetime import date
 from typing import Optional
@@ -33,17 +33,17 @@ def list_attendance(
     page_size: int = Query(25, ge=1, le=100),
     service: AttendanceService = Depends(get_service),
 ) -> AttendanceListResponse:
-    """GET /attendance (§5.20): self; manager for own department; hr_admin/super_admin for all. Max 92 days."""
+    """GET /attendance: self; manager for own department; hr_admin/super_admin for all. Max 92 days."""
     return service.list_records(employee_id, date_from, date_to, page, page_size)
 
 
 @router.post("/check-in", response_model=AttendanceRecordResponse, status_code=status.HTTP_201_CREATED)
 def check_in(service: AttendanceService = Depends(get_service)) -> AttendanceRecordResponse:
-    """POST /attendance/check-in (§5.20): 403 when manual mode is off; 409 on a second check-in."""
+    """POST /attendance/check-in: 403 when manual mode is off; 409 on a second check-in."""
     return service.check_in()
 
 
 @router.post("/check-out", response_model=AttendanceRecordResponse)
 def check_out(service: AttendanceService = Depends(get_service)) -> AttendanceRecordResponse:
-    """POST /attendance/check-out (§5.20): needs an open check-in today; once only."""
+    """POST /attendance/check-out: needs an open check-in today; once only."""
     return service.check_out()

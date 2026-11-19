@@ -1,5 +1,5 @@
 """
-Attendance service — project doc §5.20.
+Attendance service.
 
 "Today" is the calendar date in ATTENDANCE_TIMEZONE (default Asia/Kolkata).
 Reading: self by default; a manager may read people in their own department;
@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.company_settings import get_setting
 from app.core.config import settings
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.security import CurrentUser
@@ -101,9 +102,8 @@ class AttendanceService:
 
     # ------------------------------------------------------------ check-in / check-out
 
-    @staticmethod
-    def _assert_manual_enabled() -> None:
-        if not settings.ATTENDANCE_MANUAL_CHECKIN_ENABLED:
+    def _assert_manual_enabled(self) -> None:
+        if not get_setting(self.db, "attendance.manual_check_in"):
             raise AppError(403, "manual_checkin_disabled", "Manual check-in and check-out are turned off.")
 
     def _today_record(self, today: date) -> Optional[AttendanceRecord]:

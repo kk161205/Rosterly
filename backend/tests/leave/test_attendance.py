@@ -1,5 +1,5 @@
 """
-§5.20 Attendance: GET /attendance, check-in, check-out.
+Attendance: GET /attendance, check-in, check-out.
 
 Real in-memory SQLite, cast in conftest.py. emp (dept D1, manager mgr) has
 records: 06-01 present, 06-02 on_leave, 06-03 holiday, 07-01 present.
@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.security import CurrentUser, get_current_user
 from app.main import app
 from app.models.leave_attendance import AttendanceRecord, AttendanceStatus
+from app.models.system import CompanySetting
 from tests.leave.conftest import TestingSessionLocal
 
 client = TestClient(app)
@@ -219,7 +220,10 @@ def test_check_in_is_per_person(world, act_as):
 def test_manual_mode_off_blocks_both_with_403(world, act_as, monkeypatch):
     act_as("emp")
     client.post(f"{URL}/check-in")
-    monkeypatch.setattr(settings, "ATTENDANCE_MANUAL_CHECKIN_ENABLED", False)
+    s = TestingSessionLocal()
+    s.add(CompanySetting(key="attendance.manual_check_in", value=False))
+    s.commit()
+    s.close()
     for path in ("check-in", "check-out"):
         res = client.post(f"{URL}/{path}")
         assert res.status_code == 403 and res.json()["error"]["code"] == "manual_checkin_disabled", path

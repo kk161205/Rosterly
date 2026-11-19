@@ -1,4 +1,4 @@
-"""leave & attendance: decision_comments, attendance uniqueness, RBAC (§5.20)
+"""leave & attendance: decision_comments, attendance uniqueness, RBAC
 
 Schema:
 - leave_requests.decision_comments: nullable TEXT, the approver's note shown in
@@ -36,7 +36,7 @@ depends_on = None
 UQ_NAME = "uq_attendance_records_employee_date"
 
 SEED_PERMISSIONS = [
-    ("leave_request", "approve", "Approve or reject direct reports' leave requests (§5.20)"),
+    ("leave_request", "approve", "Approve or reject direct reports' leave requests"),
 ]
 SEED_GRANTS = {
     ("leave_request", "approve"): ["manager", "hr_admin", "super_admin"],
