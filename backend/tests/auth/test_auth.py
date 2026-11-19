@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pyotp
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -8,14 +9,16 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
-from app.core.security import (
-    create_password_reset_token,
-    get_password_hash,
-)
+from app.core.mfa import encrypt_secret
+from app.core.password_tokens import issue_password_token
+from app.core.security import get_password_hash
 from app.db.session import Base, get_db
 from app.main import app
+from app.models.system import RateLimitEvent
 from app.models.auth import (
     LoginAttempt,
+    PasswordToken,
+    PasswordTokenPurpose,
     Role,
     Session as SessionModel,
     User,
@@ -23,6 +26,7 @@ from app.models.auth import (
 )
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+MFA_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -92,6 +96,7 @@ def setup_db():
         designation="Security Specialist",
         status=UserStatus.active,
         mfa_enabled=True,
+        mfa_secret_encrypted=encrypt_secret(MFA_SECRET),
     )
     db.add(mfa_user)
 
@@ -139,98 +144,59 @@ def test_login_invalid_password():
     assert data["error"]["message"] == "Invalid email or password"
 
 
-def test_login_mfa_required():
-    response = client.post(
+def _mfa_login() -> str:
+    resp = client.post(
         f"{settings.API_V1_PREFIX}/auth/login",
         json={"email": "mfauser@example.com", "password": "Password123!"},
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["mfa_required"] is True
-    assert "mfa_session_id" in data
-
-    # Verify MFA endpoint
-    mfa_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
-        json={"mfa_session_id": data["mfa_session_id"], "code": "123456"},
-    )
-    assert mfa_resp.status_code == 200
-    mfa_data = mfa_resp.json()
-    assert "access_token" in mfa_data
-    assert "refresh_token" in mfa_data
+    assert resp.status_code == 200
+    assert resp.json()["mfa_required"] is True
+    return resp.json()["mfa_session_id"]
 
 
-def test_mfa_resend_refreshes_challenge_and_code_still_verifies():
-    """POST /auth/mfa/resend (§5.1 addition) — the frontend's 30s resend timer
-    previously had no real backend call behind it at all. Resend should keep
-    the same mfa_session_id valid (refreshing its challenge) rather than
-    inventing a new one, so the code the user already has on screen still works."""
-    login_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/login",
-        json={"email": "mfauser@example.com", "password": "Password123!"},
-    )
-    mfa_session_id = login_resp.json()["mfa_session_id"]
-
-    resend_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/resend",
-        json={"mfa_session_id": mfa_session_id},
-    )
-    assert resend_resp.status_code == 200
-    assert "message" in resend_resp.json()
-
-    verify_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
-        json={"mfa_session_id": mfa_session_id, "code": "123456"},
-    )
-    assert verify_resp.status_code == 200
-    assert "access_token" in verify_resp.json()
+def _verify(session_id: str, code: str):
+    return client.post(f"{settings.API_V1_PREFIX}/auth/mfa/verify", json={"mfa_session_id": session_id, "code": code})
 
 
-def test_mfa_resend_unknown_session_rejected():
-    resend_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/resend",
-        json={"mfa_session_id": str(uuid.uuid4())},
-    )
-    assert resend_resp.status_code == 401
-    assert resend_resp.json()["error"]["code"] == "mfa_invalid"
+def test_login_mfa_required_then_authenticator_code_signs_in():
+    session_id = _mfa_login()
+    resp = _verify(session_id, pyotp.TOTP(MFA_SECRET).now())
+    assert resp.status_code == 200
+    assert "access_token" in resp.json() and "refresh_token" in resp.json()
+
+
+def test_the_old_fixed_code_no_longer_works():
+    assert _verify(_mfa_login(), "123456").status_code == 401
 
 
 def test_mfa_wrong_session_id_rejected():
-    login_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/login",
-        json={"email": "mfauser@example.com", "password": "Password123!"},
-    )
-    assert login_resp.json()["mfa_required"] is True
-
-    # A completely unrelated session id (as if from another user's concurrent
-    # MFA-pending login) must never be honored, even with the right code.
-    bogus_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
-        json={"mfa_session_id": str(uuid.uuid4()), "code": "123456"},
-    )
-    assert bogus_resp.status_code == 401
-    assert bogus_resp.json()["error"]["code"] == "mfa_invalid"
+    _mfa_login()
+    resp = _verify(str(uuid.uuid4()), pyotp.TOTP(MFA_SECRET).now())
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "mfa_invalid"
 
 
-def test_mfa_session_is_single_use():
-    login_resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/login",
-        json={"email": "mfauser@example.com", "password": "Password123!"},
-    )
-    mfa_session_id = login_resp.json()["mfa_session_id"]
+def test_mfa_session_is_single_use_and_codes_are_not_reused():
+    code = pyotp.TOTP(MFA_SECRET).now()
+    session_id = _mfa_login()
+    assert _verify(session_id, code).status_code == 200
+    assert _verify(session_id, code).status_code == 401
+    # A fresh sign-in can't replay the same code either.
+    assert _verify(_mfa_login(), code).status_code == 401
 
-    first = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
-        json={"mfa_session_id": mfa_session_id, "code": "123456"},
-    )
-    assert first.status_code == 200
 
-    second = client.post(
-        f"{settings.API_V1_PREFIX}/auth/mfa/verify",
-        json={"mfa_session_id": mfa_session_id, "code": "123456"},
-    )
-    assert second.status_code == 401
-    assert second.json()["error"]["code"] == "mfa_invalid"
+def test_mfa_challenge_dies_after_five_wrong_codes():
+    session_id = _mfa_login()
+    for _ in range(5):
+        assert _verify(session_id, "000000").status_code == 401
+    assert _verify(session_id, pyotp.TOTP(MFA_SECRET).now()).status_code == 401
+    db = TestingSessionLocal()
+    assert db.query(LoginAttempt).filter(LoginAttempt.failure_reason == "mfa_failed").count() == 5
+    db.close()
+
+
+def test_mfa_resend_endpoint_is_gone():
+    assert client.post(f"{settings.API_V1_PREFIX}/auth/mfa/resend", json={"mfa_session_id": "x"}).status_code == 404
 
 
 def test_account_lockout_after_5_failures():
@@ -342,13 +308,65 @@ def test_token_refresh_and_rotation():
     assert old_refresh_resp.json()["error"]["code"] == "token_invalid"
 
 
-def test_forgot_password_generic_message():
+def test_forgot_password_generic_message_when_email_is_on(monkeypatch):
+    monkeypatch.setattr("app.modules.auth.service.email_delivery_available", lambda: True)
+    monkeypatch.setattr("app.modules.auth.service.send_password_reset_email", lambda *a: True)
+    for email in ("nonexistent@example.com", "testuser@example.com"):
+        resp = client.post(f"{settings.API_V1_PREFIX}/auth/forgot-password", json={"email": email})
+        assert resp.status_code == 200
+        assert "If an account with that email exists" in resp.json()["message"]
+
+
+def test_forgot_password_says_ask_an_admin_when_email_is_off():
+    resp = client.post(f"{settings.API_V1_PREFIX}/auth/forgot-password", json={"email": "testuser@example.com"})
+    assert resp.status_code == 200
+    assert "Ask your HR or IT admin" in resp.json()["message"]
+
+
+def test_login_email_is_case_insensitive():
     resp = client.post(
-        f"{settings.API_V1_PREFIX}/auth/forgot-password",
-        json={"email": "nonexistent@example.com"},
+        f"{settings.API_V1_PREFIX}/auth/login",
+        json={"email": "TestUser@Example.com", "password": "Password123!"},
     )
     assert resp.status_code == 200
-    assert "If an account with that email exists" in resp.json()["message"]
+
+
+def test_new_link_cancels_the_previous_one_and_expired_links_fail():
+    db = TestingSessionLocal()
+    user_id = db.query(User.id).filter(User.email == "testuser@example.com").scalar()
+    first = issue_password_token(db, user_id, PasswordTokenPurpose.reset)
+    second = issue_password_token(db, user_id, PasswordTokenPurpose.reset)
+    db.commit()
+    db.close()
+
+    url = f"{settings.API_V1_PREFIX}/auth/reset-password"
+    assert client.post(url, json={"token": first, "new_password": "FirstNewPassword123!"}).status_code == 400
+    assert client.post(url, json={"token": second, "new_password": "FirstNewPassword123!"}).status_code == 200
+
+    db = TestingSessionLocal()
+    stale = issue_password_token(db, user_id, PasswordTokenPurpose.reset)
+    db.query(PasswordToken).filter(PasswordToken.used_at.is_(None)).update(
+        {PasswordToken.expires_at: datetime.now(timezone.utc) - timedelta(minutes=1)}
+    )
+    db.commit()
+    db.close()
+    assert client.post(url, json={"token": stale, "new_password": "SecondNewPassword123!"}).status_code == 400
+
+
+def test_login_is_rate_limited_per_ip(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_RATE_LIMITS_ENABLED", True)
+    db = TestingSessionLocal()
+    db.query(RateLimitEvent).delete()
+    db.commit()
+    db.close()
+    codes = [
+        client.post(
+            f"{settings.API_V1_PREFIX}/auth/login", json={"email": f"nobody{i}@example.com", "password": "x"}
+        ).status_code
+        for i in range(21)
+    ]
+    assert codes[:20] == [401] * 20
+    assert codes[20] == 429
 
 
 def test_reset_password_revokes_all_sessions():
@@ -361,7 +379,8 @@ def test_reset_password_revokes_all_sessions():
 
     db = TestingSessionLocal()
     user = db.query(User).filter(User.email == "testuser@example.com").first()
-    reset_token = create_password_reset_token(user.id)
+    reset_token = issue_password_token(db, user.id, PasswordTokenPurpose.reset)
+    db.commit()
     db.close()
 
     reset_resp = client.post(
@@ -382,7 +401,8 @@ def test_reset_password_revokes_all_sessions():
 def test_reset_password_token_cannot_be_replayed():
     db = TestingSessionLocal()
     user = db.query(User).filter(User.email == "testuser@example.com").first()
-    reset_token = create_password_reset_token(user.id)
+    reset_token = issue_password_token(db, user.id, PasswordTokenPurpose.reset)
+    db.commit()
     db.close()
 
     first = client.post(

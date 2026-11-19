@@ -3,7 +3,9 @@ import uuid
 from datetime import date
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    Integer,
     Column,
     Date,
     DateTime,
@@ -25,6 +27,11 @@ class UserStatus(str, enum.Enum):
     onboarding = "onboarding"
     offboarding = "offboarding"
     terminated = "terminated"
+
+
+# Who may sign in: active people, and new joiners still onboarding (once they've
+# set a password from their link) so they can see their checklist from day one.
+SIGN_IN_STATUSES = frozenset({UserStatus.active, UserStatus.onboarding})
 
 
 class Role(Base):
@@ -61,7 +68,7 @@ class RolePermission(Base):
 
 
 class UserRole(Base):
-    """An additional role held by a user, on top of users.role_id (§5.14)."""
+    """An additional role held by a user, on top of users.role_id."""
 
     __tablename__ = "user_roles"
 
@@ -72,7 +79,7 @@ class UserRole(Base):
 
 
 class RoleConflict(Base):
-    """Two roles one person may not hold together (§5.14), e.g. auditor + it_admin.
+    """Two roles one person may not hold together, e.g. auditor + it_admin.
     Stored once per pair; checks look in both directions."""
 
     __tablename__ = "role_conflicts"
@@ -113,13 +120,20 @@ class User(Base):
     date_of_joining = Column(Date, nullable=False, default=date.today)
     date_of_exit = Column(Date, nullable=True)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
+    # Two-step sign-in: the authenticator-app secret,
+    # encrypted at rest; a pending one while setup is being confirmed; and the last
+    # 30-second time step used, so a code can't be replayed.
+    mfa_secret_encrypted = Column(Text, nullable=True)
+    mfa_pending_secret_encrypted = Column(Text, nullable=True)
+    mfa_enabled_at = Column(DateTime(timezone=True), nullable=True)
+    mfa_last_used_step = Column(BigInteger, nullable=True)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     email_notifications_enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     role = relationship("Role", back_populates="users")
-    # Multi-role (§5.14, revised 18 Oct 2026): the primary role above plus any
+    # Multi-role: the primary role above plus any
     # additional roles. Effective access is the union of all of them.
     additional_roles = relationship(
         "Role",
@@ -139,7 +153,7 @@ class Session(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    refresh_token_hash = Column(String(255), nullable=False)
+    refresh_token_hash = Column(String(255), nullable=False, index=True)
     access_token_jti = Column(String(255), nullable=False, index=True)
     device_fingerprint = Column(String(255), nullable=True)
     ip_address = Column(String(45), nullable=True)
@@ -163,4 +177,54 @@ class LoginAttempt(Base):
     success = Column(Boolean, nullable=False)
     failure_reason = Column(String(100), nullable=True)
     device_fingerprint = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PasswordTokenPurpose(str, enum.Enum):
+    reset = "reset"  # forgot password / admin-created reset link, 15 minutes
+    invite = "invite"  # new account set-password link, INVITE_TOKEN_EXPIRE_HOURS
+
+
+class PasswordToken(Base):
+    """A single-use set-password link (reset, invite). Only the
+    SHA-256 of the token is stored. Issuing a new link of the same purpose
+    cancels the person's earlier unused ones."""
+
+    __tablename__ = "password_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    purpose = Column(Enum(PasswordTokenPurpose, name="password_token_purpose_enum", native_enum=False), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MfaChallenge(Base):
+    """A pending second sign-in step: created when the password is right and the
+    account uses two-step sign-in. Only the hash of the id given to the client
+    is stored. Dies after 10 minutes or 5 wrong codes."""
+
+    __tablename__ = "mfa_challenges"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    challenge_hash = Column(String(64), nullable=False, unique=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MfaRecoveryCode(Base):
+    """One-time backup codes for when the phone isn't at hand (hashed)."""
+
+    __tablename__ = "mfa_recovery_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

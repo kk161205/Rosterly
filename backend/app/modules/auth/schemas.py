@@ -1,9 +1,10 @@
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from app.core.types import NormalizedEmail
+from pydantic import BaseModel, Field, field_validator
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: NormalizedEmail
     password: str = Field(..., min_length=1)
     device_fingerprint: Optional[str] = None
 
@@ -19,11 +20,26 @@ class LoginResponse(BaseModel):
 
 class MFAVerifyRequest(BaseModel):
     mfa_session_id: str
-    code: str = Field(..., min_length=6, max_length=6)
+    # 6-digit authenticator code, or a recovery code (xxxx-xxxx).
+    code: str = Field(..., min_length=6, max_length=12)
 
 
-class MFAResendRequest(BaseModel):
-    mfa_session_id: str
+class MFACodeRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=12)
+
+
+class MFADisableRequest(BaseModel):
+    password: str = Field(..., min_length=1)
+    code: str = Field(..., min_length=6, max_length=12)
+
+
+class MFASetupResponse(BaseModel):
+    secret: str  # for typing in by hand when the QR code can't be scanned
+    otpauth_uri: str  # drawn as a QR code by the frontend
+
+
+class MFARecoveryCodesResponse(BaseModel):
+    recovery_codes: list[str]  # shown once
 
 
 class RefreshTokenRequest(BaseModel):
@@ -38,7 +54,7 @@ class TokenResponse(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    email: NormalizedEmail
 
 
 class ResetPasswordRequest(BaseModel):
@@ -48,7 +64,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def _validate_password_policy(cls, value: str) -> str:
-        # Doc §7 rule 9: min 10 chars, at least one number and one letter,
+        # Doc: min 10 chars, at least one number and one letter,
         # enforced server-side as the source of truth.
         if not any(c.isalpha() for c in value):
             raise ValueError("Password must contain at least one letter")
@@ -66,7 +82,12 @@ class CurrentUserResponse(BaseModel):
     email: str
     full_name: str
     role: str  # primary role
-    roles: list[str] = []  # every role held, primary first (§5.14 multi-role)
+    roles: list[str] = [] # every role held, primary first (multi-role)
     permissions: list[str] = []
     department_id: Optional[str] = None
+    mfa_enabled: bool = False
+    # The company requires two-step sign-in for admin roles and this person
+    # hasn't set it up yet: everything but setup is refused until they do.
+    mfa_setup_required: bool = False
+    mfa_required_by_company: bool = False
 
