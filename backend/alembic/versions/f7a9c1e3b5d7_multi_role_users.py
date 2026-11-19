@@ -1,6 +1,6 @@
 """multi-role users: additional roles and role conflicts
 
-Spec §5.14 (revised 18 Oct 2026): a user keeps one primary role
+Spec: a user keeps one primary role
 (users.role_id, unchanged) and may hold additional roles. Effective access is
 the union of every role held. Two tables:
 

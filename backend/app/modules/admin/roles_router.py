@@ -1,20 +1,19 @@
 """
-Roles & Permissions API — PRD §5.13 (Role & Permission Management).
-All endpoints restricted to super_admin via check_permission.
+Roles API. The six roles are fixed: this API lists
+them and what each can do, and edits role conflicts. super_admin only.
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.request_context import client_ip
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.modules.admin.role_schemas import (
     RoleConflictsUpdateRequest,
-    RoleCreateRequest,
     RoleRef,
     RolePermissionsResponse,
-    RolePermissionsUpdateRequest,
     RoleResponse,
 )
 from app.modules.admin.role_service import RoleManagementService
@@ -27,8 +26,8 @@ def get_role_service(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RoleManagementService:
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    return RoleManagementService(db=db, current_user=current_user, ip_address=client_ip)
+    ip = client_ip(request)
+    return RoleManagementService(db=db, current_user=current_user, ip_address=ip)
 
 
 @router.get("", response_model=list[RoleResponse])
@@ -36,18 +35,8 @@ def get_role_service(
 def get_roles(
     service: RoleManagementService = Depends(get_role_service),
 ) -> list[RoleResponse]:
-    """GET /roles (PRD §5.13): List all roles including user_count. super_admin only."""
+    """GET /roles: List all roles including user_count. super_admin only."""
     return service.get_roles()
-
-
-@router.post("", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
-@router.post("/", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
-def create_role(
-    payload: RoleCreateRequest,
-    service: RoleManagementService = Depends(get_role_service),
-) -> RoleResponse:
-    """POST /roles (PRD §5.13): Create custom role. super_admin only."""
-    return service.create_role(payload=payload)
 
 
 @router.get("/{id}/permissions", response_model=RolePermissionsResponse)
@@ -55,18 +44,8 @@ def get_role_permissions(
     id: UUID,
     service: RoleManagementService = Depends(get_role_service),
 ) -> RolePermissionsResponse:
-    """GET /roles/{id}/permissions (PRD §5.13): View role permissions matrix. super_admin only."""
+    """GET /roles/{id}/permissions: View role permissions matrix. super_admin only."""
     return service.get_role_permissions(role_id=id)
-
-
-@router.put("/{id}/permissions", response_model=RolePermissionsResponse)
-def replace_role_permissions(
-    id: UUID,
-    payload: RolePermissionsUpdateRequest,
-    service: RoleManagementService = Depends(get_role_service),
-) -> RolePermissionsResponse:
-    """PUT /roles/{id}/permissions (PRD §5.13): Replace role permissions. super_admin only."""
-    return service.replace_role_permissions(role_id=id, payload=payload)
 
 
 @router.put("/{id}/conflicts", response_model=list[RoleRef])
@@ -75,15 +54,5 @@ def replace_role_conflicts(
     payload: RoleConflictsUpdateRequest,
     service: RoleManagementService = Depends(get_role_service),
 ) -> list[RoleRef]:
-    """PUT /roles/{id}/conflicts (§5.14): roles this role can't be combined with. role:update."""
+    """PUT /roles/{id}/conflicts: roles this role can't be combined with. role:update."""
     return service.replace_role_conflicts(role_id=id, payload=payload)
-
-
-@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_role(
-    id: UUID,
-    service: RoleManagementService = Depends(get_role_service),
-) -> Response:
-    """DELETE /roles/{id} (PRD §5.13): Delete role with safety guards. super_admin only."""
-    service.delete_role(role_id=id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

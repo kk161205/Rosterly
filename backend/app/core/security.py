@@ -1,5 +1,5 @@
 """
-Zero-trust session enforcement — project doc §2.
+Zero-trust session enforcement.
 
 Every authenticated request MUST:
   1. Verify JWT signature and expiry (standard)
@@ -11,18 +11,17 @@ Every authenticated request MUST:
 """
 import hashlib
 import secrets
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from threading import Lock
 from collections.abc import Iterable
 from typing import Optional
 
 import bcrypt
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session as DBSession, joinedload
 
+from app.core.company_settings import get_setting
 from app.core.config import settings
 from app.core.errors import ForbiddenError, UnauthenticatedError
 from app.db.session import get_db
@@ -32,7 +31,7 @@ from app.models.auth import (
     RolePermission,
     Session as SessionModel,
     User as UserModel,
-    UserStatus,
+    SIGN_IN_STATUSES,
 )
 
 
@@ -85,140 +84,11 @@ def create_refresh_token() -> tuple[str, str]:
     return raw_token, token_hash
 
 
-RESET_TOKEN_PURPOSE = "reset"
-INVITE_TOKEN_PURPOSE = "invite"
-
-
-def create_password_reset_token(
-    user_id: uuid.UUID | str,
-    purpose: str = RESET_TOKEN_PURPOSE,
-) -> str:
-    """Set-password token. purpose="reset" (forgot password, 15 min) or
-    purpose="invite" (§5.14 account invite, INVITE_TOKEN_EXPIRE_HOURS) — an
-    invite token also activates the invited account when it is used."""
-    now = datetime.now(timezone.utc)
-    if purpose == INVITE_TOKEN_PURPOSE:
-        expire = now + timedelta(hours=settings.INVITE_TOKEN_EXPIRE_HOURS)
-    else:
-        expire = now + timedelta(minutes=15)
-    payload = {
-        "sub": str(user_id),
-        "type": "password_reset",
-        "purpose": purpose,
-        "jti": str(uuid.uuid4()),
-        "iat": int(now.timestamp()),
-        "exp": int(expire.timestamp()),
-    }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
-
-
-def verify_password_reset_token(token: str) -> Optional[tuple[str, str, str, int]]:
-    """Returns (user_id, jti, purpose, exp) if the token is structurally valid,
-    unexpired, and not yet consumed. Caller (auth_service.reset_password) is
-    responsible for marking the jti consumed via mark_reset_token_used() once
-    the password is actually reset."""
-    try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-        if payload.get("type") != "password_reset":
-            return None
-        jti = payload.get("jti")
-        sub = payload.get("sub")
-        if not jti or not sub:
-            return None
-        if is_reset_token_used(jti):
-            return None
-        return sub, jti, payload.get("purpose", RESET_TOKEN_PURPOSE), int(payload["exp"])
-    except (JWTError, KeyError, TypeError, ValueError):
-        return None
-
-
-# MFA challenge binding — maps a one-time mfa_session_id to the specific user
-# who triggered it, so verify_mfa() can never complete a different user's login.
-# In-memory only (Phase 1); a multi-worker deployment would need this in Redis/DB.
-_MFA_CHALLENGES: dict[str, tuple[uuid.UUID, float]] = {}
-_MFA_CHALLENGES_LOCK = Lock()
-_MFA_CHALLENGE_TTL_SECONDS = 600.0  # 10 minutes
-
-
-def register_mfa_challenge(mfa_session_id: str, user_id: uuid.UUID) -> None:
-    with _MFA_CHALLENGES_LOCK:
-        _MFA_CHALLENGES[mfa_session_id] = (user_id, time.time() + _MFA_CHALLENGE_TTL_SECONDS)
-
-
-def peek_mfa_challenge(mfa_session_id: str) -> Optional[uuid.UUID]:
-    """Returns the bound user_id without consuming it, so a wrong code can be retried."""
-    with _MFA_CHALLENGES_LOCK:
-        entry = _MFA_CHALLENGES.get(mfa_session_id)
-    if not entry:
-        return None
-    user_id, expires_at = entry
-    if time.time() > expires_at:
-        return None
-    return user_id
-
-
-def consume_mfa_challenge(mfa_session_id: str) -> Optional[uuid.UUID]:
-    """Pops and returns the bound user_id if the challenge exists and hasn't expired.
-    Single-use: call only once the code has been verified correct."""
-    with _MFA_CHALLENGES_LOCK:
-        entry = _MFA_CHALLENGES.pop(mfa_session_id, None)
-    if not entry:
-        return None
-    user_id, expires_at = entry
-    if time.time() > expires_at:
-        return None
-    return user_id
-
-
-# Password-reset single-use tracking — records consumed token jtis so a leaked/
-# forwarded reset link can't be replayed a second time within its validity window.
-_USED_RESET_TOKENS: dict[str, float] = {}
-_USED_RESET_TOKENS_LOCK = Lock()
-
-
-def is_reset_token_used(jti: str) -> bool:
-    with _USED_RESET_TOKENS_LOCK:
-        expires_at = _USED_RESET_TOKENS.get(jti)
-        if expires_at is None:
-            return False
-        if time.time() > expires_at:
-            del _USED_RESET_TOKENS[jti]
-            return False
-        return True
-
-
-def mark_reset_token_used(jti: str, token_exp: int) -> None:
-    """Remembers a consumed jti until the token itself expires (15 min for a
-    reset, INVITE_TOKEN_EXPIRE_HOURS for an invite), so it can't be replayed."""
-    with _USED_RESET_TOKENS_LOCK:
-        _USED_RESET_TOKENS[jti] = float(token_exp)
-
-
-# Forgot-password rate limiting — sliding window per email, so a single address
-# can't be used to spam token generation / log volume.
-_FORGOT_PASSWORD_ATTEMPTS: dict[str, list[float]] = {}
-_FORGOT_PASSWORD_LOCK = Lock()
-_FORGOT_PASSWORD_WINDOW_SECONDS = 900.0  # 15 minutes
-_FORGOT_PASSWORD_MAX_ATTEMPTS = 3
-
-
-def is_forgot_password_rate_limited(email: str) -> bool:
-    now = time.time()
-    key = email.lower()
-    with _FORGOT_PASSWORD_LOCK:
-        attempts = [t for t in _FORGOT_PASSWORD_ATTEMPTS.get(key, []) if now - t < _FORGOT_PASSWORD_WINDOW_SECONDS]
-        limited = len(attempts) >= _FORGOT_PASSWORD_MAX_ATTEMPTS
-        if not limited:
-            attempts.append(now)
-        _FORGOT_PASSWORD_ATTEMPTS[key] = attempts
-        return limited
-
-
 class CurrentUser:
     """Populated from a validated, non-revoked session. Roles are always the
     live DB values, never trusted from the JWT claim alone.
 
-    Multi-role (§5.14): `role` / `role_id` are the PRIMARY role (display, the
+    Multi-role: `role` / `role_id` are the PRIMARY role (display, the
     dashboard's title); `role_names` / `role_ids` are every role held — primary
     plus additional. Access decisions use the sets: `has_role(...)` for
     scoping, `role_ids` for permission grants and role-queue matching.
@@ -235,7 +105,13 @@ class CurrentUser:
         role_id: Optional[uuid.UUID | str] = None,
         role_names: Optional[Iterable[str]] = None,
         role_ids: Optional[Iterable[uuid.UUID | str]] = None,
+        mfa_enabled: bool = False,
+        mfa_setup_required: bool = False,
+        mfa_required_by_company: bool = False,
     ):
+        self.mfa_required_by_company = mfa_required_by_company
+        self.mfa_enabled = mfa_enabled
+        self.mfa_setup_required = mfa_setup_required
         self.user_id = uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id
         self.role = role
         self.session_id = uuid.UUID(str(session_id)) if isinstance(session_id, str) else session_id
@@ -259,7 +135,16 @@ class CurrentUser:
         return role_id is not None and uuid.UUID(str(role_id)) in self.role_ids
 
 
+# Roles the "require two-step sign-in for admins" company setting covers.
+MFA_POLICY_ROLES = frozenset({"super_admin", "hr_admin", "it_admin", "auditor"})
+# What someone who must set up two-step sign-in can still reach.
+_MFA_SETUP_PATHS = frozenset(
+    f"{settings.API_V1_PREFIX}/auth/{p}" for p in ("me", "mfa/setup", "mfa/enable", "logout", "logout-all-devices")
+)
+
+
 def get_current_user(
+    request: Request,
     authorization: str = Header(default=None),
     db: DBSession = Depends(get_db),
 ) -> CurrentUser:
@@ -279,7 +164,7 @@ def get_current_user(
         raise UnauthenticatedError("Malformed token")
 
     # 1. Zero-trust check: Lookup session, user and live role in ONE single query.
-    # No caching here — §2.2 requires revocation to take effect on the very next
+    # No caching here — requires revocation to take effect on the very next
     # request, not after some TTL, so every request re-checks revoked_at live.
     session = (
         db.query(SessionModel)
@@ -305,7 +190,7 @@ def get_current_user(
     if not user:
         raise UnauthenticatedError("User no longer exists")
 
-    if user.status != UserStatus.active:
+    if user.status not in SIGN_IN_STATUSES:
         raise UnauthenticatedError("User account is inactive or disabled")
 
     # Live role name from DB
@@ -317,6 +202,17 @@ def get_current_user(
         session.last_seen_at = now
         db.commit()
 
+    held = {live_role, *(r.name for r in user.additional_roles)}
+    mfa_required_by_company = bool(held & MFA_POLICY_ROLES) and bool(
+        get_setting(db, "security.require_mfa_for_admins")
+    )
+    mfa_setup_required = mfa_required_by_company and not user.mfa_enabled
+    if mfa_setup_required and request.url.path not in _MFA_SETUP_PATHS:
+        raise ForbiddenError(
+            "Your company requires two-step sign-in for your role. Set it up to continue.",
+            code="mfa_setup_required",
+        )
+
     return CurrentUser(
         user_id=user.id,
         role=live_role,
@@ -327,6 +223,9 @@ def get_current_user(
         role_id=user.role_id,
         role_names=[r.name for r in user.additional_roles],
         role_ids=[r.id for r in user.additional_roles],
+        mfa_enabled=user.mfa_enabled,
+        mfa_setup_required=mfa_setup_required,
+        mfa_required_by_company=mfa_required_by_company,
     )
 
 
@@ -336,16 +235,16 @@ def check_permission(
     action: str,
     db: DBSession,
 ) -> None:
-    """Role/permission check — project doc §3.2 step 2.
+    """Role/permission check — step 2.
 
     Queries `role_permissions` joined to `permissions` for the caller's live
     `role_id` (never a cached/JWT-claimed role — `current_user.role_id` is
     populated fresh per-request by get_current_user() above, per the
-    zero-trust model in §2). Raises ForbiddenError if no matching
+    zero-trust model). Raises ForbiddenError if no matching
     (resource, action) grant exists for the caller's role.
 
     This replaces the old hardcoded `current_user.role in (...)` string
-    comparisons scattered across the service modules (rules.md §1.2 — the
+    comparisons scattered across the service modules (the
     former require_role() dependency below was defined but never called
     anywhere, i.e. dead code, and has been removed rather than left
     alongside this real implementation).
@@ -353,7 +252,7 @@ def check_permission(
     Only covers the RBAC/permission step. Attribute (ABAC) scoping — e.g.
     "manager scoped to their own department", "user whose role matches this
     specific checklist item's owner_role_id" — is a separate, later check
-    (§3.2 step 3) that callers apply themselves after this passes; it is
+    (step 3) that callers apply themselves after this passes; it is
     not expressible as a static (resource, action) grant and is therefore
     out of scope for this helper by design.
     """
@@ -370,7 +269,7 @@ def has_permission(
     """Whether any of the caller's live roles holds (resource, action) — the
     query behind check_permission(), for callers that branch instead of
     rejecting (e.g. the Inbox only shows sections the caller can act on).
-    Multi-role: a grant on the primary OR any additional role counts (§5.14).
+    Multi-role: a grant on the primary OR any additional role counts.
     No roles at all = an empty IN, which matches nothing."""
     grant = (
         db.query(RolePermission)
@@ -389,7 +288,7 @@ def roles_granting(current_user: CurrentUser, resource: str, action: str, db: DB
     """Names of the caller's roles that grant (resource, action). For scoping
     rules that fall back to "any other role with the permission sees it all":
     a grant that only arrives via a narrowly-scoped role (employee, manager)
-    must not unlock the company-wide view (§5.14 multi-role)."""
+    must not unlock the company-wide view (multi-role)."""
     if not current_user.role_ids:
         return set()
     rows = (
@@ -407,8 +306,8 @@ def roles_granting(current_user: CurrentUser, resource: str, action: str, db: DB
 
 
 def get_effective_permissions(role_ids: Iterable[uuid.UUID], db: DBSession) -> list[str]:
-    """Union of every grant across `role_ids`, each permission once (§5.14:
-    shared permissions are kept as one, the rest are merged)."""
+    """Union of every grant across `role_ids`, each permission once
+    (shared permissions are kept as one, the rest are merged)."""
     ids = list(role_ids)
     if not ids:
         return []
@@ -418,24 +317,6 @@ def get_effective_permissions(role_ids: Iterable[uuid.UUID], db: DBSession) -> l
         .filter(RolePermission.role_id.in_(ids))
         .distinct()
         .order_by(Permission.resource, Permission.action)
-        .all()
-    )
-    return [f"{resource}:{action}" for resource, action in grants]
-
-
-def get_role_permissions(role_id: uuid.UUID, db: DBSession) -> list[str]:
-    """
-    Live role_permissions ⋈ permissions lookup for a role — the same source of
-    truth check_permission() enforces against, exposed here for GET /auth/me
-    (§5.1) to populate the full `permissions[]` list the client needs to
-    correctly hide/disable UI elements (§3.2: the frontend's RBAC is UI
-    convenience only, but it still needs to know its own permission set).
-    Returned as "resource:action" strings.
-    """
-    grants = (
-        db.query(Permission.resource, Permission.action)
-        .join(RolePermission, RolePermission.permission_id == Permission.id)
-        .filter(RolePermission.role_id == role_id)
         .all()
     )
     return [f"{resource}:{action}" for resource, action in grants]

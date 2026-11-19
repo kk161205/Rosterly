@@ -1,10 +1,10 @@
 """
-Privileged-role policy (project doc §5.14, applied to every role-changing path).
+Privileged-role policy (applied to every role-changing path).
 
 Only a super_admin may grant a privileged role, or change the role/status of a
 user who holds one. hr_admin can manage everyone else. This single rule is
-shared by User Management (§5.14: POST /users, PATCH /users/{id}/status) and
-the Employee Profile edit (§5.4: PATCH /employees/{id} role_id/status), so the
+shared by User Management (POST /users, PATCH /users/{id}/status) and
+the Employee Profile edit (PATCH /employees/{id} role_id/status), so the
 two paths can never drift apart and HR can't use one to bypass the other.
 """
 from collections.abc import Iterable
@@ -19,7 +19,7 @@ PRIVILEGED_ROLES = frozenset({"super_admin", "it_admin"})
 
 
 def is_super_admin(current_user: CurrentUser) -> bool:
-    """Holds super_admin as primary or additional role (§5.14 multi-role)."""
+    """Holds super_admin as primary or additional role (multi-role)."""
     return current_user.has_role("super_admin")
 
 
@@ -59,7 +59,7 @@ def user_holds_role_names(names: Iterable[str]) -> ColumnElement[bool]:
     return user_holds_role_ids(select(Role.id).where(Role.name.in_(list(names))))
 
 
-# Roles that may only ever be a PRIMARY role (§5.14 multi-role): super_admin
+# Roles that may only ever be a PRIMARY role (multi-role): super_admin
 # already holds everything, so combining it only hides who has full access;
 # employee is the baseline everyone has.
 PRIMARY_ONLY_ROLES = frozenset({"super_admin", "employee"})
@@ -80,7 +80,7 @@ def conflicting_pairs(db, roles: list) -> list[tuple]:
 
 
 def validate_role_set(db, current_user: CurrentUser, primary, additional: list) -> list:
-    """The one rule for any set of roles a user is given (§5.14), shared by
+    """The one rule for any set of roles a user is given, shared by
     User Management and the Employee Profile edit. Returns the additional
     roles to store: de-duplicated, without the primary role.
 
