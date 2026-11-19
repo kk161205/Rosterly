@@ -4,13 +4,14 @@ status filtering, and ABAC row-level scoping for manager role.
 """
 import math
 import uuid as uuid_lib
-from datetime import date
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, or_, select, union
 from sqlalchemy.orm import Session, aliased
 
+from app.core.clock import local_today
+from app.core.approver_resolution import reroute_pending_steps
 from app.core.errors import AppError
 from app.core.role_policy import user_holds_role_ids
 from app.core.security import CurrentUser, check_permission
@@ -38,9 +39,9 @@ class EmployeeDirectoryService:
     ) -> dict[str, Any]:
         """
         Query sanitized employee records matching filters with ABAC row-level scoping.
-        Excludes sensitive financial and document fields per rules.md Zero-Trust.
+        Excludes sensitive financial and document fields Zero-Trust.
         """
-        # Multi-role (§5.14): the manager's department scope narrows only a user
+        # Multi-role: the manager's department scope narrows only a user
         # whose ONLY role is manager — any other role held sees the full directory.
         manager_scoped = self.current_user.role_names == frozenset({"manager"})
 
@@ -109,7 +110,7 @@ class EmployeeDirectoryService:
         # Total matching records
         total = query.count()
 
-        # Tree view still respects the documented page_size cap (§7 rule 3) —
+        # Tree view still respects the documented page_size cap
         # it can't paginate a hierarchy meaningfully, but it must not return
         # an unbounded array either, so very large orgs only render their
         # first page_size employees in the chart.
@@ -180,7 +181,7 @@ class EmployeeDirectoryService:
         """
         Query distinct departments, statuses, and roles populated from DB records.
         """
-        # Multi-role (§5.14): the manager's department scope narrows only a user
+        # Multi-role: the manager's department scope narrows only a user
         # whose ONLY role is manager — any other role held sees the full directory.
         manager_scoped = self.current_user.role_names == frozenset({"manager"})
 
@@ -217,7 +218,7 @@ class EmployeeDirectoryService:
         ]
 
         # Role counts from DB
-        # Everyone holding the role, as primary or additional (§5.14).
+        # Everyone holding the role, as primary or additional.
         holders = union(
             select(User.id.label("user_id"), User.role_id.label("role_id")),
             select(UserRole.user_id, UserRole.role_id),
@@ -250,10 +251,10 @@ class EmployeeDirectoryService:
     def delete_employee(self, employee_id: UUID) -> dict[str, Any]:
         """
         Soft-delete an employee record (Super Admin only) — sets status=terminated
-        and preserves the row for audit history (§1 schema note: user-facing tables
+        and preserves the row for audit history (schema note: user-facing tables
         are soft-deletable, never hard-deleted).
         """
-        # RBAC (project doc §3.2 step 2): DELETE /employees/{id} (§5.3) is restricted
+        # RBAC (step 2): DELETE /employees/{id} is restricted
         # to super_admin only. Mapped to (resource="employee", action="delete") —
         # ported from the hardcoded role-string check to a real role_permissions
         # lookup. No ABAC component here (not scoped by self/department).
@@ -271,8 +272,9 @@ class EmployeeDirectoryService:
         self.db.query(Department).filter(Department.manager_id == employee_id).update({"manager_id": None})
 
         target_user.status = UserStatus.terminated
+        reroute_pending_steps(self.db, target_user.id)
         if not target_user.date_of_exit:
-            target_user.date_of_exit = date.today()
+            target_user.date_of_exit = local_today()
 
         self.db.add(
             AuditLog(

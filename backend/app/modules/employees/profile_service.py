@@ -11,15 +11,23 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, aliased
 
+from app.core.password_tokens import cancel_password_tokens
 from app.core.config import settings
+from app.core.approver_resolution import reroute_pending_steps
 from app.core.errors import AppError, FileInvalidError
+from app.core.file_storage import delete_file, detect_type, load_file, save_file
 from app.core.role_policy import (
     assert_can_manage_user,
     set_additional_roles,
     user_role_names,
     validate_role_set,
 )
-from app.core.security import CurrentUser, check_permission, roles_granting
+from app.core.access_scope import (
+    can_manage_all_documents,
+    can_read_non_confidential_documents,
+    scope_for,
+)
+from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.lifecycle import (
@@ -34,48 +42,28 @@ from app.modules.employees.profile_schemas import EmployeeProfileUpdateRequest
 from app.modules.auth.service import logout_all_user_sessions
 from app.modules.notifications.dispatch import notify_role_changed
 
-# Canonical absolute upload directory root (independent of CWD)
-UPLOAD_BASE_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
-)
-
 
 class EmployeeProfileService:
-    """Service providing fine-grained ABAC for Employee Profile Detail (§5.4)."""
+    """Service providing fine-grained ABAC for Employee Profile Detail."""
 
     def __init__(self, db: Session, current_user: CurrentUser, ip_address: str | None = None):
         self.db = db
         self.current_user = current_user
         self.ip_address = ip_address or "unknown"
 
-    def _visibility(self, broad_roles: set[str]) -> str:
-        """Multi-role scope (§5.14), widest wins: "all" if any held role sees the
-        whole company (`broad_roles`, already excluding employee/manager),
-        "department" for a manager, otherwise "self"."""
-        if broad_roles:
-            return "all"
-        if self.current_user.has_role("manager"):
-            return "department"
-        return "self"
-
     def get_employee_profile(self, employee_id: UUID) -> dict[str, Any]:
         """
         Get detailed employee profile record with row-level ABAC department scoping.
-        Allowed roles: self, manager (own dept), hr_admin, super_admin, auditor.
-        Denied roles: it_admin (403). Out-of-dept manager gets 403.
+        Allowed: everyone for their own profile; manager (own dept), hr_admin,
+        super_admin and auditor for others. An IT admin can open only their own.
         """
-        scope = self._visibility(
-            roles_granting(self.current_user, "employee", "read", self.db) - {"employee", "manager"}
-        )
-        # RBAC (project doc §3.2 step 2): GET /employees/{id} (§5.4) is granted to
-        # every role except it_admin at the coarse role level — mapped to
-        # (resource="employee", action="read"). "employee" role itself is included
-        # in this grant so it can pass this gate and reach the is_self check just
-        # below; the self/department scoping that follows is ABAC (§3.2 step 3)
-        # and is left unchanged.
-        check_permission(self.current_user, "employee", "read", self.db)
-
+        scope = scope_for(self.current_user, "profile")
         is_self = str(self.current_user.user_id) == str(employee_id)
+        # Your own profile is always yours (as with documents and the phone
+        # edit). Anyone else's needs employee:read, then the scope check below.
+        if not is_self:
+            check_permission(self.current_user, "employee", "read", self.db)
+
         if scope == "self" and not is_self:
             raise AppError(
                 status_code=403,
@@ -132,7 +120,7 @@ class EmployeeProfileService:
                 "role": None,
             }
 
-        # Direct reports (§5.4 Overview Tab reporting hierarchy tree) — the
+        # Direct reports (Overview Tab reporting hierarchy tree) — the
         # inverse of manager_id, previously never computed at all so the tree
         # always rendered empty regardless of whether the employee actually
         # had reports.
@@ -189,7 +177,7 @@ class EmployeeProfileService:
         self, employee_id: UUID, payload: EmployeeProfileUpdateRequest
     ) -> dict[str, Any]:
         """
-        Update employee profile details with strict field-level access control (PRD §5.4).
+        Update employee profile details with strict field-level access control.
 
         - Manager / IT Admin / Auditor -> 403 Forbidden
         - Self (Employee) -> Can only update 'phone'. Any restricted field or 'address' -> 400 Bad Request
@@ -202,7 +190,7 @@ class EmployeeProfileService:
         # your own limited fields (phone) is always allowed regardless of role,
         # matching the doc's "Self (limited fields)" access row independently of
         # the "HR Admin/Super Admin (full)" row. This self-edit bypass is ABAC
-        # (§3.2 step 3); the not-self branch below is a pure role check (§3.2 step
+        # (step 3); the not-self branch below is a pure role check (step
         # 2) mapped to (resource="employee", action="update"), granted only to
         # hr_admin/super_admin — ported from the hardcoded role-string checks that
         # used to deny manager/it_admin/auditor/employee individually here.
@@ -217,8 +205,15 @@ class EmployeeProfileService:
         # detect whether a session-revoking field (role_id/status) actually changed.
         before_role_id = target_user.role_id
         before_status = target_user.status
-        before_department_id = target_user.department_id
-        before_manager_id = target_user.manager_id
+        # Everything an edit can change, so the audit row names exactly what did
+        tracked = ("full_name", "designation", "phone", "emergency_contact_name", "emergency_contact_phone",
+                   "role_id", "status", "department_id", "manager_id")
+
+        def snapshot() -> dict[str, Any]:
+            values = {f: getattr(target_user, f) for f in tracked}
+            return {f: (v.value if hasattr(v, "value") else str(v) if isinstance(v, UUID) else v) for f, v in values.items()}
+
+        before = snapshot()
 
         set_fields = payload.model_dump(exclude_unset=True)
 
@@ -232,7 +227,7 @@ class EmployeeProfileService:
                 )
 
             # Validate that self only updates allowed fields. Emergency contact
-            # is included per §5.4's Overview Tab spec ("inline pencil edit
+            # is included Overview Tab spec ("inline pencil edit
             # toggle (HR Admin / self)") — self can edit their own contact
             # details, unlike role_id/status/department_id/manager_id below.
             allowed_self_fields = {"phone", "emergency_contact_name", "emergency_contact_phone"}
@@ -264,13 +259,13 @@ class EmployeeProfileService:
             target_user.emergency_contact_phone = (payload.emergency_contact_phone or "").strip() or None
 
         if is_hr_or_super:
-            # §5.14 privileged-role rule applies here too: HR can't change a
+            # privileged-role rule applies here too: HR can't change a
             # super_admin/it_admin user's role or status, or grant either role.
             changes_access = ("role_id" in set_fields and payload.role_id is not None) or (
                 "status" in set_fields and payload.status is not None
             )
             if changes_access:
-                # Every role the target holds counts, primary and additional (§5.14).
+                # Every role the target holds counts, primary and additional.
                 assert_can_manage_user(self.current_user, user_role_names(target_user))
 
             if "full_name" in set_fields and payload.full_name is not None:
@@ -313,7 +308,7 @@ class EmployeeProfileService:
                             code="not_found",
                             message="Role not found.",
                         )
-                    # Same multi-role rule as User Management (§5.14): the new
+                    # Same multi-role rule as User Management: the new
                     # primary must not clash with the roles already held; if it
                     # was one of the additional roles, it moves to primary.
                     extra = validate_role_set(self.db, self.current_user, role_obj, list(target_user.additional_roles))
@@ -339,6 +334,9 @@ class EmployeeProfileService:
                         message=f"Cannot change status of user in '{before_status.value}' status.",
                     )
                 target_user.status = payload.status
+                if payload.status == UserStatus.inactive:
+                    reroute_pending_steps(self.db, target_user.id)
+                    cancel_password_tokens(self.db, target_user.id)
 
             if "manager_id" in set_fields:
                 if payload.manager_id is not None:
@@ -365,15 +363,16 @@ class EmployeeProfileService:
 
         role_changed = target_user.role_id != before_role_id
         status_changed = target_user.status != before_status
-        department_changed = target_user.department_id != before_department_id
-        manager_changed = target_user.manager_id != before_manager_id
 
         if role_changed:
-            # §6: critical account_updated notification to the affected user
+            # critical account_updated notification to the affected user
             new_role_name = self.db.query(Role.name).filter(Role.id == target_user.role_id).scalar() or ""
             notify_role_changed(self.db, target_user.id, new_role_name)
 
-        if role_changed or status_changed or department_changed or manager_changed:
+        # Every change is audited, a person's own phone edit included: only the fields that changed
+        after = snapshot()
+        changed = [f for f in tracked if before[f] != after[f]]
+        if changed:
             self.db.add(
                 AuditLog(
                     id=uuid.uuid4(),
@@ -381,18 +380,8 @@ class EmployeeProfileService:
                     action="employee.profile_updated",
                     entity_type="user",
                     entity_id=target_user.id,
-                    before_state={
-                        "role_id": str(before_role_id) if before_role_id else None,
-                        "status": before_status.value if hasattr(before_status, "value") else str(before_status),
-                        "department_id": str(before_department_id) if before_department_id else None,
-                        "manager_id": str(before_manager_id) if before_manager_id else None,
-                    },
-                    after_state={
-                        "role_id": str(target_user.role_id) if target_user.role_id else None,
-                        "status": target_user.status.value if hasattr(target_user.status, "value") else str(target_user.status),
-                        "department_id": str(target_user.department_id) if target_user.department_id else None,
-                        "manager_id": str(target_user.manager_id) if target_user.manager_id else None,
-                    },
+                    before_state={f: before[f] for f in changed},
+                    after_state={f: after[f] for f in changed},
                     ip_address=self.ip_address,
                 )
             )
@@ -400,7 +389,7 @@ class EmployeeProfileService:
         self.db.commit()
         self.db.refresh(target_user)
 
-        # Doc §2.4: role/status changes force full re-authentication — a demoted
+        # Doc: role/status changes force full re-authentication — a demoted
         # or deactivated user's existing session is killed, not just left to the
         # live per-request revocation check to catch on its next call.
         if role_changed or status_changed:
@@ -410,41 +399,23 @@ class EmployeeProfileService:
 
     def get_employee_documents(self, employee_id: UUID) -> list[dict[str, Any]]:
         """
-        Get categorized documents for an employee with confidentiality filtering (PRD §5.4).
+        Get categorized documents for an employee with confidentiality filtering.
         Allowed roles: self (own profile), hr_admin, super_admin, auditor.
         Denied roles: manager (403), it_admin (403).
         Auditor receives non-confidential documents only (is_confidential == False).
         """
-        # Multi-role (§5.14): union of each held role's rule — hr_admin/super_admin
-        # (and custom roles) see all, auditor sees non-confidential, employee sees
-        # their own, manager/it_admin add nothing.
+        # Explicit rule (app/core/access_scope.py): HR/super admins see every
+        # document, auditors everyone's non-confidential ones, everyone their own.
         cu = self.current_user
-        full_access = bool(cu.role_names - {"employee", "manager", "it_admin", "auditor"})
-        auditor_access = cu.has_role("auditor")
-        # NOT ported to check_permission(): this role-only gate would also need
-        # (resource="employee", action="read"), but its allowed set (excludes
-        # manager AND it_admin) differs from get_employee_profile's read grant
-        # (excludes it_admin only) — the doc's 5-action vocabulary has no way to
-        # distinguish "read the profile" from "read the document vault" under the
-        # same resource. A dedicated employee_document resource + migration
-        # (c2d4e6f8a0b2) exists for this but was reverted here after it proved
-        # disproportionately disruptive to this file's mock-heavy test suite for
-        # a pure architecture cleanup with no functional bug behind it — left as
-        # the original hardcoded check.
+        full_access = can_manage_all_documents(cu)
+        auditor_access = can_read_non_confidential_documents(cu)
         is_self = str(cu.user_id) == str(employee_id)
-        if not (full_access or auditor_access):
-            if not cu.has_role("employee"):
-                raise AppError(
-                    status_code=403,
-                    code="forbidden",
-                    message=f"Role '{cu.role}' does not have permission to view employee documents.",
-                )
-            if not is_self:
-                raise AppError(
-                    status_code=403,
-                    code="forbidden",
-                    message="Employees may only view their own documents.",
-                )
+        if not (full_access or auditor_access or is_self):
+            raise AppError(
+                status_code=403,
+                code="forbidden",
+                message="You can only view your own documents.",
+            )
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
@@ -481,6 +452,35 @@ class EmployeeProfileService:
             for doc, uploader_name in rows
         ]
 
+    def _can_see_document(self, employee_id: UUID, is_confidential: bool) -> bool:
+        cu = self.current_user
+        if can_manage_all_documents(cu) or str(cu.user_id) == str(employee_id):
+            return True
+        return can_read_non_confidential_documents(cu) and not is_confidential
+
+    def _audit_document(self, action: str, doc: Document, after: dict | None, before: dict | None = None) -> None:
+        self.db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                actor_id=self.current_user.user_id,
+                action=action,
+                entity_type="document",
+                entity_id=doc.id,
+                before_state=before,
+                after_state=after,
+                ip_address=self.ip_address,
+            )
+        )
+
+    @staticmethod
+    def _snapshot(doc: Document) -> dict:
+        return {
+            "employee_id": str(doc.employee_id),
+            "file_name": doc.file_name,
+            "doc_type": doc.doc_type.value if hasattr(doc.doc_type, "value") else str(doc.doc_type),
+            "is_confidential": bool(doc.is_confidential),
+        }
+
     def upload_employee_document(
         self,
         employee_id: UUID,
@@ -490,117 +490,98 @@ class EmployeeProfileService:
         is_confidential: bool = False,
     ) -> dict[str, Any]:
         """
-        Upload document for an employee with file size & extension validation (PRD §5.4).
-        Allowed roles: self (own profile), hr_admin, super_admin.
-        Denied roles: manager (403), it_admin (403), auditor (403).
+        Upload a document to someone's vault.
+        HR/super admins upload for anyone; everyone else only to their own
+        profile. PDF, PNG or JPG only — checked from the file's content, not just
+        its name — and at most MAX_UPLOAD_SIZE_MB. Stored in Postgres
+        (app/core/file_storage.py) and audited.
         """
         cu = self.current_user
-        full_access = bool(cu.role_names - {"employee", "manager", "it_admin", "auditor"})
-        # NOT ported to check_permission(): would need (resource="employee",
-        # action="create"), but its allowed set (employee-self, hr_admin,
-        # super_admin) differs from the checklist-create grant used for
-        # POST /onboarding and POST /offboarding. See get_employee_documents'
-        # comment above — reverted here for the same reason.
         is_self = str(cu.user_id) == str(employee_id)
-        if not full_access and not cu.has_role("employee"):
+        if not (can_manage_all_documents(cu) or is_self):
             raise AppError(
                 status_code=403,
                 code="forbidden",
-                message=f"Role '{cu.role}' does not have permission to upload documents.",
-            )
-        if not full_access and not is_self:
-            raise AppError(
-                status_code=403,
-                code="forbidden",
-                message="Employees may only upload documents to their own profile.",
+                message="You can only upload documents to your own profile.",
             )
 
         target_user = self.db.query(User).filter(User.id == employee_id).first()
         if not target_user:
             raise AppError(status_code=404, code="not_found", message="Employee not found.")
 
-        # File size validation: MAX_UPLOAD_SIZE_MB, 10 MB by default (§7 rule 8)
         max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
         if len(file_bytes) > max_bytes:
-            raise FileInvalidError(f"File size exceeds maximum allowed limit of {settings.MAX_UPLOAD_SIZE_MB}MB.")
+            raise FileInvalidError(f"The file is larger than {settings.MAX_UPLOAD_SIZE_MB} MB.")
+        if not file_bytes:
+            raise FileInvalidError("The file is empty.")
 
-        # Path traversal prevention: strip directory components
-        raw_basename = os.path.basename(file_name)
-        display_name = raw_basename or "uploaded_doc"
-
-        # File extension validation — PDF, PNG, JPG only (§7 rule 8; .docx was
-        # previously accepted here in violation of the documented constraint).
-        ext = os.path.splitext(display_name)[1].lower()
-        allowed_exts = {".pdf", ".png", ".jpg", ".jpeg"}
-        if ext not in allowed_exts:
-            raise FileInvalidError("Invalid file type. Allowed formats: PDF, PNG, JPG, JPEG.")
-
-        # Generate a safe physical filename on disk
-        safe_base = re.sub(r"[^a-zA-Z0-9_.-]", "_", display_name)
-        unique_name = f"{uuid.uuid4().hex}_{safe_base}"
-
-        # Resolve storage directory relative to UPLOAD_BASE_DIR
-        save_dir = os.path.abspath(
-            os.path.join(UPLOAD_BASE_DIR, "documents", str(employee_id))
-        )
-
-        # Path containment check
-        if not save_dir.startswith(UPLOAD_BASE_DIR):
-            raise AppError(
-                status_code=400,
-                code="bad_request",
-                message="Invalid upload path destination.",
-            )
-
-        os.makedirs(save_dir, exist_ok=True)
-        file_path = os.path.join(save_dir, unique_name)
-
-        with open(file_path, "wb") as f:
-            f.write(file_bytes)
-
-        file_url = f"/uploads/documents/{employee_id}/{unique_name}"
+        display_name = os.path.basename(file_name.replace("\\", "/")) or "document"
+        display_name = re.sub(r"[\x00-\x1f\x7f]", "", display_name)[:255]
+        extension = os.path.splitext(display_name)[1].lower()
+        content_type = detect_type(file_bytes, extension)
+        if content_type is None:
+            raise FileInvalidError("Only PDF, PNG or JPG files can be uploaded.")
 
         now = datetime.now(timezone.utc)
+        doc_id = uuid.uuid4()
         doc = Document(
-            id=uuid.uuid4(),
+            id=doc_id,
             employee_id=employee_id,
             doc_type=doc_type,
             file_name=display_name,
-            file_url=file_url,
+            # The authenticated download route, relative to the API base.
+            file_url=f"/employees/{employee_id}/documents/{doc_id}/download",
             is_confidential=is_confidential,
-            uploaded_by=self.current_user.user_id,
+            uploaded_by=cu.user_id,
             uploaded_at=now,
         )
         self.db.add(doc)
+        self.db.flush()
+        save_file(self.db, doc_id, file_bytes, content_type)
+        self._audit_document("document.uploaded", doc, self._snapshot(doc))
         self.db.commit()
-        self.db.refresh(doc)
-
-        uploader_name = self.current_user.full_name
 
         return {
-            "id": doc.id or uuid.uuid4(),
+            "id": doc.id,
             "employee_id": doc.employee_id,
             "doc_type": doc.doc_type,
             "file_name": doc.file_name,
             "file_url": doc.file_url,
             "is_confidential": doc.is_confidential,
             "uploaded_by": doc.uploaded_by,
-            "uploaded_by_name": uploader_name,
+            "uploaded_by_name": cu.full_name,
             "uploaded_at": doc.uploaded_at or now,
         }
 
+    def download_employee_document(self, employee_id: UUID, doc_id: UUID) -> tuple[bytes, str, str]:
+        """GET /employees/{id}/documents/{doc_id}/download — the same rule as the
+        list: HR/super admins any, auditors non-confidential, everyone their own.
+        Returns (bytes, content type, file name)."""
+        doc = (
+            self.db.query(Document)
+            .filter(Document.id == doc_id, Document.employee_id == employee_id)
+            .first()
+        )
+        # A document the caller may not see is indistinguishable from a missing one.
+        if doc is None or not self._can_see_document(employee_id, bool(doc.is_confidential)):
+            raise AppError(status_code=404, code="not_found", message="Document not found.")
+        stored = load_file(self.db, doc.id)
+        if stored is None:
+            raise AppError(
+                status_code=404,
+                code="file_missing",
+                message="This document's file isn't available. Upload it again.",
+            )
+        content, content_type = stored
+        return content, content_type, doc.file_name
+
     def delete_employee_document(self, employee_id: UUID, doc_id: UUID) -> None:
         """
-        Delete document from vault (PRD §5.4).
-        Allowed roles: hr_admin, super_admin.
-        Denied roles: self (403), manager (403), it_admin (403), auditor (403).
-        Self cannot delete own documents.
+        Delete a document from the vault. HR and super admins only
+        people can't delete their own documents. The stored file goes with it.
+        Audited.
         """
-        # NOT ported to check_permission(): would need (resource="employee",
-        # action="delete"), but its allowed set (hr_admin, super_admin) differs
-        # from DELETE /employees/{id}'s (super_admin only). See
-        # get_employee_documents' comment above — reverted for the same reason.
-        if not self.current_user.has_role("hr_admin", "super_admin"):
+        if not can_manage_all_documents(self.current_user):
             raise AppError(
                 status_code=403,
                 code="forbidden",
@@ -615,28 +596,18 @@ class EmployeeProfileService:
         if not doc:
             raise AppError(status_code=404, code="not_found", message="Document not found.")
 
-        # Attempt physical file deletion safely using UPLOAD_BASE_DIR
-        if doc.file_url and "/uploads/" in doc.file_url:
-            rel_part = doc.file_url.split("/uploads/", 1)[1]
-            target_path = os.path.abspath(os.path.join(UPLOAD_BASE_DIR, rel_part))
-
-            # Ensure path containment before deletion
-            if target_path.startswith(UPLOAD_BASE_DIR) and os.path.exists(target_path):
-                try:
-                    os.remove(target_path)
-                except OSError:
-                    pass
-
+        self._audit_document("document.deleted", doc, None, before=self._snapshot(doc))
+        delete_file(self.db, doc.id)
         self.db.delete(doc)
         self.db.commit()
 
     def get_employee_assets(self, employee_id: UUID) -> dict[str, list[dict[str, Any]]]:
         """
-        Get hardware devices and licenses assigned to employee, split into current and history (PRD §5.4).
+        Get hardware devices and licenses assigned to employee, split into current and history.
         Allowed roles: self (own profile), manager (own dept), hr_admin, it_admin, super_admin, auditor.
         Manager gets 403 if target employee is outside manager's department.
         """
-        scope = self._visibility(self.current_user.role_names - {"employee", "manager"})
+        scope = scope_for(self.current_user, "employee_assets")
 
         is_self = str(self.current_user.user_id) == str(employee_id)
         if scope == "self" and not is_self:
@@ -703,10 +674,10 @@ class EmployeeProfileService:
 
     def get_employee_lifecycle(self, employee_id: UUID) -> dict[str, Any] | None:
         """
-        Get active or latest onboarding/offboarding lifecycle checklist for employee (§5.4).
+        Get active or latest onboarding/offboarding lifecycle checklist for employee.
         Allowed roles: self, manager (own dept), hr_admin, it_admin, super_admin, auditor.
         """
-        scope = self._visibility(self.current_user.role_names - {"employee", "manager"})
+        scope = scope_for(self.current_user, "lifecycle")
         is_self = str(self.current_user.user_id) == str(employee_id)
         if scope == "self" and not is_self:
             raise AppError(
@@ -733,7 +704,7 @@ class EmployeeProfileService:
         checklist = (
             self.db.query(Checklist)
             .filter(Checklist.employee_id == employee_id)
-            .order_by(Checklist.created_at.desc())
+            .order_by(Checklist.created_at.desc(), Checklist.id.desc())
             .first()
         )
 

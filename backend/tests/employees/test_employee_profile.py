@@ -1,5 +1,5 @@
 """
-Comprehensive Unit & Integration Tests for Employee Profile Detail API (§5.4).
+Comprehensive Unit & Integration Tests for Employee Profile Detail API.
 Verifies 100% of allowed and denied permission matrix cells across all 6 endpoints for all 6 roles.
 """
 import datetime
@@ -22,23 +22,6 @@ from app.modules.employees.directory_service import EmployeeDirectoryService
 from app.modules.employees.profile_service import EmployeeProfileService
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _uploads_to_tmp(monkeypatch, tmp_path):
-    """Document uploads go to a throwaway folder, never the real vault directory."""
-    monkeypatch.setattr("app.modules.employees.profile_service.UPLOAD_BASE_DIR", str(tmp_path))
-
-
-@pytest.fixture(autouse=True)
-def _employee_read_grants(monkeypatch):
-    """Profile scope asks which held roles grant employee:read (§5.14 multi-role).
-    These tests run on a mock DB, so mirror the seeded matrix: every system role
-    except it_admin holds employee:read."""
-    monkeypatch.setattr(
-        "app.modules.employees.profile_service.roles_granting",
-        lambda current_user, resource, action, db: set(current_user.role_names) - {"it_admin"},
-    )
 
 
 def create_mock_user(
@@ -208,6 +191,28 @@ def test_get_employee_profile_it_admin_denied_403():
         app.dependency_overrides.clear()
 
 
+def test_get_employee_profile_it_admin_can_open_their_own():
+    """An IT admin can't read others' profiles, but their own is always theirs."""
+    it_id = uuid.uuid4()
+    set_user_context(it_id, "it_admin")
+
+    mock_db = MagicMock()
+    mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
+        create_mock_user(user_id=it_id),
+        "IT Operations",
+        "it_admin",
+        None,
+        None,
+    )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.get(f"/api/v1/employees/{it_id}")
+        assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
 def test_get_employee_profile_hr_admin_allowed():
     hr_id = uuid.uuid4()
     emp_id = uuid.uuid4()
@@ -308,6 +313,31 @@ def test_patch_employee_self_phone_allowed():
     finally:
         app.dependency_overrides.clear()
 
+
+def test_patch_employee_self_phone_is_audited_with_only_what_changed():
+    """The audit log promises every change: a person's own phone edit included."""
+    emp_id = uuid.uuid4()
+    set_user_context(emp_id, "employee")
+
+    mock_db = MagicMock()
+    mock_user = create_mock_user(user_id=emp_id)
+    mock_db.query().filter().first.return_value = mock_user
+    mock_db.query().outerjoin().outerjoin().outerjoin().filter().first.return_value = (
+        mock_user, "Engineering", "employee", "Manager One", "Senior Manager",
+    )
+    mock_db.query().outerjoin().outerjoin().filter().order_by().all.return_value = []
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        res = client.patch(f"/api/v1/employees/{emp_id}", json={"phone": "+999999999"})
+        assert res.status_code == 200
+        audits = [c.args[0] for c in mock_db.add.call_args_list if isinstance(c.args[0], AuditLog)]
+        assert len(audits) == 1
+        assert audits[0].action == "employee.profile_updated"
+        assert audits[0].before_state == {"phone": "+1234567890"}
+        assert audits[0].after_state == {"phone": "+999999999"}
+    finally:
+        app.dependency_overrides.clear()
 
 def test_patch_employee_self_other_employee_denied_403():
     emp_self = uuid.uuid4()
@@ -858,7 +888,8 @@ def test_upload_document_invalid_extension_rejected_400():
 
         res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
         assert res.status_code == 400
-        assert "Invalid file type" in res.json()["error"]["message"]
+        assert res.json()["error"]["code"] == "file_invalid"
+        assert "Only PDF, PNG or JPG" in res.json()["error"]["message"]
     finally:
         app.dependency_overrides.clear()
 
@@ -879,7 +910,8 @@ def test_upload_document_size_exceeded_rejected_400():
 
         res = client.post(f"/api/v1/employees/{emp_id}/documents", data=data, files=files)
         assert res.status_code == 400
-        assert "File size exceeds maximum allowed limit" in res.json()["error"]["message"]
+        assert res.json()["error"]["code"] == "file_invalid"
+        assert "larger than" in res.json()["error"]["message"]
     finally:
         app.dependency_overrides.clear()
 

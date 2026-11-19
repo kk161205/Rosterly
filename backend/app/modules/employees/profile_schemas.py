@@ -9,7 +9,7 @@ from app.models.lifecycle import DocumentType
 
 
 class ReportingNode(BaseModel):
-    """Shared shape for the reporting-hierarchy tree (§5.4 Overview Tab)."""
+    """Shared shape for the reporting-hierarchy tree (Overview Tab)."""
 
     id: UUID
     full_name: str
@@ -32,7 +32,7 @@ class EmployeeProfileResponse(BaseModel):
     email: str
     role_id: UUID
     role_name: str  # primary role
-    additional_roles: list[RoleRef] = []  # §5.14 multi-role
+    additional_roles: list[RoleRef] = [] # multi-role
     department_id: Optional[UUID] = None
     department_name: Optional[str] = None
     manager_id: Optional[UUID] = None

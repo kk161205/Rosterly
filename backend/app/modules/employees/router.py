@@ -1,11 +1,14 @@
 """
-Employee Directory & Profile API routes — project doc §5.3 & §5.4.
+Employee Directory & Profile API routes — &.
 """
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.request_context import client_ip
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.lifecycle import DocumentType
@@ -27,7 +30,7 @@ from app.modules.employees.profile_service import EmployeeProfileService
 router = APIRouter()
 
 
-# --- Static / Directory Routes (§5.3) ---
+# -- Static / Directory Routes ---
 
 @router.get("/filters", response_model=EmployeeFiltersMetaResponse)
 def get_employee_filters(
@@ -56,7 +59,7 @@ def get_employee_directory(
     db: Session = Depends(get_db),
 ) -> EmployeeDirectoryResponse:
     """
-    Get employee directory list or tree view (PRD §5.3).
+    Get employee directory list or tree view.
     Applies ABAC row-level scoping for manager callers (forced department match).
     Sanitized fields only — excludes salary/document fields for all roles.
     """
@@ -73,7 +76,7 @@ def get_employee_directory(
     return EmployeeDirectoryResponse.model_validate(data)
 
 
-# --- Parameterized Employee Profile Routes (§5.4) ---
+# -- Parameterized Employee Profile Routes ---
 
 @router.get("/{employee_id}", response_model=EmployeeProfileResponse)
 def get_employee_profile_detail(
@@ -82,7 +85,7 @@ def get_employee_profile_detail(
     db: Session = Depends(get_db),
 ) -> EmployeeProfileResponse:
     """
-    Get detailed employee profile record (PRD §5.4).
+    Get detailed employee profile record.
     Applies row-level ABAC scoping: Manager is restricted to own department (403 if out of dept).
     IT Admin is denied (403). Self, HR Admin, Super Admin, and Auditor are allowed.
     """
@@ -100,13 +103,13 @@ def update_employee(
     db: Session = Depends(get_db),
 ) -> EmployeeProfileResponse:
     """
-    Update employee profile details (PRD §5.4).
+    Update employee profile details.
     Applies field-level permission checks:
     - Self may only update 'phone'. Attempting to update restricted fields or address returns 400 Bad Request.
     - HR Admin / Super Admin may update all fields including role_id, status, department_id, manager_id.
     - Manager, IT Admin, Auditor editing someone else's profile are denied (403).
     """
-    ip_address = request.client.host if request.client else None
+    ip_address = client_ip(request)
     service = EmployeeProfileService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.patch_employee_profile(employee_id=employee_id, payload=payload)
     return EmployeeProfileResponse.model_validate(data)
@@ -119,7 +122,7 @@ def get_employee_documents(
     db: Session = Depends(get_db),
 ) -> list[DocumentResponse]:
     """
-    Get documents for an employee (PRD §5.4).
+    Get documents for an employee.
     Excludes is_confidential=true documents unless caller is HR/Admin/self.
     Manager and IT Admin are denied (403).
     """
@@ -135,6 +138,7 @@ def get_employee_documents(
 )
 async def upload_employee_document(
     employee_id: UUID,
+    request: Request,
     file: UploadFile = File(...),
     doc_type: DocumentType = Form(...),
     is_confidential: bool = Form(False),
@@ -142,12 +146,13 @@ async def upload_employee_document(
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
     """
-    Upload a document for an employee (PRD §5.4).
-    Validates file size (max 10MB) and allowed extension (.pdf, .png, .jpg, .jpeg, .docx).
-    Allowed roles: Self, HR Admin, Super Admin. Manager/IT Admin/Auditor denied (403).
+    Upload a document: PDF, PNG or JPG up to MAX_UPLOAD_SIZE_MB.
+    Self for their own profile; HR Admin and Super Admin for anyone.
     """
-    service = EmployeeProfileService(db=db, current_user=current_user)
-    content = await file.read()
+    service = EmployeeProfileService(db=db, current_user=current_user, ip_address=client_ip(request))
+    # Read at most one byte past the limit, so an oversized upload is refused
+    # without holding all of it in memory.
+    content = await file.read(settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024 + 1)
     data = service.upload_employee_document(
         employee_id=employee_id,
         file_name=file.filename or "uploaded_doc",
@@ -158,6 +163,29 @@ async def upload_employee_document(
     return DocumentResponse.model_validate(data)
 
 
+@router.get("/{employee_id}/documents/{doc_id}/download")
+def download_employee_document(
+    employee_id: UUID,
+    doc_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """
+    Download a document: the same people who can see it in the list.
+    Always sent as an attachment, never shown inline.
+    """
+    service = EmployeeProfileService(db=db, current_user=current_user)
+    content, content_type, file_name = service.download_employee_document(employee_id, doc_id)
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.delete(
     "/{employee_id}/documents/{doc_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -165,14 +193,15 @@ async def upload_employee_document(
 def delete_employee_document(
     employee_id: UUID,
     doc_id: UUID,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
     """
-    Delete a document from an employee's vault (PRD §5.4).
+    Delete a document from an employee's vault.
     HR Admin and Super Admin only. Employees cannot delete own documents (403).
     """
-    service = EmployeeProfileService(db=db, current_user=current_user)
+    service = EmployeeProfileService(db=db, current_user=current_user, ip_address=client_ip(request))
     service.delete_employee_document(employee_id=employee_id, doc_id=doc_id)
 
 
@@ -183,7 +212,7 @@ def get_employee_assets(
     db: Session = Depends(get_db),
 ) -> EmployeeAssetsResponse:
     """
-    Get hardware devices and licenses assigned to employee (PRD §5.4).
+    Get hardware devices and licenses assigned to employee.
     Returns current active assignments and past historical assignments.
     Applies department scoping for manager role (403 if out of dept).
     Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
@@ -200,7 +229,7 @@ def get_employee_lifecycle(
     db: Session = Depends(get_db),
 ) -> LifecycleChecklistResponse | None:
     """
-    Get active or latest onboarding/offboarding lifecycle checklist for employee (PRD §5.4).
+    Get active or latest onboarding/offboarding lifecycle checklist for employee.
     Allowed roles: Self, Manager (own dept), HR Admin, IT Admin, Super Admin, Auditor.
     """
     service = EmployeeProfileService(db=db, current_user=current_user)
@@ -221,7 +250,7 @@ def delete_employee(
     """
     Soft-delete employee record (Super Admin only) — see EmployeeDirectoryService.delete_employee.
     """
-    ip_address = request.client.host if request.client else None
+    ip_address = client_ip(request)
     service = EmployeeDirectoryService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.delete_employee(employee_id=employee_id)
     return EmployeeActionResponse.model_validate(data)

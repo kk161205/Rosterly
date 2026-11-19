@@ -2,6 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    LargeBinary,
     Boolean,
     Column,
     DateTime,
@@ -66,6 +67,8 @@ class ChecklistItem(Base):
     status = Column(Enum(ChecklistItemStatus, name="checklist_item_status_enum", native_enum=False), default=ChecklistItemStatus.pending, nullable=False)
     completed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     asset_assignment_id = Column(UUID(as_uuid=True), ForeignKey("asset_assignments.id", ondelete="SET NULL"), nullable=True)
+    # Offboarding: completing this item removes this licence seat.
+    license_assignment_id = Column(UUID(as_uuid=True), ForeignKey("license_assignments.id", ondelete="SET NULL"), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     sort_order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -91,3 +94,17 @@ class Document(Base):
 
     employee = relationship("User", foreign_keys=[employee_id])
     uploader = relationship("User", foreign_keys=[uploaded_by])
+
+
+class DocumentFile(Base):
+    """The bytes of an uploaded document. Kept in
+    Postgres so files survive restarts and redeploys on hosts without a
+    persistent disk, are backed up with the database, and go away with their
+    document row. Read through app/core/file_storage.py only."""
+
+    __tablename__ = "document_files"
+
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    content = Column(LargeBinary, nullable=False)
+    content_type = Column(String(100), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
