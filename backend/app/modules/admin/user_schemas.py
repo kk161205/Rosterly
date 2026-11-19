@@ -1,27 +1,18 @@
 """
-User schemas for PRD §5.14 (User Management).
+User schemas (User Management).
 """
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
-
-
-class UserCreateRequest(BaseModel):
-    full_name: str = Field(..., min_length=1, max_length=255, description="Full name of user")
-    email: EmailStr = Field(..., description="Corporate email address")
-    role_id: UUID = Field(..., description="Role UUID to assign")
-    department_id: Optional[UUID] = Field(None, description="Department UUID")
-    designation: Optional[str] = Field(None, max_length=100, description="Job title / designation")
-    date_of_joining: Optional[date] = Field(None, description="Date of joining")
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserRoleUpdateRequest(BaseModel):
     role_id: UUID = Field(..., description="Primary role UUID")
     additional_role_ids: Optional[list[UUID]] = Field(
         None,
-        description="Additional roles (§5.14 multi-role). Omitted = keep the current additional roles.",
+        description="Additional roles (multi-role). Omitted = keep the current additional roles.",
     )
 
 
@@ -39,7 +30,7 @@ class AccessPreviewPermission(BaseModel):
 
 
 class AccessPreviewResponse(BaseModel):
-    """GET /users/access-preview (§5.14): what a set of roles merges into."""
+    """GET /users/access-preview: what a set of roles merges into."""
 
     permissions: list[AccessPreviewPermission]
     conflicts: list[list[str]]  # role-name pairs that can't be held together
@@ -61,6 +52,7 @@ class UserListItemResponse(BaseModel):
     department_name: Optional[str] = None
     designation: str
     status: str
+    mfa_enabled: bool = False
     last_login_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
@@ -101,3 +93,11 @@ class AssignableRoleResponse(BaseModel):
     is_system_role: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SignInLinkResponse(BaseModel):
+    """A single-use set-password link, shown once to the admin who made it."""
+
+    link: str
+    purpose: str  # "invite" (never signed in) or "reset"
+    expires_in_minutes: int

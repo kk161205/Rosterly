@@ -1,5 +1,5 @@
 """
-User Management Service — PRD §5.14 (User Management).
+User Management service.
 Handles user listing, search, creation, role change, status toggle,
 force logout, session revocation, and assignable roles.
 """
@@ -25,13 +25,22 @@ from app.core.role_policy import (
     validate_role_set,
 )
 from app.core.security import (
-    INVITE_TOKEN_PURPOSE,
     CurrentUser,
     check_permission,
-    create_password_reset_token,
     get_password_hash,
 )
-from app.models.auth import Department, Permission, Role, RolePermission, Session as SessionModel, User, UserStatus
+from app.core.approver_resolution import reroute_pending_steps
+from app.core.password_tokens import issue_password_token, link_minutes, cancel_password_tokens
+from app.models.auth import (
+    Department,
+    PasswordTokenPurpose,
+    Permission,
+    Role,
+    RolePermission,
+    Session as SessionModel,
+    User,
+    UserStatus,
+)
 from app.models.system import AuditLog
 from app.modules.auth.schemas import MessageResponse
 from app.modules.admin.user_schemas import (
@@ -39,7 +48,7 @@ from app.modules.admin.user_schemas import (
     AccessPreviewResponse,
     AssignableRoleResponse,
     RoleRef,
-    UserCreateRequest,
+    SignInLinkResponse,
     UserListItemResponse,
     UserListResponse,
     UserResponse,
@@ -47,7 +56,7 @@ from app.modules.admin.user_schemas import (
     UserStatusUpdateRequest,
 )
 from app.modules.dashboard.service import invalidate_dashboard_cache
-from app.modules.notifications.email import send_invite_email
+from app.modules.notifications.email import set_password_link
 from app.modules.notifications.dispatch import notify_role_changed
 
 
@@ -60,7 +69,7 @@ class UserManagementService:
     def revoke_all_user_sessions(self, user_id: UUID) -> int:
         """
         Revokes all active sessions for target user and invalidates session cache.
-        Zero-trust session revocation per PRD §2.4 and §5.14.
+        Zero-trust: a revoked session is refused on its very next request.
         """
         now = datetime.now(timezone.utc)
         count = (
@@ -105,7 +114,7 @@ class UserManagementService:
         page_size: int = 25,
     ) -> UserListResponse:
         """
-        GET /users (PRD §5.14):
+        GET /users:
         Query user accounts with search, role_id, status filters and pagination.
         Includes last_login_at. Never leaks password_hash.
         Access: super_admin, hr_admin.
@@ -147,7 +156,7 @@ class UserManagementService:
 
         total = query.count()
         offset = (page - 1) * page_size
-        rows = query.order_by(User.created_at.desc()).offset(offset).limit(page_size).all()
+        rows = query.order_by(User.created_at.desc(), User.id.desc()).offset(offset).limit(page_size).all()
 
         items: list[UserListItemResponse] = []
         for user, role_name, dept_name in rows:
@@ -164,6 +173,7 @@ class UserManagementService:
                     department_name=dept_name,
                     designation=user.designation,
                     status=user.status.value if hasattr(user.status, "value") else str(user.status),
+                    mfa_enabled=bool(user.mfa_enabled),
                     last_login_at=user.last_login_at,
                     created_at=user.created_at,
                 )
@@ -178,7 +188,7 @@ class UserManagementService:
 
     def get_assignable_roles(self) -> list[AssignableRoleResponse]:
         """
-        GET /users/assignable-roles (PRD §5.14 addition):
+        GET /users/assignable-roles:
         Returns roles that the current caller is permitted to assign.
         - super_admin: can assign all roles.
         - non-super_admin (hr_admin): cannot assign super_admin or it_admin.
@@ -203,114 +213,126 @@ class UserManagementService:
             )
         return results
 
-    def create_user(self, payload: UserCreateRequest) -> UserResponse:
-        """
-        POST /users (PRD §5.14):
-        Creates a new user account in inactive/pending-invite status.
-        - Non-super_admin callers receive 403 Forbidden if role_id resolves to super_admin or it_admin.
-        - Email lowercased; 409 Conflict if duplicate.
-        - Validates role_id and department_id exist.
-        - Auto-generates race-safe unique employee_code.
-        - Defaults designation and date_of_joining if omitted.
-        - Does NOT set a plaintext password; sets inactive status and random unusable password hash.
-        - Writes to audit_logs in same transaction.
-        Access: super_admin, hr_admin.
-        """
-        check_permission(self.current_user, "user", "create", self.db)
+    def create_account(
+        self,
+        *,
+        full_name: str,
+        email: str,
+        role_id: Optional[UUID],
+        department_id: Optional[UUID],
+        manager_id: Optional[UUID],
+        designation: str,
+        date_of_joining,
+        status: UserStatus,
+    ) -> tuple[User, str]:
+        """The one place accounts are created ("Add new joiner", bootstrap).
 
-        # Validate role exists
-        target_role = self.db.query(Role).filter(Role.id == payload.role_id).first()
+        Creates the user with an unusable random password, writes the audit row
+        and issues a single-use set-password link. Returns (user, raw link token).
+        Does not commit — the caller commits with the rest of its work.
+        - Only super_admin may grant super_admin / it_admin.
+        - The role defaults to `employee`.
+        - Email must be unique (stored lower-case).
+        """
+        if role_id is None:
+            target_role = self.db.query(Role).filter(Role.name == "employee").first()
+        else:
+            target_role = self.db.query(Role).filter(Role.id == role_id).first()
         if not target_role:
-            raise NotFoundError(f"Role with ID '{payload.role_id}' not found.")
-
-        # §5.14: only super_admin may grant super_admin / it_admin
+            raise NotFoundError("Role not found.")
         assert_can_assign_role(self.current_user, target_role.name)
 
-        # Validate department if provided
-        dept_name: Optional[str] = None
-        if payload.department_id:
-            dept = self.db.query(Department).filter(Department.id == payload.department_id).first()
-            if not dept:
-                raise NotFoundError(f"Department with ID '{payload.department_id}' not found.")
-            dept_name = dept.name
+        if department_id and not self.db.query(Department.id).filter(Department.id == department_id).first():
+            raise NotFoundError("Department not found.")
+        if manager_id and not self.db.query(User.id).filter(User.id == manager_id).first():
+            raise NotFoundError("Manager not found.")
 
-        # Clean & validate email uniqueness
-        clean_email = payload.email.strip().lower()
-        existing_email = self.db.query(User.id).filter(func.lower(User.email) == clean_email).first()
-        if existing_email:
-            raise ConflictError(f"User with email '{clean_email}' already exists.")
-
-        # Generate race-safe unique employee code
-        employee_code = self._generate_next_employee_code()
-
-        # Defaults for designation and date_of_joining
-        designation = payload.designation.strip() if payload.designation else "Employee"
-        date_of_joining = payload.date_of_joining or datetime.now(timezone.utc).date()
-
-        # Created inactive with an unusable random password; the invite's
-        # set-password link activates it (auth_service.reset_password).
-        random_secret = secrets.token_urlsafe(32)
-        password_hash = get_password_hash(random_secret)
+        clean_email = email.strip().lower()
+        if self.db.query(User.id).filter(func.lower(User.email) == clean_email).first():
+            raise ConflictError(f"Someone already has the email '{clean_email}'.")
 
         new_user = User(
             id=uuid.uuid4(),
-            employee_code=employee_code,
-            full_name=payload.full_name.strip(),
+            employee_code=self._generate_next_employee_code(),
+            full_name=full_name.strip(),
             email=clean_email,
-            password_hash=password_hash,
+            password_hash=get_password_hash(secrets.token_urlsafe(32)),
             role_id=target_role.id,
-            department_id=payload.department_id,
-            designation=designation,
-            status=UserStatus.inactive,
+            department_id=department_id,
+            manager_id=manager_id,
+            designation=designation.strip(),
+            status=status,
             date_of_joining=date_of_joining,
         )
         self.db.add(new_user)
-
-        audit_log = AuditLog(
-            id=uuid.uuid4(),
-            actor_id=self.current_user.user_id,
-            action="user.created",
-            entity_type="user",
-            entity_id=new_user.id,
-            before_state=None,
-            after_state={
-                "employee_code": new_user.employee_code,
-                "full_name": new_user.full_name,
-                "email": new_user.email,
-                "role_id": str(target_role.id),
-                "role_name": target_role.name,
-                "department_id": str(payload.department_id) if payload.department_id else None,
-                "status": UserStatus.inactive.value,
-            },
-            ip_address=self.ip_address,
+        self.db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="user.created",
+                entity_type="user",
+                entity_id=new_user.id,
+                before_state=None,
+                after_state={
+                    "employee_code": new_user.employee_code,
+                    "full_name": new_user.full_name,
+                    "email": new_user.email,
+                    "role_name": target_role.name,
+                    "department_id": str(department_id) if department_id else None,
+                    "manager_id": str(manager_id) if manager_id else None,
+                    "status": status.value,
+                },
+                ip_address=self.ip_address,
+            )
         )
-        self.db.add(audit_log)
+        self.db.flush()
+        token = issue_password_token(
+            self.db, new_user.id, PasswordTokenPurpose.invite, created_by=self.current_user.user_id
+        )
+        return new_user, token
+
+    def create_sign_in_link(self, user_id: UUID) -> SignInLinkResponse:
+        """POST /users/{id}/sign-in-link.
+
+        Creates a single-use set-password link for someone, shown once to the
+        admin to hand over (email can't be sent while delivery is off). An
+        account that has never signed in gets a 72-hour invite link (it also
+        activates an invited account); anyone else a 15-minute reset link.
+        A new link cancels the person's earlier unused ones. Audited.
+        """
+        check_permission(self.current_user, "user", "update", self.db)
+        target = (
+            self.db.query(User)
+            .options(selectinload(User.role), selectinload(User.additional_roles))
+            .filter(User.id == user_id)
+            .first()
+        )
+        if not target:
+            raise NotFoundError("User not found.")
+        assert_can_manage_user(self.current_user, user_role_names(target))
+        if target.status == UserStatus.terminated:
+            raise ConflictError("This person has left; their account can't be signed in to.")
+
+        purpose = PasswordTokenPurpose.invite if target.last_login_at is None else PasswordTokenPurpose.reset
+        token = issue_password_token(self.db, target.id, purpose, created_by=self.current_user.user_id)
+        self.db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                actor_id=self.current_user.user_id,
+                action="user.sign_in_link_created",
+                entity_type="user",
+                entity_id=target.id,
+                before_state=None,
+                after_state={"purpose": purpose.value},
+                ip_address=self.ip_address,
+            )
+        )
         self.db.commit()
-        self.db.refresh(new_user)
-
-        # §5.14 invite email with a set-password link. Delivery stays off until
-        # SMTP is configured (email_service); the account is created either way.
-        invite_token = create_password_reset_token(new_user.id, purpose=INVITE_TOKEN_PURPOSE)
-        send_invite_email(new_user.email, new_user.full_name, invite_token)
-
-        return UserResponse(
-            id=new_user.id,
-            employee_code=new_user.employee_code,
-            full_name=new_user.full_name,
-            email=new_user.email,
-            role_id=new_user.role_id,
-            role_name=target_role.name,
-            department_id=new_user.department_id,
-            department_name=dept_name,
-            designation=new_user.designation,
-            status=new_user.status.value if hasattr(new_user.status, "value") else str(new_user.status),
-            last_login_at=new_user.last_login_at,
-            created_at=new_user.created_at,
-        )
+        return SignInLinkResponse(link=set_password_link(token), purpose=purpose.value, expires_in_minutes=link_minutes(purpose))
 
     def update_user_role(self, user_id: UUID, payload: UserRoleUpdateRequest) -> UserResponse:
         """
-        PATCH /users/{id}/role (PRD §5.14):
+        PATCH /users/{id}/role:
         Assigns a new role to target user.
         - Locked with with_for_update().
         - Reject changing your own role (self-lockout protection).
@@ -355,7 +377,7 @@ class UserManagementService:
             if missing:
                 raise NotFoundError(f"Role with ID '{next(iter(missing))}' not found.")
 
-        # §5.14: a user holding a privileged role (as any of their roles) can only
+        # a user holding a privileged role (as any of their roles) can only
         # be changed by a super_admin; the same rule then checks every new role.
         assert_can_manage_user(self.current_user, user_role_names(target_user))
         extra = validate_role_set(self.db, self.current_user, new_role, requested_extra)
@@ -374,7 +396,7 @@ class UserManagementService:
         # Zero-trust revocation of all active sessions for this user
         self.revoke_all_user_sessions(target_user.id)
 
-        # §6: critical account_updated notification to the affected user
+        # critical account_updated notification to the affected user
         notify_role_changed(self.db, target_user.id, " + ".join([new_role.name, *new_extra_names]))
 
         audit_log = AuditLog(
@@ -419,7 +441,7 @@ class UserManagementService:
 
     def access_preview(self, role_ids: list[UUID]) -> AccessPreviewResponse:
         """
-        GET /users/access-preview (§5.14 multi-role): the merged permission set
+        GET /users/access-preview (multi-role): the merged permission set
         a combination of roles gives — each permission once, with the roles that
         grant it — plus any configured conflicts among them. Lets the Access
         page show exactly what saving would grant, computed by the same tables
@@ -450,7 +472,7 @@ class UserManagementService:
 
     def update_user_status(self, user_id: UUID, payload: UserStatusUpdateRequest) -> UserResponse:
         """
-        PATCH /users/{id}/status (PRD §5.14):
+        PATCH /users/{id}/status:
         Updates account status: accepts only 'active' or 'inactive'.
         - Non-super_admin callers cannot change status of super_admin or it_admin users.
         - Cannot deactivate own account (self-deactivation protection).
@@ -481,7 +503,7 @@ class UserManagementService:
         if not target_user:
             raise NotFoundError(f"User with ID '{user_id}' not found.")
 
-        # §5.14: only super_admin may change a super_admin / it_admin user's status
+        # only super_admin may change a super_admin / it_admin user's status
         assert_can_manage_user(self.current_user, user_role_names(target_user))
 
         # Self-deactivation guard
@@ -505,8 +527,11 @@ class UserManagementService:
         target_user.status = UserStatus(clean_status)
 
         # If transitioning to inactive, immediately revoke all active sessions
+        # and move any request steps waiting on them to HR.
         if clean_status == "inactive":
             self.revoke_all_user_sessions(target_user.id)
+            reroute_pending_steps(self.db, target_user.id)
+            cancel_password_tokens(self.db, target_user.id)
 
         audit_log = AuditLog(
             id=uuid.uuid4(),
@@ -528,7 +553,7 @@ class UserManagementService:
 
     def force_logout(self, user_id: UUID) -> MessageResponse:
         """
-        POST /users/{id}/force-logout (PRD §5.14):
+        POST /users/{id}/force-logout:
         Revokes all active sessions across all devices for target user and invalidates session cache.
         404 if user not found.
         Writes to audit_logs in same transaction.
