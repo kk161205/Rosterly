@@ -1,8 +1,8 @@
 """
-Inbox service — project doc §5.2a (Home — Inbox).
+Inbox service (Home — Waiting on you).
 
 Read-only aggregation of what is waiting on the caller. Actions are taken
-through the existing endpoints (§5.5, §5.6, §5.10, §5.12), so their RBAC,
+through the existing endpoints, so their RBAC,
 business rules and audit logging stay the single source of truth.
 """
 from datetime import date, datetime, timedelta, timezone
@@ -13,9 +13,11 @@ from uuid import UUID
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.clock import local_today
 from app.core.security import CurrentUser, has_permission
 from app.models.assets import Asset, AssetAssignment, AssetStatus, MaintenanceStatus, MaintenanceTicket
 from app.models.auth import User, UserStatus
+from app.models.leave_attendance import LeaveRequest, LeaveStatus
 from app.models.lifecycle import Checklist, ChecklistItem, ChecklistItemStatus, ChecklistStatus, ChecklistType
 from app.models.requests import ApprovalChainTemplate, ApprovalStatus, Request, RequestApproval
 from app.modules.inbox.schemas import (
@@ -27,10 +29,13 @@ from app.modules.inbox.schemas import (
     InboxCounts,
     InboxItem,
     InboxResponse,
+    LeaveDetail,
     PersonRef,
     TaskDetail,
     TicketDetail,
 )
+from app.modules.leave.policy import company_holidays, working_days
+from app.modules.leave.service import LeaveService
 from app.modules.requests.service import RequestService
 
 MAX_ITEMS_PER_GROUP = 50
@@ -74,12 +79,12 @@ class InboxService:
         self.db = db
         self.current_user = current_user
         self.user_id = UUID(str(current_user.user_id))
-        self.role_ids = current_user.role_ids  # primary + additional (§5.14)
+        self.role_ids = current_user.role_ids # primary + additional
 
     # ------------------------------------------------------------ public
 
     def get_inbox(self) -> InboxResponse:
-        decisions = self._decisions()
+        decisions = self._decisions() + self._leave()
         tasks = self._tasks()
         tickets = self._tickets()
         return InboxResponse(
@@ -100,7 +105,7 @@ class InboxService:
                 joinedload(Request.approvals).joinedload(RequestApproval.approver),
                 joinedload(Request.approvals).joinedload(RequestApproval.approver_role),
             )
-            .order_by(Request.created_at.asc())
+            .order_by(Request.created_at.asc(), Request.id.asc())
             .limit(MAX_ITEMS_PER_GROUP)
             .all()
         )
@@ -253,7 +258,7 @@ class InboxService:
 
         # Most pressing first: the earliest join/exit date (overdue ones lead); undated last
         rows.sort(key=lambda i: (key_date_of(i) is None, key_date_of(i) or date.max))
-        today = date.today()
+        today = local_today()
         items = []
         for item in rows[:MAX_ITEMS_PER_GROUP]:
             checklist = item.checklist
@@ -306,7 +311,7 @@ class InboxService:
                     MaintenanceTicket.assigned_to.is_(None),
                 ),
             )
-            .order_by(MaintenanceTicket.created_at.asc())
+            .order_by(MaintenanceTicket.created_at.asc(), MaintenanceTicket.id.asc())
             .limit(MAX_ITEMS_PER_GROUP)
             .all()
         )
@@ -359,6 +364,24 @@ class InboxService:
                 done_at=approval.decision_at,
             ))
 
+        for leave in (
+            self.db.query(LeaveRequest)
+            .options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.leave_type))
+            .filter(
+                LeaveRequest.approver_id == me,
+                LeaveRequest.updated_at >= since,
+                LeaveRequest.status.in_([LeaveStatus.approved, LeaveStatus.rejected]),
+            )
+            .all()
+        ):
+            done.append(DoneItem(
+                id=f"leave:{leave.id}",
+                kind="leave",
+                title=f"{leave.employee.full_name} · {leave.leave_type.name}",
+                outcome="Approved" if leave.status == LeaveStatus.approved else "Rejected",
+                done_at=leave.updated_at,
+            ))
+
         for item in (
             self.db.query(ChecklistItem)
             .filter(ChecklistItem.completed_by == me, ChecklistItem.completed_at >= since)
@@ -378,6 +401,54 @@ class InboxService:
                                  outcome="Resolved", done_at=ticket.resolved_at))
 
         return sorted(done, key=lambda d: d.done_at, reverse=True)
+
+    # ------------------------------------------------------------ leave
+
+    def _leave(self) -> list[InboxItem]:
+        """Leave waiting on this approver — the same rows as GET /leave-requests/pending-approval."""
+        if not has_permission(self.current_user, "leave_request", "approve", self.db):
+            return []
+        rows = (
+            LeaveService(db=self.db, current_user=self.current_user)
+            .pending_query()
+            .options(joinedload(LeaveRequest.employee).joinedload(User.department), joinedload(LeaveRequest.leave_type))
+            .order_by(LeaveRequest.created_at.asc(), LeaveRequest.id.asc())
+            .limit(MAX_ITEMS_PER_GROUP)
+            .all()
+        )
+        if not rows:
+            return []
+        holidays = company_holidays(self.db, min(r.start_date for r in rows), max(r.end_date for r in rows))
+        this_year = local_today().year
+        items = []
+        for r in rows:
+            days = len(working_days(r.start_date, r.end_date, holidays))
+            fmt = "%d %b" if r.start_date.year == r.end_date.year == this_year else "%d %b %Y"
+            span = r.start_date.strftime(fmt) if r.start_date == r.end_date else f"{r.start_date.strftime(fmt)} – {r.end_date.strftime(fmt)}"
+            employee = r.employee
+            items.append(
+                InboxItem(
+                    id=f"leave:{r.id}",
+                    kind="leave",
+                    title=f"{employee.full_name} · {r.leave_type.name}",
+                    meta=f"{days} working day{'' if days == 1 else 's'} · {span}",
+                    created_at=r.created_at,
+                    leave=LeaveDetail(
+                        leave_id=r.id,
+                        employee=PersonRef(
+                            id=employee.id,
+                            full_name=employee.full_name,
+                            department=employee.department.name if employee.department else None,
+                        ),
+                        leave_type=r.leave_type.name,
+                        start_date=r.start_date,
+                        end_date=r.end_date,
+                        working_days=days,
+                        reason=r.reason,
+                    ),
+                )
+            )
+        return items
 
     # ------------------------------------------------------------ helpers
 

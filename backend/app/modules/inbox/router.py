@@ -1,5 +1,5 @@
 """
-Inbox API — project doc §5.2a (Home — Inbox). Read-only.
+Inbox API (Home — Waiting on you). Read-only.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -18,5 +18,5 @@ def get_inbox(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> InboxResponse:
-    """GET /inbox (§5.2a): everything waiting on the caller, plus what they finished in the last 24h."""
+    """GET /inbox: everything waiting on the caller, plus what they finished in the last 24h."""
     return InboxService(db=db, current_user=current_user).get_inbox()

@@ -1,5 +1,5 @@
 """
-§5.2a Home — Inbox (GET /inbox).
+Home — Inbox (GET /inbox).
 
 Role scoping (decisions need request:approve, tickets need maintenance_ticket:update,
 tasks follow checklist owner_role_id), the evidence checks on a decision, the
@@ -24,12 +24,12 @@ from app.models.assets import (
     AssetAssignment,
     AssetCategory,
     AssetStatus,
-    DepreciationMethod,
     MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
 )
 from app.models.auth import Permission, Role, RolePermission, User, UserStatus
+from app.models.leave_attendance import LeaveRequest, LeaveStatus, LeaveType
 from app.models.lifecycle import Checklist, ChecklistItem, ChecklistItemStatus, ChecklistStatus, ChecklistType
 from app.models.requests import (
     ApprovalChainStep,
@@ -53,6 +53,8 @@ GRANTS = {
     ("request", "approve"): ["manager", "hr_admin", "it_admin", "super_admin"],
     ("maintenance_ticket", "update"): ["it_admin", "super_admin"],
     ("maintenance_ticket", "read"): ["it_admin", "super_admin"],
+    ("leave_request", "approve"): ["manager", "hr_admin", "super_admin"],
+    ("assets", "read"): ["it_admin", "super_admin"],
 }
 THRESHOLD = Decimal("50000")
 
@@ -69,7 +71,7 @@ def override_get_db():
 def seed():
     app.dependency_overrides[get_db] = override_get_db
     db = TestingSessionLocal()
-    for model in (Notification, AuditLog, RequestApproval, Request, ApprovalChainStep, ApprovalChainTemplate,
+    for model in (Notification, AuditLog, LeaveRequest, LeaveType, RequestApproval, Request, ApprovalChainStep, ApprovalChainTemplate,
                   ChecklistItem, Checklist, MaintenanceTicket, AssetAssignment, Asset,
                   User, RolePermission, Permission, Role):
         db.query(model).delete()
@@ -123,8 +125,7 @@ def _user(role_name: str, manager_id=None, name=None, status=UserStatus.active, 
 def _asset(tag: str, name: str, status=AssetStatus.in_stock, holder_id=None) -> Asset:
     db = TestingSessionLocal()
     asset = Asset(id=uuid.uuid4(), asset_tag=tag, name=name, category=AssetCategory.laptop, vendor="Dell",
-                  purchase_date=date(2025, 1, 1), purchase_cost=Decimal("90000"), current_value=Decimal("80000"),
-                  depreciation_method=DepreciationMethod.straight_line, useful_life_months=36,
+                  purchase_date=date(2025, 1, 1), purchase_cost=Decimal("90000"),
                   status=status, current_holder_id=holder_id)
     db.add(asset)
     if holder_id:
@@ -401,3 +402,61 @@ def test_checklist_list_carries_the_persons_key_details():
     assert item["employee_designation"] == "Staff"
     assert item["date_of_joining"] == "2025-01-01"
     assert item["date_of_exit"] is None
+
+
+def _leave(employee: User, start: date, end: date, status=LeaveStatus.pending, approver_id=None) -> None:
+    db = TestingSessionLocal()
+    kind = db.query(LeaveType).filter(LeaveType.name == "Casual leave").first()
+    if kind is None:
+        kind = LeaveType(id=uuid.uuid4(), name="Casual leave", annual_days=Decimal("12"))
+        db.add(kind)
+        db.flush()
+    db.add(LeaveRequest(id=uuid.uuid4(), employee_id=employee.id, leave_type_id=kind.id, start_date=start,
+                        end_date=end, status=status, approver_id=approver_id, reason="Family visit"))
+    db.commit()
+    db.close()
+
+
+def test_leave_waiting_on_a_manager_shows_as_a_decision():
+    manager = _user("manager")
+    report = _user("employee", manager_id=manager.id, name="Alex Murphy")
+    stranger = _user("employee", name="Not My Report")
+    _leave(report, date(2030, 1, 7), date(2030, 1, 8))  # Mon–Tue
+    _leave(stranger, date(2030, 1, 7), date(2030, 1, 7))
+    _act_as(manager, "manager")
+    body = client.get("/api/v1/inbox").json()
+    leave = [i for i in body["items"] if i["kind"] == "leave"]
+    assert len(leave) == 1  # direct reports only
+    assert leave[0]["title"] == "Alex Murphy · Casual leave"
+    assert leave[0]["leave"]["working_days"] == 2
+    assert leave[0]["meta"].startswith("2 working days")
+    assert body["counts"]["decisions"] == 1
+
+
+def test_hr_sees_all_pending_leave_and_employees_see_none():
+    hr_admin = _user("hr_admin")
+    employee = _user("employee")
+    _leave(employee, date(2030, 1, 7), date(2030, 1, 7))
+    _act_as(hr_admin, "hr_admin")
+    assert [i["kind"] for i in client.get("/api/v1/inbox").json()["items"]].count("leave") == 1
+    _act_as(employee, "employee")
+    assert all(i["kind"] != "leave" for i in client.get("/api/v1/inbox").json()["items"])
+
+
+def test_leave_i_decided_today_is_in_done_today():
+    manager = _user("manager")
+    report = _user("employee", manager_id=manager.id, name="Alex Murphy")
+    _leave(report, date(2030, 1, 7), date(2030, 1, 7), status=LeaveStatus.approved, approver_id=manager.id)
+    _act_as(manager, "manager")
+    done = client.get("/api/v1/inbox").json()["done_today"]
+    assert [(d["kind"], d["outcome"]) for d in done] == [("leave", "Approved")]
+
+
+def test_asset_search_matches_the_category_too():
+    """People (and the Guide) type "laptop", not the model name."""
+    it_admin = _user("it_admin")
+    _asset("AST-0101", "ThinkPad X1")  # category laptop
+    _act_as(it_admin, "it_admin")
+    res = client.get("/api/v1/assets", params={"search": "laptop"})
+    assert res.status_code == 200, res.text
+    assert [a["asset_tag"] for a in res.json()["items"]] == ["AST-0101"]

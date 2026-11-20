@@ -1,5 +1,5 @@
 """
-Inbox schemas — project doc §5.2a (Home — Inbox).
+Inbox schemas (Home — Waiting on you).
 """
 from datetime import date, datetime
 from decimal import Decimal
@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-InboxKind = Literal["approval", "task", "ticket"]
+InboxKind = Literal["approval", "leave", "task", "ticket"]
 CheckStatus = Literal["pass", "attention", "info"]
 
 
@@ -74,6 +74,16 @@ class TicketDetail(BaseModel):
     assigned_to_me: bool
 
 
+class LeaveDetail(BaseModel):
+    leave_id: UUID
+    employee: PersonRef
+    leave_type: str
+    start_date: date
+    end_date: date
+    working_days: int
+    reason: Optional[str] = None
+
+
 class InboxItem(BaseModel):
     id: str
     kind: InboxKind
@@ -83,6 +93,7 @@ class InboxItem(BaseModel):
     approval: Optional[ApprovalDetail] = None
     task: Optional[TaskDetail] = None
     ticket: Optional[TicketDetail] = None
+    leave: Optional[LeaveDetail] = None
 
 
 class DoneItem(BaseModel):
