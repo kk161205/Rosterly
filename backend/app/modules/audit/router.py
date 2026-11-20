@@ -1,5 +1,5 @@
 """
-Audit Log Viewer API — project doc §5.17. super_admin and auditor only,
+Audit Log Viewer API. super_admin and auditor only,
 enforced via the (audit_log, read) permission.
 """
 from datetime import date
@@ -29,7 +29,7 @@ def list_audit_logs(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AuditLogListResponse:
-    """GET /audit-logs (§5.17): newest first; read-only, writes nothing to audit_logs."""
+    """GET /audit-logs: newest first; read-only, writes nothing to audit_logs."""
     return AuditLogService(db=db, current_user=current_user).list_logs(
         actor_id=actor_id,
         action=action,

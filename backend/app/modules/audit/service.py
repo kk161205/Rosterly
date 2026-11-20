@@ -1,5 +1,5 @@
 """
-Audit Log Viewer service — project doc §5.17. Read-only: never writes to audit_logs.
+Audit Log Viewer service. Read-only: never writes to audit_logs.
 """
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID

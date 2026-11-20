@@ -1,5 +1,5 @@
 """
-§5.17 Audit Log Viewer: GET /audit-logs.
+Audit Log Viewer: GET /audit-logs.
 
 Two layers:
   * RBAC (create_rbac_mock_db pattern): (audit_log, read) is granted to

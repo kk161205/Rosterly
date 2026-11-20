@@ -1,10 +1,10 @@
-"""seed RBAC permission for the audit log viewer (§5.17)
+"""seed RBAC permission for the audit log viewer
 
 Seeds the (resource, action) permission and role_permissions grants backing:
-- GET /audit-logs (§5.17):
+- GET /audit-logs:
     (audit_log, read) -> super_admin, auditor
 
-Notifications (§5.16) are self-scoped for every authenticated user and need no
+Notifications are self-scoped for every authenticated user and need no
 permission row.
 
 Idempotent: existing permission/grant rows are reused. Fails loudly if a
@@ -29,7 +29,7 @@ branch_labels = None
 depends_on = None
 
 SEED_PERMISSIONS = [
-    ("audit_log", "read", "View the system-wide audit log (§5.17)"),
+    ("audit_log", "read", "View the system-wide audit log"),
 ]
 
 SEED_GRANTS = {

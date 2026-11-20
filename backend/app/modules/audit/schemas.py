@@ -1,5 +1,5 @@
 """
-Audit Log Viewer schemas — project doc §5.17.
+Audit Log Viewer schemas.
 """
 from datetime import datetime
 from typing import Any
