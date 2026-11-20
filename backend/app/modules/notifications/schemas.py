@@ -1,5 +1,5 @@
 """
-Notifications Center schemas — project doc §5.16.
+Notifications Center schemas.
 """
 from datetime import datetime
 from enum import Enum
@@ -9,14 +9,14 @@ from pydantic import BaseModel, ConfigDict
 
 
 class NotificationCategory(str, Enum):
-    """PRD Addition: the frontend's filter tabs ("All" is the absence of a category)."""
+    """the frontend's filter tabs ("All" is the absence of a category)."""
 
     approvals = "approvals"
     hardware = "hardware"
     system = "system"
 
 
-# PRD Addition: notification `type` -> tab. Types are those in §6 and those
+# notification `type` -> tab. Types are those and those
 # the codebase actually emits. Anything not listed (task_assigned,
 # onboarding_*/offboarding_*, account_updated, unknown) is a System Alert.
 APPROVAL_TYPES = frozenset({"approval_needed", "request_status_change"})

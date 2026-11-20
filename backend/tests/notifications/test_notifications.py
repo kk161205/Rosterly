@@ -1,5 +1,5 @@
 """
-§5.16 Notifications Center: strictly self-scoped list, mark read, mark all read.
+Notifications Center: strictly self-scoped list, mark read, mark all read.
 
 Real in-memory SQLite. Expected values are hand-computed from the seed below.
 

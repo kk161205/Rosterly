@@ -1,5 +1,5 @@
 """
-Notifications Center API — project doc §5.16.
+Notifications Center API.
 
 Self-scoped for every authenticated user; no (resource, action) permission applies.
 """
@@ -26,14 +26,14 @@ router = APIRouter()
 def list_notifications(
     unread_only: bool = Query(False, description="Only unread notifications"),
     category: NotificationCategory | None = Query(
-        None, description="PRD Addition: filter-tab category (approvals, hardware, system)"
+        None, description=": filter-tab category (approvals, hardware, system)"
     ),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> NotificationListResponse:
-    """GET /notifications (§5.16): the caller's notifications, newest first."""
+    """GET /notifications: the caller's notifications, newest first."""
     return NotificationService(db=db, current_user=current_user).list_notifications(
         unread_only=unread_only, category=category, page=page, page_size=page_size
     )
@@ -44,7 +44,7 @@ def mark_all_read(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MarkAllReadResponse:
-    """POST /notifications/mark-all-read (§5.16): marks only the caller's unread rows."""
+    """POST /notifications/mark-all-read: marks only the caller's unread rows."""
     return NotificationService(db=db, current_user=current_user).mark_all_read()
 
 
@@ -54,5 +54,5 @@ def mark_notification_read(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> NotificationResponse:
-    """PATCH /notifications/{id}/read (§5.16): 404 for anyone else's notification; idempotent."""
+    """PATCH /notifications/{id}/read: 404 for anyone else's notification; idempotent."""
     return NotificationService(db=db, current_user=current_user).mark_read(notification_id)

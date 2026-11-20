@@ -1,5 +1,5 @@
 """
-Notifications Center service — project doc §5.16.
+Notifications Center service.
 
 Strictly self-scoped: every query filters on the caller's user_id, so another
 user's notification is indistinguishable from a missing one (404, never 403).

@@ -1,5 +1,5 @@
 """
-Email dispatch worker (project doc §6, §7 rule 5).
+Email dispatch worker.
 
 Task path referenced by app/core/celery_app.py's beat schedule:
   - app.modules.notifications.dispatch.dispatch_pending_emails  (every 120s)
@@ -9,14 +9,14 @@ closes its own SQLAlchemy session via app.db.session.SessionLocal (see
 app/db/session.py) instead of using the get_db() request dependency.
 
 Sending goes through app/modules/notifications/email.py, which stays disabled until
-real SMTP credentials are supplied and EMAIL_DELIVERY_ENABLED=true (rules.md
-§4.5). While delivery is unavailable, _send_email returns False and the caller
+real SMTP credentials are supplied and EMAIL_DELIVERY_ENABLED=true (
+). While delivery is unavailable, _send_email returns False and the caller
 deliberately does NOT stamp email_sent_at — the row stays pending and is sent
 on a later run once delivery is switched on.
 """
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -24,14 +24,14 @@ from sqlalchemy.orm import Session
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.models.system import Notification, NotificationChannel
-from app.modules.notifications.email import send_email
+from app.modules.notifications.email import email_delivery_available, send_email
 
 logger = logging.getLogger(__name__)
 
 
 def notify_role_changed(db: Session, user_id: uuid.UUID, new_role_name: str) -> None:
     """
-    §6 trigger "Role changed": critical account_updated notification to the
+    trigger "Role changed": critical account_updated notification to the
     affected user, sent in-app and by email regardless of their email
     preference. Added to the caller's transaction — the caller commits.
     """
@@ -68,11 +68,20 @@ def _send_email(notification: Notification) -> bool:
     return send_email(recipient_email, notification.title, notification.message)
 
 
+BATCH = 50
+
+
 def _run_dispatch_pending_emails(db) -> dict:
     """
     Business logic behind dispatch_pending_emails, split out from the Celery
     task body so it can be unit tested against a mocked db session.
     """
+    # Email off (no SMTP): nothing to send, so don't load anything every two minutes.
+    if not email_delivery_available():
+        return {"sent": 0, "skipped": 0}
+    # Only alerts from the last day — when email is switched on, months of old alerts
+    # aren't sent all at once. Locked rows are skipped, so two runs never send the same one.
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
     pending = (
         db.query(Notification)
         .filter(
@@ -81,7 +90,11 @@ def _run_dispatch_pending_emails(db) -> dict:
                 Notification.channel == NotificationChannel.both,
             ),
             Notification.email_sent_at.is_(None),
+            Notification.created_at >= since,
         )
+        .order_by(Notification.created_at, Notification.id)
+        .limit(BATCH)
+        .with_for_update(skip_locked=True)
         .all()
     )
 
