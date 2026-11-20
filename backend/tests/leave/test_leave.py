@@ -1,5 +1,5 @@
 """
-§5.20 Leave requests: apply, mine, pending-approval, approve, reject.
+Leave requests: apply, mine, pending-approval, approve, reject.
 
 RBAC through the create_rbac_mock_db pattern; behaviour on real in-memory
 SQLite (see conftest.py for the cast and dates) with hand-computed values.
@@ -16,15 +16,15 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.main import app
 from app.models.leave_attendance import (
+    Holiday,
     AttendanceRecord,
     AttendanceStatus,
     LeaveBalance,
     LeaveRequest,
     LeaveStatus,
-    LeaveType,
 )
 from app.models.system import AuditLog, Notification
-from app.modules.leave.service import business_days
+from app.modules.leave.policy import working_days as business_days
 from tests.leave.conftest import TestingSessionLocal
 from tests.leave.mock_db import create_rbac_mock_db
 
@@ -94,14 +94,25 @@ def test_requires_authentication():
 
 # ---------------------------------------------------------------- helpers
 
+_WORLD: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _remember_world(request):
+    """Lets the helpers map leave-type names to the seeded ids."""
+    if "world" in request.fixturenames:
+        _WORLD.clear()
+        _WORLD.update(request.getfixturevalue("world"))
+
 def _apply(act_as, who, leave_type="sick", start="2026-06-08", end="2026-06-10", reason="Unwell"):
+    type_id = str(_WORLD["types"][leave_type]) if leave_type in _WORLD["types"] else str(uuid.uuid4())
     act_as(who)
-    return client.post(URL, json={"leave_type": leave_type, "start_date": start, "end_date": end, "reason": reason})
+    return client.post(URL, json={"leave_type_id": type_id, "start_date": start, "end_date": end, "reason": reason})
 
 
 def _balance(world, who, leave_type, year=2026):
     s = TestingSessionLocal()
-    row = s.query(LeaveBalance).filter_by(employee_id=world["ids"][who], leave_type=LeaveType(leave_type),
+    row = s.query(LeaveBalance).filter_by(employee_id=world["ids"][who], leave_type_id=world["types"][leave_type],
                                           year=year).first()
     s.close()
     return Decimal(row.balance_days) if row else None
@@ -131,7 +142,7 @@ def _notes(user_id):
 
 def _set_balance(world, who, leave_type, days):
     s = TestingSessionLocal()
-    s.query(LeaveBalance).filter_by(employee_id=world["ids"][who], leave_type=LeaveType(leave_type)).update(
+    s.query(LeaveBalance).filter_by(employee_id=world["ids"][who], leave_type_id=world["types"][leave_type]).update(
         {"balance_days": Decimal(days)})
     s.commit()
     s.close()
@@ -145,7 +156,7 @@ def test_apply_counts_business_days_across_a_weekend(world, act_as):
     body = res.json()
     assert body["total_days"] == 2
     assert body["status"] == "pending" and body["approver_id"] is None
-    assert body["employee_name"] == "emp" and body["leave_type"] == "sick" and body["reason"] == "Unwell"
+    assert body["employee_name"] == "emp" and body["leave_type"]["name"] == "sick" and body["reason"] == "Unwell"
     assert _balance(world, "emp", "sick") == Decimal("5")  # nothing deducted until approval
 
 
@@ -201,9 +212,9 @@ def test_request_equal_to_the_balance_is_allowed(world, act_as):
     assert _apply(act_as, "emp", "casual", "2026-06-08", "2026-06-08").status_code == 201  # 1 day, balance 1
 
 
-def test_missing_balance_row_counts_as_zero_except_unpaid(world, act_as):
-    assert _apply(act_as, "emp", "other").status_code == 409                 # no 'other' row for emp
-    assert _apply(act_as, "emp2", "sick").status_code == 409                 # emp2 has no balances at all
+def test_balances_come_from_the_leave_type_and_unlimited_types_skip_the_check(world, act_as):
+    assert _apply(act_as, "emp", "no-such-type").status_code == 400          # unknown or inactive type
+    assert _apply(act_as, "emp2", "sick").status_code == 409                 # sick's allowance is 0 here
     assert _apply(act_as, "emp2", "unpaid", "2026-06-08", "2026-06-12").status_code == 201  # unpaid: no check
 
 
@@ -231,16 +242,15 @@ def test_overlap_ignores_rejected_and_other_peoples_leave(world, act_as):
 
 def test_holiday_dates_are_not_counted(world, act_as):
     s = TestingSessionLocal()
-    s.add(AttendanceRecord(id=uuid.uuid4(), employee_id=world["ids"]["emp"], date=date(2026, 6, 10),
-                           status=AttendanceStatus.holiday))
+    s.add(Holiday(id=uuid.uuid4(), date=date(2026, 6, 10), name="Company holiday"))
     s.commit()
     s.close()
     res = _apply(act_as, "emp", "sick", "2026-06-08", "2026-06-12")  # Mon-Fri minus Wed
     assert res.status_code == 201 and res.json()["total_days"] == 4
-    # 4 days fit the balance of 5 only because the holiday is excluded
-    act_as("emp")
-    assert client.post(URL, json={"leave_type": "sick", "start_date": "2026-06-15",
-                                  "end_date": "2026-06-19"}).status_code == 201  # 5 days = balance, ok
+    # Pending days count against the balance: 5 - 4 pending leaves 1.
+    over = _apply(act_as, "emp", "sick", "2026-06-15", "2026-06-16")
+    assert over.status_code == 409 and over.json()["error"]["code"] == "insufficient_balance"
+    assert _apply(act_as, "emp", "sick", "2026-06-15", "2026-06-15").status_code == 201
 
 
 # ---------------------------------------------------------------- GET /leave-requests/mine
@@ -265,12 +275,16 @@ def test_mine_returns_current_year_balances_for_the_four_cards(world, act_as, mo
     monkeypatch.setattr("app.modules.leave.service.local_today", lambda: date(2026, 6, 1))
     act_as("emp")
     res = client.get(f"{URL}/mine")
-    balances = {b["leave_type"]: (b["year"], Decimal(b["balance_days"])) for b in res.json()["balances"]}
-    assert balances == {"sick": (2026, Decimal("5")), "casual": (2026, Decimal("1")),
-                        "earned": (2026, Decimal("10")), "unpaid": (2026, Decimal("0"))}
-    assert [b["leave_type"] for b in res.json()["balances"]] == ["sick", "casual", "earned", "unpaid"]
+    def by_type(body):
+        return {b["leave_type"]["name"]: (b["year"], None if b["balance_days"] is None else Decimal(b["balance_days"]))
+                for b in body["balances"]}
+    assert by_type(res.json()) == {"sick": (2026, Decimal("5")), "casual": (2026, Decimal("1")),
+                                   "earned": (2026, Decimal("10")), "unpaid": (2026, None)}
+    assert [b["leave_type"]["name"] for b in res.json()["balances"]] == ["sick", "casual", "earned", "unpaid"]
     monkeypatch.setattr("app.modules.leave.service.local_today", lambda: date(2027, 1, 4))
-    assert all(Decimal(b["balance_days"]) == 0 for b in client.get(f"{URL}/mine").json()["balances"])
+    next_year = by_type(client.get(f"{URL}/mine").json())
+    assert next_year == {"sick": (2027, Decimal("0")), "casual": (2027, Decimal("0")),
+                         "earned": (2027, Decimal("0")), "unpaid": (2027, None)}
 
 
 # ---------------------------------------------------------------- GET /leave-requests/pending-approval

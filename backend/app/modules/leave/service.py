@@ -1,67 +1,50 @@
 """
-Leave service — project doc §5.20.
+Leave service.
 
-Documented deviation: the PRD lists approval_chain_templates (read), but
-leave_requests has a single approver_id and RequestType has no leave type, so
-leave uses ONE approval step resolved per §7 rule 10 via the shared helper in
-app/core/approver_resolution.py: the requester's manager, or - when they have
-none - the shared hr_admin queue. hr_admin and super_admin can always act.
-Nobody decides their own leave.
+Approval: ONE step resolved via the shared helper in
+app/core/approver_resolution.py — the requester's manager, or, when they have
+none, the shared hr_admin queue. hr_admin and super_admin can always act.
+Nobody decides their own leave. (Documented deviation from the original
+"approval chains" note: leave has a single approver.)
 
-Days are business days (Mon-Fri), inclusive of both ends, excluding dates on
-which the employee already has an attendance_records row with status `holiday`.
+Days are working days — Mon–Fri, not company holidays (app/modules/leave/policy.py).
+Balances come from the company's leave types and are created on first use.
 """
-from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.clock import local_today
 from app.core.approver_resolution import can_act_on_step, resolve_manager_or_queue, step_recipient_ids
-from app.core.config import settings
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.security import CurrentUser, check_permission
 from app.models.auth import Role, User
-from app.models.leave_attendance import (
-    AttendanceRecord,
-    AttendanceStatus,
-    LeaveBalance,
-    LeaveRequest,
-    LeaveStatus,
-    LeaveType,
-)
+from app.models.leave_attendance import AttendanceRecord, AttendanceStatus, LeaveRequest, LeaveStatus, LeaveType
 from app.models.system import AuditLog, Notification, NotificationChannel
+from app.modules.leave.policy import (
+    balances_for,
+    company_holidays,
+    ensure_balance,
+    sync_carry,
+    pending_days,
+    type_ref,
+    working_days,
+)
 from app.modules.leave.schemas import (
-    LeaveBalanceItem,
     LeaveDecision,
     LeaveRejection,
     LeaveRequestCreate,
     LeaveRequestResponse,
     MyLeaveResponse,
     PendingLeaveResponse,
+    TeamLeaveResponse,
 )
 
-BALANCE_CARD_TYPES = [LeaveType.sick, LeaveType.casual, LeaveType.earned, LeaveType.unpaid]
-OPEN_STATUSES = [LeaveStatus.pending, LeaveStatus.approved]
-
-
-def local_today() -> date:
-    """Today in the configured attendance timezone (ATTENDANCE_TIMEZONE)."""
-    return datetime.now(ZoneInfo(settings.ATTENDANCE_TIMEZONE)).date()
-
-
-def business_days(start: date, end: date, holidays: frozenset[date] | set[date] = frozenset()) -> list[date]:
-    """Mon-Fri dates from start to end, both inclusive, minus `holidays`."""
-    days = []
-    current = start
-    while current <= end:
-        if current.weekday() < 5 and current not in holidays:
-            days.append(current)
-        current += timedelta(days=1)
-    return days
+MAX_TEAM_RANGE_DAYS = 92
 
 
 class LeaveService:
@@ -69,40 +52,9 @@ class LeaveService:
         self.db = db
         self.current_user = current_user
         self.user_id = UUID(str(current_user.user_id))
-        self.ip_address = ip_address or "127.0.0.1"
+        self.ip_address = ip_address or "unknown"
 
     # ------------------------------------------------------------ helpers
-
-    def _holidays(self, employee_ids: set[UUID], start: date, end: date) -> dict[UUID, set[date]]:
-        """Holiday-marked dates per employee within [start, end] — one query for all."""
-        result: dict[UUID, set[date]] = defaultdict(set)
-        if not employee_ids:
-            return result
-        rows = (
-            self.db.query(AttendanceRecord.employee_id, AttendanceRecord.date)
-            .filter(
-                AttendanceRecord.employee_id.in_(employee_ids),
-                AttendanceRecord.status == AttendanceStatus.holiday,
-                AttendanceRecord.date >= start,
-                AttendanceRecord.date <= end,
-            )
-            .all()
-        )
-        for employee_id, day in rows:
-            result[employee_id].add(day)
-        return result
-
-    def _balance_days(self, employee_id: UUID, leave_type: LeaveType, year: int) -> Decimal:
-        row = (
-            self.db.query(LeaveBalance)
-            .filter(
-                LeaveBalance.employee_id == employee_id,
-                LeaveBalance.leave_type == leave_type,
-                LeaveBalance.year == year,
-            )
-            .first()
-        )
-        return Decimal(row.balance_days) if row else Decimal("0")
 
     def _hr_queue_role_id(self) -> Optional[UUID]:
         role = self.db.query(Role).filter(Role.name == "hr_admin").first()
@@ -124,40 +76,59 @@ class LeaveService:
                 )
             )
 
+    def _can_cancel(self, r: LeaveRequest, today: date) -> bool:
+        if r.employee_id != self.user_id:
+            return False
+        return r.status == LeaveStatus.pending or (r.status == LeaveStatus.approved and r.start_date > today)
+
     def _responses(self, rows: list[LeaveRequest]) -> list[LeaveRequestResponse]:
         """Shape a batch of rows; holidays for all of them are loaded in one query."""
         if not rows:
             return []
-        holidays = self._holidays(
-            {r.employee_id for r in rows}, min(r.start_date for r in rows), max(r.end_date for r in rows)
-        )
+        holidays = company_holidays(self.db, min(r.start_date for r in rows), max(r.end_date for r in rows))
+        today = local_today()
         return [
             LeaveRequestResponse(
                 id=r.id,
                 employee_id=r.employee_id,
                 employee_name=r.employee.full_name if r.employee else None,
                 employee_email=r.employee.email if r.employee else None,
-                leave_type=r.leave_type,
+                leave_type=type_ref(r.leave_type),
                 start_date=r.start_date,
                 end_date=r.end_date,
-                total_days=len(business_days(r.start_date, r.end_date, holidays.get(r.employee_id, set()))),
+                total_days=len(working_days(r.start_date, r.end_date, holidays)),
                 status=r.status,
                 approver_id=r.approver_id,
                 approver_name=r.approver.full_name if r.approver else None,
                 reason=r.reason,
                 decision_comments=r.decision_comments,
+                can_cancel=self._can_cancel(r, today),
                 created_at=r.created_at,
                 updated_at=r.updated_at,
             )
             for r in rows
         ]
 
+    def _with_people(self):
+        return self.db.query(LeaveRequest).options(
+            joinedload(LeaveRequest.employee), joinedload(LeaveRequest.approver), joinedload(LeaveRequest.leave_type)
+        )
+
     def _load_with_people(self, leave_id: UUID) -> LeaveRequest:
-        return (
-            self.db.query(LeaveRequest)
-            .options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.approver))
-            .filter(LeaveRequest.id == leave_id)
-            .one()
+        return self._with_people().filter(LeaveRequest.id == leave_id).one()
+
+    def _audit(self, action: str, leave: LeaveRequest, before: dict, after: dict) -> None:
+        self.db.add(
+            AuditLog(
+                id=uuid4(),
+                actor_id=self.user_id,
+                action=action,
+                entity_type="leave_request",
+                entity_id=leave.id,
+                before_state=before,
+                after_state=after,
+                ip_address=self.ip_address,
+            )
         )
 
     # ------------------------------------------------------------ POST /leave-requests
@@ -165,51 +136,55 @@ class LeaveService:
     def apply(self, data: LeaveRequestCreate) -> LeaveRequestResponse:
         start, end = data.start_date, data.end_date
         if end < start:
-            raise ValidationAppError(
-                "Validation failed", field_errors={"end_date": "end_date must be on or after start_date."}
-            )
+            raise ValidationAppError("Validation failed", field_errors={"end_date": "The end date must be on or after the start date."})
         if start.year != end.year:
             raise ValidationAppError(
                 "Validation failed",
-                field_errors={
-                    "end_date": "Leave cannot cross a year boundary; please submit two requests, one per year."
-                },
+                field_errors={"end_date": "Leave can't cross into a new year; please send one request for each year."},
             )
 
-        requester = self.db.query(User).filter(User.id == self.user_id).one()
-        holidays = self._holidays({self.user_id}, start, end)[self.user_id]
-        days = len(business_days(start, end, holidays))
+        leave_type = (
+            self.db.query(LeaveType).filter(LeaveType.id == data.leave_type_id, LeaveType.is_active.is_(True)).first()
+        )
+        if leave_type is None:
+            raise ValidationAppError("Validation failed", field_errors={"leave_type_id": "Choose a leave type."})
+
+        # Lock the person while checking, so two quick submissions can't both pass the overlap check.
+        requester = self.db.query(User).filter(User.id == self.user_id).with_for_update().one()
+        days = len(working_days(start, end, company_holidays(self.db, start, end)))
         if days == 0:
             raise ValidationAppError(
                 "Validation failed",
-                field_errors={"start_date": "The selected dates contain no business days (Mon-Fri, non-holiday)."},
+                field_errors={"start_date": "Those dates are all weekends or holidays."},
             )
 
         overlap = (
             self.db.query(LeaveRequest.id)
             .filter(
                 LeaveRequest.employee_id == self.user_id,
-                LeaveRequest.status.in_(OPEN_STATUSES),
+                LeaveRequest.status.in_([LeaveStatus.pending, LeaveStatus.approved]),
                 LeaveRequest.start_date <= end,
                 LeaveRequest.end_date >= start,
             )
             .first()
         )
         if overlap:
-            raise ConflictError("These dates overlap your existing pending or approved leave.", code="leave_overlap")
+            raise ConflictError("These dates overlap leave you've already asked for.", code="leave_overlap")
 
-        if data.leave_type != LeaveType.unpaid:
-            balance = self._balance_days(self.user_id, data.leave_type, start.year)
-            if Decimal(days) > balance:
+        balance = ensure_balance(self.db, requester, leave_type, start.year)
+        if balance is not None:
+            available = Decimal(balance.balance_days) - pending_days(self.db, self.user_id, leave_type.id, start.year)
+            if Decimal(days) > available:
                 raise ConflictError(
-                    f"Requested {days} day(s) exceed your remaining {data.leave_type.value} balance of {balance}.",
+                    f"You asked for {days} day(s) of {leave_type.name}, but only {max(available, Decimal('0'))} "
+                    "are left after your other pending requests.",
                     code="insufficient_balance",
                 )
 
         leave = LeaveRequest(
             id=uuid4(),
             employee_id=self.user_id,
-            leave_type=data.leave_type,
+            leave_type_id=leave_type.id,
             start_date=start,
             end_date=end,
             status=LeaveStatus.pending,
@@ -218,14 +193,14 @@ class LeaveService:
         )
         self.db.add(leave)
 
-        # §7 rule 10: manager, else the hr_admin queue.
+        # manager, else the hr_admin queue.
         approver_id, queue_role_id = resolve_manager_or_queue(requester, self._hr_queue_role_id())
         recipients = step_recipient_ids(self.db, approver_id, queue_role_id, exclude_user_id=self.user_id)
         self._notify(
             recipients,
             "approval_needed",
-            "Leave Request Pending Approval",
-            f"{requester.full_name} requested {days} day(s) of {data.leave_type.value} leave "
+            "Leave request waiting for you",
+            f"{requester.full_name} asked for {days} day(s) of {leave_type.name} "
             f"({start.isoformat()} to {end.isoformat()}).",
             leave.id,
             critical=False,
@@ -240,28 +215,82 @@ class LeaveService:
         if status:
             query = query.filter(LeaveRequest.status == status)
         total = query.count()
+        page_query = self._with_people().filter(LeaveRequest.employee_id == self.user_id)
+        if status:
+            page_query = page_query.filter(LeaveRequest.status == status)
         rows = (
-            query.options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.approver))
-            .order_by(LeaveRequest.created_at.desc(), LeaveRequest.id.desc())
+            page_query.order_by(LeaveRequest.created_at.desc(), LeaveRequest.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
         )
+        me = self.db.query(User).filter(User.id == self.user_id).one()
+        balances = balances_for(self.db, me, local_today().year)
+        self.db.commit()  # balances created on first view are kept
+        return MyLeaveResponse(items=self._responses(rows), total=total, page=page, page_size=page_size, balances=balances)
 
-        year = local_today().year
-        held = {
-            b.leave_type: Decimal(b.balance_days)
-            for b in self.db.query(LeaveBalance).filter(
-                LeaveBalance.employee_id == self.user_id, LeaveBalance.year == year
+    # ------------------------------------------------------------ cancel
+
+    def cancel(self, leave_id: UUID) -> LeaveRequestResponse:
+        """POST /leave-requests/{id}/cancel — the requester withdraws pending
+        leave, or approved leave that hasn't started (days go back to their
+        balance and the on-leave days are cleared). Audited."""
+        leave = self.db.query(LeaveRequest).filter(LeaveRequest.id == leave_id).with_for_update().first()
+        if leave is None or leave.employee_id != self.user_id:
+            raise NotFoundError("Leave request not found")
+        today = local_today()
+        if not self._can_cancel(leave, today):
+            raise ConflictError("Only pending leave, or approved leave that hasn't started, can be cancelled.", code="invalid_state")
+
+        before = {"status": leave.status.value}
+        refunded = Decimal("0")
+        if leave.status == LeaveStatus.approved:
+            employee = self.db.query(User).filter(User.id == leave.employee_id).one()
+            balance = ensure_balance(self.db, employee, leave.leave_type, leave.start_date.year, lock=True)
+            if balance is not None:
+                # Exactly what approval took, even if holidays changed since.
+                if leave.days_deducted is not None:
+                    refunded = Decimal(leave.days_deducted)
+                else:
+                    days = working_days(leave.start_date, leave.end_date, company_holidays(self.db, leave.start_date, leave.end_date))
+                    refunded = Decimal(len(days))
+                balance.balance_days = Decimal(balance.balance_days) + refunded
+                sync_carry(self.db, employee.id, leave.leave_type, leave.start_date.year)
+            self.db.query(AttendanceRecord).filter(
+                AttendanceRecord.employee_id == leave.employee_id,
+                AttendanceRecord.date >= leave.start_date,
+                AttendanceRecord.date <= leave.end_date,
+                AttendanceRecord.status == AttendanceStatus.on_leave,
+            ).delete(synchronize_session=False)
+        leave.status = LeaveStatus.cancelled
+        self._audit("leave_request.cancelled", leave, before, {"status": "cancelled", "days_refunded": str(refunded)})
+        self.db.commit()
+        return self._responses([self._load_with_people(leave.id)])[0]
+
+    # ------------------------------------------------------------ team calendar
+
+    def team(self, date_from: date, date_to: date) -> TeamLeaveResponse:
+        """GET /leave-requests/team — approved and pending leave overlapping the
+        window, for the caller's direct reports (managers) or everyone (HR,
+        super admins), so whoever approves can see who else is off."""
+        check_permission(self.current_user, "leave_request", "approve", self.db)
+        if date_from > date_to:
+            raise ValidationAppError("Validation failed", field_errors={"from": "'from' must be on or before 'to'."})
+        if (date_to - date_from).days + 1 > MAX_TEAM_RANGE_DAYS:
+            raise ValidationAppError("Validation failed", field_errors={"to": f"The range can't be more than {MAX_TEAM_RANGE_DAYS} days."})
+        query = (
+            self._with_people()
+            .join(User, User.id == LeaveRequest.employee_id)
+            .filter(
+                LeaveRequest.status.in_([LeaveStatus.pending, LeaveStatus.approved]),
+                LeaveRequest.start_date <= date_to,
+                LeaveRequest.end_date >= date_from,
             )
-        }
-        balances = [
-            LeaveBalanceItem(leave_type=t, year=year, balance_days=held.get(t, Decimal("0")))
-            for t in BALANCE_CARD_TYPES
-        ]
-        return MyLeaveResponse(
-            items=self._responses(rows), total=total, page=page, page_size=page_size, balances=balances
         )
+        if not self._sees_all():
+            query = query.filter(or_(User.manager_id == self.user_id, User.id == self.user_id))
+        rows = query.order_by(LeaveRequest.start_date, LeaveRequest.id).limit(500).all()
+        return TeamLeaveResponse(items=self._responses(rows))
 
     # ------------------------------------------------------------ pending queue / decisions
 
@@ -270,8 +299,6 @@ class LeaveService:
         return self.current_user.has_role("hr_admin", "super_admin")
 
     def _can_decide(self, employee: User) -> bool:
-        """§7 rule 10 for a single step: the requester's manager, or the hr_admin queue when
-        they have none; hr_admin / super_admin can always act. Never on your own leave."""
         if employee.id == self.user_id:
             return False
         if self._sees_all():
@@ -279,8 +306,9 @@ class LeaveService:
         approver_id, queue_role_id = resolve_manager_or_queue(employee, self._hr_queue_role_id())
         return can_act_on_step(self.current_user, approver_id, queue_role_id)
 
-    def pending_approval(self, page: int, page_size: int) -> PendingLeaveResponse:
-        check_permission(self.current_user, "leave_request", "approve", self.db)
+    def pending_query(self):
+        """Pending leave this person may decide: their direct reports', or everyone's for HR/super admins.
+        Shared by GET /leave-requests/pending-approval and the Home inbox."""
         query = (
             self.db.query(LeaveRequest)
             .join(User, User.id == LeaveRequest.employee_id)
@@ -288,9 +316,14 @@ class LeaveService:
         )
         if not self._sees_all():
             query = query.filter(User.manager_id == self.user_id)  # direct reports only
+        return query
+
+    def pending_approval(self, page: int, page_size: int) -> PendingLeaveResponse:
+        check_permission(self.current_user, "leave_request", "approve", self.db)
+        query = self.pending_query()
         total = query.count()
         rows = (
-            query.options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.approver))
+            query.options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.approver), joinedload(LeaveRequest.leave_type))
             .order_by(LeaveRequest.created_at.asc(), LeaveRequest.id.asc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -310,54 +343,43 @@ class LeaveService:
             raise ForbiddenError("You cannot approve or reject your own leave request")
         if not self._can_decide(employee):
             raise ForbiddenError("You are not an authorized approver for this leave request")
-        # Checked after the lock: a concurrent decision leaves the row non-pending.
         if leave.status != LeaveStatus.pending:
             raise ConflictError(f"Leave request is already {leave.status.value}.", code="already_acted")
         return leave, employee
 
-    def _audit(self, action: str, leave: LeaveRequest, after: dict) -> None:
-        self.db.add(
-            AuditLog(
-                id=uuid4(),
-                actor_id=self.user_id,
-                action=action,
-                entity_type="leave_request",
-                entity_id=leave.id,
-                before_state={"status": LeaveStatus.pending.value},
-                after_state=after,
-                ip_address=self.ip_address,
-            )
-        )
-
     def approve(self, leave_id: UUID, data: LeaveDecision) -> LeaveRequestResponse:
         leave, employee = self._lock_for_decision(leave_id)
-
-        holidays = self._holidays({employee.id}, leave.start_date, leave.end_date)[employee.id]
-        days = business_days(leave.start_date, leave.end_date, holidays)
+        days = working_days(leave.start_date, leave.end_date, company_holidays(self.db, leave.start_date, leave.end_date))
         if not days:
-            raise ConflictError("The request no longer contains any business days.", code="no_business_days")
+            raise ConflictError("The request no longer contains any working days.", code="no_business_days")
+        clash = (
+            self.db.query(LeaveRequest.id)
+            .filter(
+                LeaveRequest.employee_id == employee.id,
+                LeaveRequest.id != leave.id,
+                LeaveRequest.status == LeaveStatus.approved,
+                LeaveRequest.start_date <= leave.end_date,
+                LeaveRequest.end_date >= leave.start_date,
+            )
+            .first()
+        )
+        if clash:
+            raise ConflictError("These dates overlap leave that's already approved.", code="leave_overlap")
 
         before_balance = after_balance = None
-        if leave.leave_type != LeaveType.unpaid:
-            balance_row = (
-                self.db.query(LeaveBalance)
-                .filter(
-                    LeaveBalance.employee_id == employee.id,
-                    LeaveBalance.leave_type == leave.leave_type,
-                    LeaveBalance.year == leave.start_date.year,
-                )
-                .with_for_update()
-                .first()
-            )
-            available = Decimal(balance_row.balance_days) if balance_row else Decimal("0")
+        balance = ensure_balance(self.db, employee, leave.leave_type, leave.start_date.year, lock=True)
+        if balance is not None:
+            available = Decimal(balance.balance_days)
             if Decimal(len(days)) > available:
                 raise ConflictError(
-                    f"Remaining {leave.leave_type.value} balance is {available}; {len(days)} day(s) are requested.",
+                    f"Only {available} day(s) of {leave.leave_type.name} are left; {len(days)} are requested.",
                     code="insufficient_balance",
                 )
             before_balance = available
-            balance_row.balance_days = available - len(days)
-            after_balance = balance_row.balance_days
+            balance.balance_days = available - len(days)
+            after_balance = balance.balance_days
+            leave.days_deducted = Decimal(len(days))
+            sync_carry(self.db, employee.id, leave.leave_type, leave.start_date.year)
 
         leave.status = LeaveStatus.approved
         leave.approver_id = self.user_id
@@ -374,13 +396,12 @@ class LeaveService:
             if record:
                 record.status = AttendanceStatus.on_leave
             else:
-                self.db.add(
-                    AttendanceRecord(id=uuid4(), employee_id=employee.id, date=day, status=AttendanceStatus.on_leave)
-                )
+                self.db.add(AttendanceRecord(id=uuid4(), employee_id=employee.id, date=day, status=AttendanceStatus.on_leave))
 
         self._audit(
             "leave_request.approved",
             leave,
+            {"status": LeaveStatus.pending.value},
             {
                 "status": "approved",
                 "approver_id": str(self.user_id),
@@ -394,9 +415,8 @@ class LeaveService:
             [employee.id],
             "request_status_change",
             "Leave request approved",
-            f"Your {leave.leave_type.value} leave ({leave.start_date.isoformat()} to {leave.end_date.isoformat()}, "
-            f"{len(days)} day(s)) was approved."
-            + (f" Note: {leave.decision_comments}" if leave.decision_comments else ""),
+            f"Your {leave.leave_type.name} leave ({leave.start_date.isoformat()} to {leave.end_date.isoformat()}, "
+            f"{len(days)} day(s)) was approved." + (f" Note: {leave.decision_comments}" if leave.decision_comments else ""),
             leave.id,
             critical=True,
         )
@@ -415,13 +435,14 @@ class LeaveService:
         self._audit(
             "leave_request.rejected",
             leave,
+            {"status": LeaveStatus.pending.value},
             {"status": "rejected", "approver_id": str(self.user_id), "comments": comments},
         )
         self._notify(
             [employee.id],
             "request_status_change",
             "Leave request rejected",
-            f"Your {leave.leave_type.value} leave ({leave.start_date.isoformat()} to {leave.end_date.isoformat()}) "
+            f"Your {leave.leave_type.name} leave ({leave.start_date.isoformat()} to {leave.end_date.isoformat()}) "
             f"was rejected. Reason: {comments}",
             leave.id,
             critical=True,
