@@ -1,7 +1,7 @@
 """
 Offboarding Workflow Service — handles creation, retrieval, item status updating with asset
 return side effects, dedicated hr_admin/super_admin completion with session revocation,
-and status updates (§5.6).
+and status updates.
 """
 from datetime import date, datetime, timezone
 import uuid
@@ -11,10 +11,13 @@ from uuid import UUID
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.role_policy import assert_can_manage_user, user_role_names
 from app.core.errors import AppError
 from app.core.role_policy import user_holds_role_names
 from app.core.security import CurrentUser, check_permission
-from app.models.assets import Asset, AssetAssignment, AssetStatus
+from app.core.approver_resolution import reroute_pending_steps
+from app.modules.licenses.usage import release_seat
+from app.models.assets import LicenseAssignment, Asset, AssetAssignment, AssetStatus
 from app.models.auth import Role, Session as DBSessionModel, User, UserStatus
 from app.models.lifecycle import (
     Checklist,
@@ -61,6 +64,7 @@ class OffboardingService:
                     "completed_by": item.completed_by,
                     "completed_by_name": item.completer.full_name if (hasattr(item, "completer") and item.completer) else None,
                     "asset_assignment_id": item.asset_assignment_id,
+                    "license_assignment_id": item.license_assignment_id,
                     "completed_at": item.completed_at,
                     "sort_order": item.sort_order if item.sort_order is not None else 0,
                     "created_at": item.created_at or now_utc,
@@ -104,7 +108,7 @@ class OffboardingService:
         POST /offboarding — create an offboarding checklist with default & dynamic asset recovery items.
         Allowed roles: hr_admin, super_admin only.
         """
-        # RBAC (project doc §3.2 step 2): POST /offboarding (§5.6) is restricted to
+        # RBAC (step 2): POST /offboarding is restricted to
         # hr_admin/super_admin — same grant as onboarding's checklist create, so
         # both share (resource="employee", action="create") without collision.
         check_permission(self.current_user, "employee", "create", self.db)
@@ -116,6 +120,12 @@ class OffboardingService:
                 code="not_found",
                 message="Employee not found.",
             )
+        # Offboarding ends someone's access, so it follows the same rule as changing their
+        # status: only a super admin can offboard a super admin or IT admin, and no
+        # one offboards themselves.
+        if str(target_user.id) == str(self.current_user.user_id):
+            raise AppError(status_code=400, code="bad_request", message="You can’t offboard yourself.")
+        assert_can_manage_user(self.current_user, user_role_names(target_user))
 
         # Check for existing active offboarding checklist
         existing = (
@@ -136,6 +146,7 @@ class OffboardingService:
 
         # Transition target user status to offboarding and record exit date if provided
         target_user.status = UserStatus.offboarding
+        reroute_pending_steps(self.db, target_user.id)
         if exit_date:
             target_user.date_of_exit = exit_date
 
@@ -205,6 +216,30 @@ class OffboardingService:
             self.db.add(asset_item)
             sort_counter += 1
 
+        # One item per licence seat they hold, so seats are reclaimed too.
+        seats = (
+            self.db.query(LicenseAssignment)
+            .options(joinedload(LicenseAssignment.license))
+            .filter(LicenseAssignment.user_id == employee_id, LicenseAssignment.removed_at.is_(None))
+            .all()
+        )
+        for seat in seats:
+            name = seat.license.name if seat.license else "Licence"
+            where = "" if seat.source == "manual" else " (in the connected provider)"
+            seat_item = ChecklistItem(
+                id=uuid.uuid4(),
+                checklist_id=checklist.id,
+                task_name=f"Remove licence seat: {name}{where}",
+                owner_role_id=it_role_id,
+                license_assignment_id=seat.id,
+                status=ChecklistItemStatus.pending,
+                sort_order=sort_counter,
+                created_at=now,
+            )
+            checklist.items.append(seat_item)
+            self.db.add(seat_item)
+            sort_counter += 1
+
         # Seed standard HR exit tasks
         hr_tasks = [
             "Conduct Exit Interview & Collect Feedback",
@@ -272,8 +307,8 @@ class OffboardingService:
     ) -> dict[str, Any]:
         """
         GET /offboarding — list active/completed offboarding checklists. Not in
-        the original doc (§5.6 only listed 4 endpoint rows, no list route,
-        unlike §5.5's onboarding); added here mirroring OnboardingService's
+        the original doc (only listed 4 endpoint rows, no list route,
+        unlike onboarding); added here mirroring OnboardingService's
         list_onboardings so the frontend can stop working around the gap with
         an always-fails-then-N+1-employee-enumeration fallback. Same role
         scoping as list_onboardings: hr_admin/super_admin (full); it_admin
@@ -290,7 +325,7 @@ class OffboardingService:
             .filter(Checklist.type == ChecklistType.offboarding)
         )
 
-        # Multi-role (§5.14): each held role adds what it can see; widest wins.
+        # Multi-role: each held role adds what it can see; widest wins.
         cu = self.current_user
         if not cu.has_role("hr_admin", "super_admin"):
             visible = []
@@ -314,7 +349,7 @@ class OffboardingService:
         offset = (page - 1) * page_size
 
         checklists = (
-            query.order_by(Checklist.created_at.desc()).offset(offset).limit(page_size).all()
+            query.order_by(Checklist.created_at.desc(), Checklist.id.desc()).offset(offset).limit(page_size).all()
         )
         formatted_checklists = [self._format_checklist_response(c) for c in checklists]
 
@@ -354,7 +389,7 @@ class OffboardingService:
         # NOT ported to check_permission(): same OR-of-role-and-ABAC pattern as
         # OnboardingService.get_onboarding_checklist — is_assigned_manager depends
         # on this specific employee's manager_id, so the whole gate is dynamic
-        # (§3.2 step 3) and is left unchanged. See report.
+        # (step 3) and is left unchanged. See report.
         is_hr_or_admin = self.current_user.has_role("hr_admin", "it_admin", "super_admin")
         is_assigned_manager = (
             self.current_user.has_role("manager")
@@ -383,7 +418,7 @@ class OffboardingService:
         """
         # NOT ported to check_permission(): "matching owner_role_id OR
         # hr_admin/super_admin" — the brief's own canonical dynamic-ABAC example
-        # (§3.2 step 3, per-item owner_role_id), left exactly as-is. See report.
+        # (step 3, per-item owner_role_id), left exactly as-is. See report.
 
         # Pessimistic row locking on parent Checklist row
         checklist = (
@@ -401,6 +436,9 @@ class OffboardingService:
                 code="not_found",
                 message="Offboarding checklist not found.",
             )
+
+        if checklist.status != ChecklistStatus.in_progress:
+            raise AppError(status_code=409, code="invalid_state", message="This offboarding is finished, so its tasks can't change.")
 
         item = (
             self.db.query(ChecklistItem)
@@ -448,11 +486,21 @@ class OffboardingService:
                     asset = (
                         self.db.query(Asset)
                         .filter(Asset.id == assignment.asset_id)
+                        .with_for_update()
                         .first()
                     )
                     if asset:
                         asset.status = AssetStatus.in_stock
                         asset.current_holder_id = None
+            # Licence seat reclaim (provider seats are removed by the provider sync)
+            if item.license_assignment_id:
+                seat = (
+                    self.db.query(LicenseAssignment)
+                    .filter(LicenseAssignment.id == item.license_assignment_id)
+                    .first()
+                )
+                if seat and seat.removed_at is None and seat.source == "manual":
+                    release_seat(self.db, seat, self.current_user.user_id)
         elif new_status in (ChecklistItemStatus.pending, ChecklistItemStatus.in_progress):
             item.completed_by = None
             item.completed_at = None
@@ -489,6 +537,7 @@ class OffboardingService:
             "completed_by": item.completed_by,
             "completed_by_name": completed_by_name,
             "asset_assignment_id": item.asset_assignment_id,
+            "license_assignment_id": item.license_assignment_id,
             "completed_at": item.completed_at,
             "sort_order": item.sort_order if item.sort_order is not None else 0,
             "created_at": item.created_at or now,
@@ -501,7 +550,7 @@ class OffboardingService:
         Independently re-checks that all checklist items are done, transitions employee status to terminated,
         revokes all active sessions, and dispatches notification.
         """
-        # RBAC (project doc §3.2 step 2): POST /offboarding/{id}/complete (§5.6) is
+        # RBAC (step 2): POST /offboarding/{id}/complete is
         # restricted to hr_admin/super_admin. This is a final sign-off action
         # (checklist -> completed, employee -> terminated, sessions revoked), so
         # it's mapped to (resource="employee", action="approve") rather than
@@ -553,6 +602,27 @@ class OffboardingService:
                 code="bad_request",
                 message="Cannot complete offboarding checklist until all items are marked done.",
             )
+        if checklist.status != ChecklistStatus.in_progress:
+            raise AppError(status_code=409, code="invalid_state", message="This offboarding is already complete.")
+
+        # What they actually still hold — including anything given after the checklist was made.
+        devices = (
+            self.db.query(AssetAssignment.id)
+            .filter(AssetAssignment.employee_id == checklist.employee_id, AssetAssignment.returned_at.is_(None))
+            .count()
+        )
+        seats = (
+            self.db.query(LicenseAssignment.id)
+            .filter(LicenseAssignment.user_id == checklist.employee_id, LicenseAssignment.removed_at.is_(None), LicenseAssignment.source == "manual")
+            .count()
+        )
+        if devices or seats:
+            held = " and ".join(p for p in (f"{devices} device(s)" if devices else "", f"{seats} licence seat(s)" if seats else "") if p)
+            raise AppError(
+                status_code=409,
+                code="still_holding",
+                message=f"They still hold {held}. Get them back (or take the seats back) before closing the account.",
+            )
 
         now = datetime.now(timezone.utc)
         checklist.status = ChecklistStatus.completed
@@ -564,6 +634,8 @@ class OffboardingService:
             target_user.status = UserStatus.terminated
             if not target_user.date_of_exit:
                 target_user.date_of_exit = now.date()
+            # Their reports no longer have this manager: new requests go to HR instead.
+            self.db.query(User).filter(User.manager_id == target_user.id).update({User.manager_id: None}, synchronize_session=False)
 
             # Session revocation: revoke all active sessions for target employee
             self.db.query(DBSessionModel).filter(

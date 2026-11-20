@@ -1,11 +1,12 @@
 """
-Offboarding Workflow API routes — project doc §5.6.
+Offboarding Workflow API routes.
 """
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.request_context import client_ip
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.lifecycle import ChecklistStatus
@@ -30,10 +31,10 @@ def create_offboarding_checklist(
     db: Session = Depends(get_db),
 ) -> ChecklistResponse:
     """
-    POST /offboarding — Kick off offboarding checklist for an employee (PRD §5.6).
+    POST /offboarding — Kick off offboarding checklist for an employee.
     Allowed roles: hr_admin, super_admin only.
     """
-    ip_address = request.client.host if request.client else None
+    ip_address = client_ip(request)
     service = OffboardingService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.create_offboarding_checklist(
         employee_id=payload.employee_id,
@@ -53,8 +54,8 @@ def list_offboardings(
     db: Session = Depends(get_db),
 ) -> ChecklistListResponse:
     """
-    GET /offboarding — List active/completed offboarding checklists (§5.6
-    addition — mirrors §5.5's GET /onboarding, not in the original doc).
+    GET /offboarding — List active/completed offboarding checklists (
+    addition — mirrors GET /onboarding, not in the original doc).
     Allowed roles: hr_admin/super_admin (full); it_admin and manager (scoped —
     see OffboardingService.list_offboardings).
     """
@@ -70,7 +71,7 @@ def get_offboarding_checklist(
     db: Session = Depends(get_db),
 ) -> ChecklistResponse:
     """
-    GET /offboarding/{checklist_id} — Get detail view of an offboarding checklist (PRD §5.6).
+    GET /offboarding/{checklist_id} — Get detail view of an offboarding checklist.
     Allowed roles: hr_admin, it_admin, super_admin, assigned manager.
     """
     service = OffboardingService(db=db, current_user=current_user)
@@ -88,12 +89,12 @@ def update_checklist_item(
     db: Session = Depends(get_db),
 ) -> ChecklistItemResponse:
     """
-    PATCH /offboarding/{checklist_id}/items/{item_id} — Update checklist item status (PRD §5.6).
+    PATCH /offboarding/{checklist_id}/items/{item_id} — Update checklist item status.
     Allowed roles: matching owner_role_id user, hr_admin, super_admin.
     Side effects: marking an asset-linked item 'done' auto-returns the asset to stock and clears current holder.
     Note: Does NOT auto-complete parent checklist or trigger termination.
     """
-    ip_address = request.client.host if request.client else None
+    ip_address = client_ip(request)
     service = OffboardingService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.update_checklist_item(
         checklist_id=checklist_id, item_id=item_id, new_status=payload.status
@@ -109,11 +110,11 @@ def complete_offboarding(
     db: Session = Depends(get_db),
 ) -> ChecklistResponse:
     """
-    POST /offboarding/{checklist_id}/complete — Complete offboarding checklist and terminate employee (PRD §5.6).
+    POST /offboarding/{checklist_id}/complete — Complete offboarding checklist and terminate employee.
     Allowed roles: hr_admin, super_admin only.
     Verifies all items are marked 'done', transitions employee status to 'terminated', revokes active sessions.
     """
-    ip_address = request.client.host if request.client else None
+    ip_address = client_ip(request)
     service = OffboardingService(db=db, current_user=current_user, ip_address=ip_address)
     data = service.complete_offboarding(checklist_id=checklist_id)
     return ChecklistResponse.model_validate(data)

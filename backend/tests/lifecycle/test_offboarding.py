@@ -1,6 +1,6 @@
 """
-Comprehensive Unit & Integration Tests for Offboarding Workflow API (§5.6).
-Verifies 4 PRD endpoints, permission matrix cells, exit_date/reason schema fields,
+Comprehensive Unit & Integration Tests for Offboarding Workflow API.
+Verifies 4 endpoints, permission matrix cells, exit_date/reason schema fields,
 asset reclamation side effects, decoupled PATCH item status, dedicated HR/Super Admin complete endpoint,
 session revocation, notifications, audit logs, and edge cases.
 """
@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.main import app
-from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus, DepreciationMethod
+from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus
 from app.models.auth import Department, Role, User, UserStatus
 from app.models.lifecycle import (
     Checklist,
@@ -25,6 +25,13 @@ from app.models.lifecycle import (
 )
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _no_reroute(monkeypatch):
+    """These tests answer queries from a mock in a fixed order; rerouting the
+    leaver's approval steps has its own real-database tests."""
+    monkeypatch.setattr("app.modules.lifecycle.offboarding_service.reroute_pending_steps", lambda db, user_id: 0)
 
 
 def create_mock_user(
@@ -210,8 +217,6 @@ def test_post_offboarding_dynamic_asset_recovery_items():
         vendor="Apple",
         purchase_date=datetime.date(2025, 1, 1),
         purchase_cost=2500.0,
-        current_value=2000.0,
-        depreciation_method=DepreciationMethod.straight_line,
         useful_life_months=36,
         status=AssetStatus.assigned,
         current_holder_id=emp_id,
@@ -228,7 +233,7 @@ def test_post_offboarding_dynamic_asset_recovery_items():
 
     mock_db = MagicMock()
     mock_db.query().filter().first.side_effect = [target_emp, None, None, None]
-    mock_db.query().options().filter().all.return_value = [assignment]
+    mock_db.query().options().filter().all.side_effect = [[assignment], []]  # devices, then licence seats
     mock_db.query().join().filter().all.return_value = []
 
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -386,8 +391,9 @@ def test_patch_offboarding_item_decoupled_from_completion():
     )
 
     mock_db = MagicMock()
-    mock_db.query().filter().with_for_update().first.return_value = chk
-    mock_db.query().filter().first.side_effect = [item, assignment, asset]
+    # The checklist and the asset are both read under a row lock.
+    mock_db.query().filter().with_for_update().first.side_effect = [chk, asset]
+    mock_db.query().filter().first.side_effect = [item, assignment]
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -438,6 +444,7 @@ def test_complete_offboarding_allowed_hr_admin():
     mock_db.query().filter().with_for_update().scalar.return_value = chk.id
     mock_db.query().options().filter().first.return_value = chk
     mock_db.query().filter().update.return_value = 1  # Session revocation update count
+    mock_db.query().filter().count.return_value = 0  # holds no devices or seats any more
 
     app.dependency_overrides[get_db] = lambda: mock_db
 
