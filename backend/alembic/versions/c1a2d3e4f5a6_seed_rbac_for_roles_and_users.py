@@ -1,12 +1,12 @@
-"""seed RBAC permissions for roles (§5.13) and users (§5.14)
+"""seed RBAC permissions for roles and users
 
 Seeds the (resource, action) permissions and role_permissions grants backing:
-- Role & Permission Management (§5.13):
+- Role & Permission Management:
     (role, read)   -> super_admin
     (role, create) -> super_admin
     (role, update) -> super_admin
     (role, delete) -> super_admin
-- User Management (§5.14):
+- User Management:
     (user, read)         -> super_admin, hr_admin
     (user, create)       -> super_admin, hr_admin
     (user, update)       -> super_admin, hr_admin
@@ -34,15 +34,15 @@ branch_labels = None
 depends_on = None
 
 SEED_PERMISSIONS = [
-    ("role", "read", "View roles list and role permissions matrix (§5.13)"),
-    ("role", "create", "Create a custom role (§5.13)"),
-    ("role", "update", "Update role permissions matrix (§5.13)"),
-    ("role", "delete", "Delete a custom non-system role (§5.13)"),
-    ("user", "read", "View user governance list and details (§5.14)"),
-    ("user", "create", "Create / invite new user account (§5.14)"),
-    ("user", "update", "Update user account status (§5.14)"),
-    ("user", "assign_role", "Change a user's assigned role (§5.14)"),
-    ("user", "force_logout", "Force global logout across all active sessions (§5.14)"),
+    ("role", "read", "View roles list and role permissions matrix"),
+    ("role", "create", "Create a custom role"),
+    ("role", "update", "Update role permissions matrix"),
+    ("role", "delete", "Delete a custom non-system role"),
+    ("user", "read", "View user governance list and details"),
+    ("user", "create", "Create / invite new user account"),
+    ("user", "update", "Update user account status"),
+    ("user", "assign_role", "Change a user's assigned role"),
+    ("user", "force_logout", "Force global logout across all active sessions"),
 ]
 
 SEED_GRANTS = {

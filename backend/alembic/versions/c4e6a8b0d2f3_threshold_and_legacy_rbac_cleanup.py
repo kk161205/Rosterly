@@ -1,15 +1,15 @@
 """high-value threshold to 50,000; remove legacy permissions and duplicate chain
 
-1. High-Value Asset Procurement (§1.17, §5.18): min_amount 1000.00 -> 50000.00.
+1. High-Value Asset Procurement: min_amount 1000.00 -> 50000.00.
    At 1,000 nearly every asset request took the 3-step chain.
 2. Remove permission rows that no route checks. The canonical set below is
    exactly what migrations 975ba61cee70..a2c4e6f8b0d1 seed and what the code
    checks (31 pairs). Rows outside it came from an early hand seed on the
    shared dev DB (e.g. `asset:*` beside the real `assets:*`, `maintenance:*`,
-   `leave:*`) and would clutter the §5.13 permission matrix. Future pages add
+   `leave:*`) and would clutter the permission matrix. Future pages add
    their own permissions in their own migrations.
 3. Remove a duplicate active access_request chain from that same hand seed —
-   §1.17 expects exactly one active template per (request_type, min_amount tier).
+   expects exactly one active template per (request_type, min_amount tier).
 
 On a fresh database steps 2 and 3 find nothing to remove.
 

@@ -1,10 +1,10 @@
 """add emergency contact fields to users
 
-§5.4's Overview Tab spec explicitly calls for "emergency contact" as a field
-on the Employee Profile page, but the §1.1 users schema never carried it —
+Overview Tab spec explicitly calls for "emergency contact" as a field
+on the Employee Profile page, but the users schema never carried it
 the frontend rendered it as permanently-empty dead UI. Adds the two columns
 this page's spec actually needs (name + phone), closing that doc/schema gap
-per rules.md §8.1 rather than leaving the UI silently unable to ever populate.
+rather than leaving the UI silently unable to ever populate.
 
 Revision ID: d3e5f7a9b1c3
 Revises: b87c4d3e2f1a

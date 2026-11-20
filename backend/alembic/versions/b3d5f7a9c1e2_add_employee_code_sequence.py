@@ -1,7 +1,7 @@
-"""add employee_code_seq for race-safe RST-XXXX codes (§1.1, §5.14)
+"""add employee_code_seq for race-safe RST-XXXX codes
 
 Replaces the CREATE SEQUENCE that User Management used to run at request
-time (rules.md §3.6: schema changes go through migrations only).
+time (schema changes go through migrations only).
 
 Revision ID: b3d5f7a9c1e2
 Revises: a2c4e6f8b0d1

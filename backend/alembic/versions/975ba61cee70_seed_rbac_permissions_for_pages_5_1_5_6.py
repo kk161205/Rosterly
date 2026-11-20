@@ -3,24 +3,24 @@
 Backs the app/core/security.py check_permission() helper introduced to
 replace the hardcoded `current_user.role in (...)` string checks that used
 to live in app/services/{auth,dashboard,employee_directory,employee_profile,
-onboarding,offboarding}_service.py (project doc §3.2 step 2, rules.md §1.2).
+onboarding,offboarding}_service.py (step 2).
 
 Seeds exactly the (resource, action) permissions and role grants needed so
 that the *effective* allowed-roles set for every route touched by this
 refactor is identical to what the hardcoded checks previously allowed:
 
     (employee, delete)  -> super_admin
-        DELETE /employees/{id}                         (§5.3)
+        DELETE /employees/{id}
     (employee, read)    -> employee, manager, hr_admin, super_admin, auditor
-        GET /employees/{id}                             (§5.4, minus it_admin)
+        GET /employees/{id} (minus it_admin)
     (employee, update)  -> hr_admin, super_admin
-        PATCH /employees/{id} when editing someone else (§5.4)
+        PATCH /employees/{id} when editing someone else
     (employee, create)  -> hr_admin, super_admin
-        POST /onboarding, POST /offboarding              (§5.5, §5.6 — checklists
-        are treated as an `employee` lifecycle sub-resource per schema §1.14
+        POST /onboarding, POST /offboarding (checklists
+        are treated as an `employee` lifecycle sub-resource per schema
         rather than inventing a `checklist` resource)
     (employee, approve) -> hr_admin, super_admin
-        POST /offboarding/{id}/complete                  (§5.6 — final sign-off/
+        POST /offboarding/{id}/complete (the final sign-off/
         termination action, kept distinct from the "update" grant above which
         covers ordinary profile field edits by the same two roles)
 
@@ -31,7 +31,7 @@ the same (resource, action) pair) or because they are attribute/ABAC checks,
 not static role grants — see the inline comments left at each call site in
 the service files, and the task's final report, for the full reasoning.
 
-Also seeds the 6 roles from project doc §3.1 (idempotently, matched by
+Also seeds the 6 roles (idempotently, matched by
 `name`) since role_permissions rows need a real roles.id to reference and
 no prior migration seeds them.
 
@@ -54,7 +54,7 @@ branch_labels = None
 depends_on = None
 
 
-# project doc §3.1 seed roles
+# seed roles
 SEED_ROLES = [
     ("super_admin", "Full system access, including role/permission configuration"),
     ("it_admin", "Full asset management, maintenance, provisioning"),
@@ -66,11 +66,11 @@ SEED_ROLES = [
 
 # (resource, action, description)
 SEED_PERMISSIONS = [
-    ("employee", "delete", "Delete/soft-delete an employee account (§5.3)"),
-    ("employee", "read", "View another employee's full profile record (§5.4)"),
-    ("employee", "update", "Edit another employee's HR-controlled profile fields (§5.4)"),
-    ("employee", "create", "Create an onboarding or offboarding checklist for an employee (§5.5/§5.6)"),
-    ("employee", "approve", "Complete/finalize an offboarding checklist, terminating the employee (§5.6)"),
+    ("employee", "delete", "Delete/soft-delete an employee account"),
+    ("employee", "read", "View another employee's full profile record"),
+    ("employee", "update", "Edit another employee's HR-controlled profile fields"),
+    ("employee", "create", "Create an onboarding or offboarding checklist for an employee"),
+    ("employee", "approve", "Complete/finalize an offboarding checklist, terminating the employee"),
 ]
 
 # (resource, action) -> [role names]
