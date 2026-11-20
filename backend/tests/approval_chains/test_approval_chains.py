@@ -1,5 +1,5 @@
 """
-§5.18 Approval Chain Configuration (super_admin only).
+Approval Chain Configuration (super_admin only).
 
 Two layers: RBAC through the create_rbac_mock_db pattern (every other role is
 403 on every endpoint), and behaviour on real in-memory SQLite with
@@ -156,6 +156,7 @@ def world():
     grants = {("approval_chain", a): ["super_admin"] for a in CHAIN_ACTIONS}
     grants[("request", "create")] = ROLE_NAMES
     grants[("request", "read")] = ROLE_NAMES
+    grants[("request", "approve")] = ["manager", "hr_admin", "it_admin", "super_admin"]
     for (res, act), names in grants.items():
         perm = Permission(id=uuid.uuid4(), resource=res, action=act)
         db.add(perm)

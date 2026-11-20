@@ -1,5 +1,5 @@
 """
-Approval Chain Configuration schemas — project doc §5.18.
+Approval Chain Configuration schemas.
 """
 from datetime import datetime
 from decimal import Decimal
@@ -24,7 +24,7 @@ class ChainTemplateCreate(BaseModel):
 
 
 class ChainTemplateUpdate(BaseModel):
-    """Full replace of name, threshold, active flag and the step list (§5.18)."""
+    """Full replace of name, threshold, active flag and the step list."""
 
     name: str = Field(max_length=255)
     min_amount: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=2)

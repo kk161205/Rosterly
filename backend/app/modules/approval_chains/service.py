@@ -1,10 +1,10 @@
 """
-Approval Chain Configuration service — project doc §5.18 (super_admin only).
+Approval chain configuration service (super_admin only).
 
 Chains are copied into request_approvals when a request is created, so editing
 or replacing a template never touches requests already in flight; it only
 applies to new submissions. Every write logs to audit_logs in the same
-transaction (§7 rule 5).
+transaction.
 """
 from decimal import Decimal
 from typing import Optional
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import ConflictError, NotFoundError, ValidationAppError
 from app.core.security import CurrentUser, check_permission
-from app.models.auth import Role
+from app.models.auth import Permission, Role, RolePermission
 from app.models.requests import (
     ApprovalChainStep,
     ApprovalChainTemplate,
@@ -155,9 +155,24 @@ class ApprovalChainService:
                     f"step_order must be contiguous from 1 with no duplicates (expected 1..{len(steps)})."
                 )
             role_ids = {s.approver_role_id for s in steps}
-            found = {r for (r,) in self.db.query(Role.id).filter(Role.id.in_(role_ids)).all()}
-            if role_ids - found:
+            roles = {r.id: r for r in self.db.query(Role).filter(Role.id.in_(role_ids)).all()}
+            if role_ids - roles.keys():
                 errors["steps.approver_role_id"] = "One or more approver roles do not exist."
+            else:
+                # A step must go to a role that can approve, or requests would wait forever.
+                approvers = {
+                    rid
+                    for (rid,) in self.db.query(RolePermission.role_id)
+                    .join(Permission, Permission.id == RolePermission.permission_id)
+                    .filter(Permission.resource == "request", Permission.action == "approve", RolePermission.role_id.in_(role_ids))
+                }
+                cannot = sorted(roles[rid].name for rid in role_ids - approvers)
+                if cannot:
+                    errors["steps.approver_role_id"] = f"These roles can't approve requests: {', '.join(cannot)}."
+                # One person decides at most one step, so two manager steps could never both be decided.
+                manager_steps = sum(1 for st in steps if roles[st.approver_role_id].name == "manager")
+                if manager_steps > 1:
+                    errors["steps"] = "A chain can have only one manager step."
         if errors:
             raise ValidationAppError("Validation failed", field_errors=errors)
         return clean_name

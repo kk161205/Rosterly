@@ -1,5 +1,5 @@
 """
-Approval Chain Configuration API — project doc §5.18. super_admin only,
+Approval Chain Configuration API. super_admin only,
 enforced via the (approval_chain, *) permissions.
 """
 from typing import Optional
@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.request_context import client_ip
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.requests import RequestType
@@ -27,8 +28,8 @@ def get_service(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApprovalChainService:
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    return ApprovalChainService(db=db, current_user=current_user, ip_address=client_ip)
+    ip = client_ip(request)
+    return ApprovalChainService(db=db, current_user=current_user, ip_address=ip)
 
 
 @router.get("", response_model=ChainTemplateListResponse)
@@ -37,7 +38,7 @@ def list_approval_chains(
     request_type: Optional[RequestType] = Query(None),
     service: ApprovalChainService = Depends(get_service),
 ) -> ChainTemplateListResponse:
-    """GET /approval-chains (§5.18): templates with ordered steps and in-flight counts."""
+    """GET /approval-chains: templates with ordered steps and in-flight counts."""
     return service.list_templates(request_type)
 
 
@@ -47,7 +48,7 @@ def create_approval_chain(
     data: ChainTemplateCreate,
     service: ApprovalChainService = Depends(get_service),
 ) -> ChainTemplateResponse:
-    """POST /approval-chains (§5.18)."""
+    """POST /approval-chains."""
     return service.create_template(data)
 
 
@@ -57,7 +58,7 @@ def update_approval_chain(
     data: ChainTemplateUpdate,
     service: ApprovalChainService = Depends(get_service),
 ) -> ChainTemplateResponse:
-    """PUT /approval-chains/{id} (§5.18): full replace; applies to new requests only."""
+    """PUT /approval-chains/{id}: full replace; applies to new requests only."""
     return service.update_template(template_id, data)
 
 
@@ -66,6 +67,6 @@ def delete_approval_chain(
     template_id: UUID,
     service: ApprovalChainService = Depends(get_service),
 ) -> Response:
-    """DELETE /approval-chains/{id} (§5.18): 409 while a pending request references it."""
+    """DELETE /approval-chains/{id}: 409 while a pending request references it."""
     service.delete_template(template_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

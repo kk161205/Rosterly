@@ -1,4 +1,4 @@
-"""requests.approval_chain_template_id + RBAC for approval chains and licenses (§5.18, §5.19)
+"""requests.approval_chain_template_id + RBAC for approval chains and licenses
 
 Schema:
 - requests.approval_chain_template_id: nullable FK -> approval_chain_templates.id
@@ -34,13 +34,13 @@ FK_NAME = "fk_requests_approval_chain_template_id"
 IX_NAME = "ix_requests_approval_chain_template_id"
 
 SEED_PERMISSIONS = [
-    ("approval_chain", "read", "View approval chain templates (§5.18)"),
-    ("approval_chain", "create", "Create approval chain templates (§5.18)"),
-    ("approval_chain", "update", "Edit approval chain templates (§5.18)"),
-    ("approval_chain", "delete", "Delete approval chain templates (§5.18)"),
-    ("software_license", "read", "View software licenses and seat holders (§5.19)"),
-    ("software_license", "create", "Add software licenses (§5.19)"),
-    ("software_license", "update", "Edit software licenses (§5.19)"),
+    ("approval_chain", "read", "View approval chain templates"),
+    ("approval_chain", "create", "Create approval chain templates"),
+    ("approval_chain", "update", "Edit approval chain templates"),
+    ("approval_chain", "delete", "Delete approval chain templates"),
+    ("software_license", "read", "View software licenses and seat holders"),
+    ("software_license", "create", "Add software licenses"),
+    ("software_license", "update", "Edit software licenses"),
 ]
 
 SEED_GRANTS = {
