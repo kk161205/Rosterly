@@ -1,17 +1,17 @@
 """
-§5.19 Software License Management.
+Software License Management.
 
 RBAC through the create_rbac_mock_db pattern, behaviour on real in-memory
 SQLite with hand-computed values.
 
-seats_used = assets linked to the license with status 'assigned' (§1.18).
+seats_used = active license_assignments (removed_at IS NULL).
 
 Seed:
-  Figma   total 10 : 3 assigned (Alice x2, Bob x1) + 1 in_stock + 1 retired  -> seats_used 3
+  Figma   total 10 : Alice, Bob, Holder 0 active + Holder 1 removed       -> seats_used 3
   M365    total  5 : 5 assigned (5 different holders)                         -> seats_used 5
-  Empty   total  2 : no assets                                                -> seats_used 0
+  Empty   total  2 : no seats                                                 -> seats_used 0
 """
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 import uuid
@@ -25,7 +25,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import Base, get_db
 from app.main import app
-from app.models.assets import Asset, AssetStatus, DepreciationMethod, SoftwareLicense
+from app.models.assets import LicenseAssignment, SoftwareLicense
 from app.models.auth import Permission, Role, RolePermission, User, UserStatus
 from app.models.system import AuditLog
 
@@ -142,7 +142,7 @@ def _override_get_db():
 def world():
     app.dependency_overrides[get_db] = _override_get_db
     db = TestingSessionLocal()
-    for model in (AuditLog, Asset, SoftwareLicense, User, RolePermission, Permission, Role):
+    for model in (AuditLog, LicenseAssignment, SoftwareLicense, User, RolePermission, Permission, Role):
         db.query(model).delete()
     db.commit()
 
@@ -168,17 +168,9 @@ def world():
     bob = user("Bob Iyer", "bob@example.com")
     others = [user(f"Holder {i}", f"h{i}@example.com") for i in range(5)]
 
-    counter = {"n": 0}
-
-    def asset(lic, status, holder=None, name="Seat"):
-        counter["n"] += 1
-        a = Asset(id=uuid.uuid4(), asset_tag=f"AST-{counter['n']:04d}", name=name, category="software_license",
-                  vendor="V", purchase_date=date(2025, 1, 1), purchase_cost=Decimal("100"),
-                  current_value=Decimal("100"), depreciation_method=DepreciationMethod.none,
-                  useful_life_months=12, status=status, current_holder_id=holder.id if holder else None,
-                  license_id=lic.id)
-        db.add(a)
-        return a
+    def seat(lic, holder, removed=False):
+        db.add(LicenseAssignment(id=uuid.uuid4(), license_id=lic.id, user_id=holder.id, source="manual",
+                                 removed_at=datetime(2026, 1, 1, tzinfo=timezone.utc) if removed else None))
 
     figma = SoftwareLicense(id=uuid.uuid4(), name="Figma", vendor="Figma Inc", total_seats=10,
                             cost_per_seat=Decimal("1200.00"), renewal_date=date(2027, 1, 15))
@@ -187,13 +179,12 @@ def world():
     empty = SoftwareLicense(id=uuid.uuid4(), name="Empty", vendor="Nobody", total_seats=2, cost_per_seat=None)
     db.add_all([figma, m365, empty])
     db.flush()
-    asset(figma, AssetStatus.assigned, alice, "Figma seat 1")
-    asset(figma, AssetStatus.assigned, alice, "Figma seat 2")
-    asset(figma, AssetStatus.assigned, bob, "Figma seat 3")
-    asset(figma, AssetStatus.in_stock)
-    asset(figma, AssetStatus.retired)
+    seat(figma, alice)
+    seat(figma, bob)
+    seat(figma, others[0])
+    seat(figma, others[1], removed=True)  # history: not counted
     for h in others:
-        asset(m365, AssetStatus.assigned, h)
+        seat(m365, h)
     db.commit()
 
     state = {"roles": {n: r.id for n, r in roles.items()}, "figma": figma.id, "m365": m365.id, "empty": empty.id,
@@ -265,12 +256,12 @@ def test_holders(world):
     res = client.get(f"{URL}/{world['figma']}/holders")
     assert res.status_code == 200
     holders = res.json()["holders"]
-    assert [(h["full_name"], h["email"], h["asset_name"]) for h in holders] == [
-        ("Alice Rao", "alice@example.com", "Figma seat 1"),
-        ("Alice Rao", "alice@example.com", "Figma seat 2"),
-        ("Bob Iyer", "bob@example.com", "Figma seat 3"),
+    assert [(h["full_name"], h["email"]) for h in holders] == [
+        ("Alice Rao", "alice@example.com"),
+        ("Bob Iyer", "bob@example.com"),
+        ("Holder 0", "h0@example.com"),
     ]
-    assert all(h["asset_tag"].startswith("AST-") for h in holders)
+    assert all(h["source"] == "manual" and h["assignment_id"] for h in holders)
     assert len(holders) == client.get(URL).json()["items"][1]["seats_used"]  # Figma: matches seats_used
 
 

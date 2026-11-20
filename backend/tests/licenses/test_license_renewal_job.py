@@ -1,5 +1,5 @@
 """
-§6 daily license-renewal notification job.
+daily license-renewal notification job.
 
 Real in-memory SQLite. Run date is 2026-06-01, so the window is 2026-06-01..2026-07-01:
   A renews 2026-06-15 (14 days)  -> notified
@@ -125,9 +125,11 @@ def test_no_it_admins_means_no_notifications(db):
     assert _notifs(db) == []
 
 
-def test_job_is_on_the_existing_beat_schedule_and_registered():
-    entry = celery_app.conf.beat_schedule["daily-license-renewal-check"]
-    assert entry["task"] == "app.modules.licenses.jobs.check_license_renewals"
+def test_job_runs_through_the_daily_catch_up_and_is_registered():
+    from app.core.daily_jobs import _jobs
+
+    assert celery_app.conf.beat_schedule["daily-jobs-catch-up"]["task"] == "app.core.celery_app.run_daily_jobs"
+    assert "license_renewals" in _jobs()
     assert "app.modules.licenses.jobs" in celery_app.conf.include
     celery_app.loader.import_default_modules()
     assert "app.modules.licenses.jobs.check_license_renewals" in celery_app.tasks

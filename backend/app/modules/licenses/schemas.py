@@ -1,5 +1,5 @@
 """
-Software License Management schemas — project doc §5.19.
+Software License Management schemas.
 """
 from datetime import date, datetime
 from decimal import Decimal
@@ -35,6 +35,8 @@ class LicenseResponse(BaseModel):
     seats_used: int
     cost_per_seat: Optional[Decimal]
     renewal_date: Optional[date]
+    source: str  # "manual" or a connected provider, e.g. "microsoft_365"
+    last_synced_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -45,12 +47,16 @@ class LicenseListResponse(BaseModel):
 
 
 class LicenseHolder(BaseModel):
+    assignment_id: UUID
     employee_id: UUID
     full_name: str
     email: str
-    asset_id: UUID
-    asset_tag: str
-    asset_name: str
+    source: str
+    assigned_at: datetime
+
+
+class SeatAssign(BaseModel):
+    employee_id: UUID
 
 
 class LicenseHoldersResponse(BaseModel):

@@ -1,12 +1,12 @@
 """
-Daily software-license renewal notification job (project doc §6).
+Daily software-license renewal notification job.
 
 Task path referenced by app/core/celery_app.py's beat schedule:
   - app.modules.licenses.jobs.check_license_renewals  (daily)
 
 Every license whose renewal_date falls from today through today + 30 days
 notifies every active it_admin: type `license_renewal`, channel `both`,
-is_critical (§6). The job is idempotent: a recipient already holding a
+is_critical. The job is idempotent: a recipient already holding a
 `license_renewal` notification for the same license and the same renewal date
 (matched on user_id, type, related_entity_id and the ISO date in the message)
 is skipped, so a daily run never re-notifies. If the renewal date moves, the
@@ -19,6 +19,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import local_today
 from app.core.celery_app import celery_app
 from app.core.role_policy import user_holds_role_names
 from app.db.session import SessionLocal
@@ -38,7 +39,7 @@ def _message(license_: SoftwareLicense) -> str:
 
 def _run_license_renewal_check(db: Session, as_of: Optional[date] = None) -> dict:
     """Business logic behind check_license_renewals, split out for testing."""
-    as_of = as_of or date.today()
+    as_of = as_of or local_today()
     window_end = as_of + timedelta(days=RENEWAL_WINDOW_DAYS)
 
     licenses = (
