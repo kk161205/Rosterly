@@ -1,13 +1,13 @@
-"""seed RBAC permissions for analytics dashboard (§5.15)
+"""seed RBAC permissions for analytics dashboard
 
 Seeds the (resource, action) permissions and role_permissions grants backing:
-- GET /analytics/asset-utilization (§5.15):
+- GET /analytics/asset-utilization:
     (analytics, asset_utilization)   -> super_admin, it_admin, auditor
-- GET /analytics/cost-by-department (§5.15):
+- GET /analytics/cost-by-department:
     (analytics, cost_by_department)  -> super_admin, it_admin, hr_admin, auditor
-- GET /analytics/headcount-asset-ratio (§5.15):
+- GET /analytics/headcount-asset-ratio:
     (analytics, headcount_asset_ratio) -> super_admin, hr_admin, auditor
-- GET /analytics/license-usage (§5.15):
+- GET /analytics/license-usage:
     (analytics, license_usage)       -> super_admin, it_admin, auditor
 
 Extends migration c1a2d3e4f5a6.
@@ -31,10 +31,10 @@ branch_labels = None
 depends_on = None
 
 SEED_PERMISSIONS = [
-    ("analytics", "asset_utilization", "View asset utilization analytics (§5.15)"),
-    ("analytics", "cost_by_department", "View cost per department analytics (§5.15)"),
-    ("analytics", "headcount_asset_ratio", "View headcount-to-asset ratio analytics (§5.15)"),
-    ("analytics", "license_usage", "View software license usage analytics (§5.15)"),
+    ("analytics", "asset_utilization", "View asset utilization analytics"),
+    ("analytics", "cost_by_department", "View cost per department analytics"),
+    ("analytics", "headcount_asset_ratio", "View headcount-to-asset ratio analytics"),
+    ("analytics", "license_usage", "View software license usage analytics"),
 ]
 
 SEED_GRANTS = {

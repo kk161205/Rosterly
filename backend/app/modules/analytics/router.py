@@ -1,5 +1,5 @@
 """
-Analytics API — PRD §5.15 (revised 18 Oct 2026). Read-only reports:
+Analytics API. Read-only reports:
 - GET /analytics/savings             (analytics:savings)
 - GET /analytics/cost-by-department  (analytics:cost_by_department)
 - GET /analytics/budget              (analytics:budget_forecast)

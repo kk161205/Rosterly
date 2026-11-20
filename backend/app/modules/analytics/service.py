@@ -1,5 +1,5 @@
 """
-Analytics Service — PRD §5.15 (revised 18 Oct 2026).
+Analytics service.
 
 Reports that answer a question someone acts on (see schemas.py): savings,
 cost by department, budget, follow-ups and turnaround. All figures are
@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.clock import local_today
 from app.core.errors import AppError
 from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment, AssetStatus, MaintenanceTicket
@@ -65,7 +66,7 @@ def resolve_date_range(
     - Validates from_date <= to_date.
     - Validates range does not exceed 5 years (1825 days).
     """
-    today = date.today()
+    today = local_today()
 
     if from_date is None and to_date is None:
         to_date = today
@@ -129,15 +130,15 @@ class AnalyticsService:
         """
         GET /analytics/savings — what we pay for and don't use.
         - Unused licence seats: total − assigned (assigned = linked assets with
-          status 'assigned', spec §1.18), costed at cost_per_seat per year.
+          status 'assigned',), costed at cost_per_seat per year.
         - Idle equipment: hardware in stock for ≥ 90 days (since its last
-          return, or since it was added if never assigned), at book value.
+          return, or since it was added if never assigned), at purchase cost.
         Access: analytics:savings (super_admin, it_admin, auditor).
         """
         check_permission(self.current_user, "analytics", "savings", self.db)
-        today = date.today()
+        today = local_today()
 
-        rows = license_seats_query(self.db).all()  # shared seats_used definition (§1.18)
+        rows = license_seats_query(self.db).all()  # shared seats_used definition
         licences: list[UnusedLicenceItem] = []
         for lic, assigned in rows:
             unused = max(lic.total_seats - assigned, 0)
@@ -176,7 +177,7 @@ class AnalyticsService:
             elif asset.created_at:
                 since = _aware(asset.created_at).astimezone().date()
             else:
-                since = asset.purchase_date
+                since = asset.purchase_date or today
             days = (today - since).days
             if days >= IDLE_THRESHOLD_DAYS:
                 idle.append(
@@ -187,16 +188,16 @@ class AnalyticsService:
                         category=asset.category,
                         in_stock_since=since,
                         days_idle=days,
-                        current_value=Decimal(asset.current_value or 0),
+                        purchase_cost=Decimal(asset.purchase_cost or 0),
                     )
                 )
-        idle.sort(key=lambda x: x.current_value, reverse=True)
+        idle.sort(key=lambda x: x.purchase_cost, reverse=True)
 
         return SavingsResponse(
             unused_licences=licences,
             unused_licence_cost_per_year=sum((x.unused_cost_per_year for x in licences), Decimal("0")),
             idle_assets=idle,
-            idle_asset_value=sum((x.current_value for x in idle), Decimal("0")),
+            idle_asset_value=sum((x.purchase_cost for x in idle), Decimal("0")),
             idle_threshold_days=IDLE_THRESHOLD_DAYS,
         )
 
@@ -208,7 +209,7 @@ class AnalyticsService:
         to_date: Optional[date] = None,
     ) -> CostByDepartmentResponse:
         """
-        GET /analytics/cost-by-department (PRD §5.15):
+        GET /analytics/cost-by-department:
         Stacked spend breakdown per department (hardware vs. software license allocation).
         - Filtered by purchase_date in [from, to].
         - Assigned assets attributed to holder's department.
@@ -273,7 +274,7 @@ class AnalyticsService:
         Access: analytics:budget_forecast (super_admin, it_admin, auditor).
         """
         check_permission(self.current_user, "analytics", "budget_forecast", self.db)
-        today = date.today()
+        today = local_today()
         horizon = add_months(today, 12)
 
         assets = (
@@ -296,8 +297,8 @@ class AnalyticsService:
         past: list[BudgetAssetItem] = []
         quarters: dict[date, list[BudgetAssetItem]] = defaultdict(list)
         for a in assets:
-            if not a.useful_life_months:
-                continue
+            if not a.useful_life_months or not a.purchase_date:
+                continue  # no expected life or purchase date given — nothing to forecast
             end = add_months(a.purchase_date, a.useful_life_months)
             if end < today:
                 past.append(item(a, end))
@@ -340,7 +341,7 @@ class AnalyticsService:
         """
         GET /analytics/follow-ups — people-side loose ends.
         - Leavers with devices not yet returned: active offboarding checklists
-          and the employee's open assignments, at book value.
+          and the employee's open assignments, at purchase cost.
         - Joiner readiness: of joiners whose first day falls in [from, to] (and
           has passed), how many had every onboarding task done by the end of
           that day; plus joiners in the next 14 days who still have open tasks.
@@ -348,7 +349,7 @@ class AnalyticsService:
         """
         check_permission(self.current_user, "analytics", "follow_ups", self.db)
         resolved_from, resolved_to = resolve_date_range(from_date, to_date)
-        today = date.today()
+        today = local_today()
 
         offboardings = (
             self.db.query(Checklist)
@@ -382,7 +383,7 @@ class AnalyticsService:
                             asset_id=a.id,
                             asset_tag=a.asset_tag,
                             name=a.name,
-                            current_value=Decimal(a.current_value or 0),
+                            purchase_cost=Decimal(a.purchase_cost or 0),
                         )
                         for a in held
                     ],
@@ -426,7 +427,7 @@ class AnalyticsService:
         return FollowUpsResponse(
             leavers=leavers,
             unreturned_count=sum(len(x.assets) for x in leavers),
-            unreturned_value=sum((a.current_value for x in leavers for a in x.assets), Decimal("0")),
+            unreturned_value=sum((a.purchase_cost for x in leavers for a in x.assets), Decimal("0")),
             joiners_in_period=in_period,
             joiners_ready_on_day_one=ready,
             upcoming_not_ready=upcoming,

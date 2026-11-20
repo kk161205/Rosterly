@@ -1,5 +1,5 @@
 """
-§5.15 Analytics (revised 18 Oct 2026) — every figure checked against a
+Analytics — every figure checked against a
 hand-computed value on a real SQLite database.
 
 - RBAC per report (savings, cost-by-department, budget, follow-ups, turnaround)
@@ -26,10 +26,10 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import Base, get_db
 from app.main import app
 from app.models.assets import (
+    LicenseAssignment,
     Asset,
     AssetAssignment,
     AssetStatus,
-    DepreciationMethod,
     MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
@@ -100,7 +100,7 @@ def act_as(role_name: str) -> uuid.UUID:
     db = TestingSessionLocal()
     role = db.query(Role).filter(Role.name == role_name).one()
     uid = uuid.uuid4()
-    db.add(User(id=uid, employee_code=f"RST-{secrets.token_hex(2).upper()}", full_name=f"User {role_name}",
+    db.add(User(id=uid, employee_code=f"RST-{secrets.token_hex(4).upper()}", full_name=f"User {role_name}",
                 email=f"{uid.hex[:8]}@example.com", password_hash="h", role_id=role.id, status=UserStatus.active,
                 designation="Staff", date_of_joining=date(2025, 1, 1)))
     db.commit()
@@ -113,7 +113,7 @@ def act_as(role_name: str) -> uuid.UUID:
 def person(db, name: str, **kw) -> User:
     role = db.query(Role).filter(Role.name == "employee").one()
     uid = uuid.uuid4()
-    u = User(id=uid, employee_code=f"RST-{secrets.token_hex(2).upper()}", full_name=name,
+    u = User(id=uid, employee_code=f"RST-{secrets.token_hex(4).upper()}", full_name=name,
              email=f"{uid.hex[:8]}@example.com", password_hash="h", role_id=role.id,
              status=kw.pop("status", UserStatus.active), designation="Staff",
              date_of_joining=kw.pop("date_of_joining", date(2025, 1, 1)), **kw)
@@ -124,8 +124,7 @@ def person(db, name: str, **kw) -> User:
 
 def asset(db, tag: str, **kw) -> Asset:
     defaults = dict(name=tag, category="laptop", vendor="Dell", purchase_date=date(2025, 1, 1),
-                    purchase_cost=Decimal("100000"), current_value=Decimal("80000"),
-                    depreciation_method=DepreciationMethod.straight_line, useful_life_months=36,
+                    purchase_cost=Decimal("100000"), useful_life_months=36,
                     status=AssetStatus.in_stock)
     defaults.update(kw)
     a = Asset(id=uuid.uuid4(), asset_tag=tag, **defaults)
@@ -194,17 +193,18 @@ def test_savings_unused_seats_and_idle_stock():
     slack = SoftwareLicense(id=uuid.uuid4(), name="Slack", vendor="Slack", total_seats=5, cost_per_seat=Decimal("800"))
     db.add_all([figma, slack])
     db.flush()
-    for i in range(3):
-        asset(db, f"FIG-{i}", category="software_license", license_id=figma.id, status=AssetStatus.assigned, current_holder_id=holder.id)
-    for i in range(5):
-        asset(db, f"SLK-{i}", category="software_license", license_id=slack.id, status=AssetStatus.assigned, current_holder_id=holder.id)
-    old = asset(db, "MON-OLD", category="monitor", current_value=Decimal("6000"))
+    seat_holders = [holder] + [person(db, f"Seat holder {i}") for i in range(4)]
+    for h in seat_holders[:3]:
+        db.add(LicenseAssignment(id=uuid.uuid4(), license_id=figma.id, user_id=h.id, source="manual"))
+    for h in seat_holders:
+        db.add(LicenseAssignment(id=uuid.uuid4(), license_id=slack.id, user_id=h.id, source="manual"))
+    old = asset(db, "MON-OLD", category="monitor", purchase_cost=Decimal("6000"))
     old.created_at = NOW - timedelta(days=200)
-    back = asset(db, "LT-BACK", current_value=Decimal("50000"))
+    back = asset(db, "LT-BACK", purchase_cost=Decimal("50000"))
     db.add(AssetAssignment(id=uuid.uuid4(), asset_id=back.id, employee_id=holder.id, assigned_by=holder.id,
                            assigned_at=NOW - timedelta(days=300), returned_at=NOW - timedelta(days=100),
                            condition_at_assignment="Good"))
-    recent = asset(db, "LT-NEW", current_value=Decimal("70000"))
+    recent = asset(db, "LT-NEW", purchase_cost=Decimal("70000"))
     db.add(AssetAssignment(id=uuid.uuid4(), asset_id=recent.id, employee_id=holder.id, assigned_by=holder.id,
                            assigned_at=NOW - timedelta(days=50), returned_at=NOW - timedelta(days=10),
                            condition_at_assignment="Good"))
@@ -293,7 +293,7 @@ def test_follow_ups_leaver_devices_and_joiner_readiness():
     it_role = db.query(Role).filter(Role.name == "it_admin").one()
     ravi = person(db, "Ravi", status=UserStatus.offboarding, date_of_exit=TODAY + timedelta(days=7))
     for tag, value in (("LT-R", "30000"), ("PH-R", "10000")):
-        a = asset(db, tag, current_value=Decimal(value), status=AssetStatus.assigned, current_holder_id=ravi.id)
+        a = asset(db, tag, purchase_cost=Decimal(value), status=AssetStatus.assigned, current_holder_id=ravi.id)
         db.add(AssetAssignment(id=uuid.uuid4(), asset_id=a.id, employee_id=ravi.id, assigned_by=ravi.id,
                                assigned_at=NOW - timedelta(days=200), condition_at_assignment="Good"))
     db.add(Checklist(id=uuid.uuid4(), employee_id=ravi.id, type=ChecklistType.offboarding, status=ChecklistStatus.in_progress))

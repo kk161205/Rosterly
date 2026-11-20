@@ -16,7 +16,7 @@ def get_dashboard_summary(
     db: Session = Depends(get_db),
 ) -> DashboardResponse:
     """
-    Get role-aware dashboard summary payload (PRD §5.2).
+    Get role-aware dashboard summary payload.
 
     Composes top KPI metrics and widgets dynamically based on the caller's live role
     retrieved server-side from the database.

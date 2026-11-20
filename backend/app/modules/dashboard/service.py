@@ -1,9 +1,10 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import exists, and_, func, or_
+from sqlalchemy.orm import aliased, Session, joinedload
 
+from app.core.clock import local_today
 from app.core.security import CurrentUser
 from app.models.assets import (
     Asset,
@@ -75,6 +76,8 @@ def invalidate_dashboard_cache(user_id: str | None = None) -> None:
             _DASHBOARD_CACHE.clear()
 
 
+_Decided = aliased(RequestApproval)
+
 class DashboardService:
     def __init__(self, db: Session, current_user: CurrentUser):
         self.db = db
@@ -83,7 +86,7 @@ class DashboardService:
     def get_dashboard_data(self) -> dict[str, Any]:
         user_id_str = str(self.user.user_id)
         role_name = (self.user.role or "").lower()
-        # Multi-role (§5.14): one block of numbers per role held, widest first,
+        # Multi-role: one block of numbers per role held, widest first,
         # merged into one payload — a key already filled by a wider role wins.
         held = [r for r in _DASHBOARD_ROLE_ORDER if r in self.user.role_names] or ["employee"]
         cache_key = f"{user_id_str}:{','.join(held)}"
@@ -176,7 +179,7 @@ class DashboardService:
                 Request.requester_id == user_id,
                 Request.status.in_([RequestStatus.pending, RequestStatus.in_progress]),
             )
-            .order_by(Request.created_at.desc())
+            .order_by(Request.created_at.desc(), Request.id.desc())
             .limit(10)
             .all()
         )
@@ -210,7 +213,7 @@ class DashboardService:
                 Checklist.employee_id == user_id,
                 ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
             )
-            .order_by(ChecklistItem.created_at.desc())
+            .order_by(ChecklistItem.created_at.desc(), ChecklistItem.id.desc())
             .limit(10)
             .all()
         )
@@ -240,7 +243,7 @@ class DashboardService:
         notifications = (
             self.db.query(Notification)
             .filter(Notification.user_id == user_id)
-            .order_by(Notification.created_at.desc())
+            .order_by(Notification.created_at.desc(), Notification.id.desc())
             .limit(10)
             .all()
         )
@@ -295,6 +298,13 @@ class DashboardService:
                     RequestApproval.approver_role_id.in_(self.user.role_ids),
                 ),
             ),
+            # One step per person, as in the Inbox and /requests/pending-approval:
+            # a request whose earlier step this person decided isn't waiting on them.
+            ~exists().where(
+                _Decided.request_id == Request.id,
+                _Decided.approver_id == user_id,
+                _Decided.status.in_([ApprovalStatus.approved, ApprovalStatus.rejected]),
+            ),
         )
 
         pending_approvals = (
@@ -302,7 +312,7 @@ class DashboardService:
             .join(Request, Request.id == RequestApproval.request_id)
             .options(joinedload(RequestApproval.request).joinedload(Request.requester))
             .filter(*pending_approvals_filter)
-            .order_by(RequestApproval.created_at.desc())
+            .order_by(RequestApproval.created_at.desc(), RequestApproval.id.desc())
             .limit(10)
             .all()
         )
@@ -326,11 +336,8 @@ class DashboardService:
             or 0
         )
 
-        # NOTE: this count is intentionally scoped to RequestApproval only, matching
-        # the doc §5.2 "Pending Approvals" widget below it exactly. Leave & Attendance
-        # (P3, §5.20) approvals are a separate, not-yet-built concept and were
-        # previously being folded in here, which made this KPI number disagree with
-        # the list underneath it — removed rather than silently left mismatched.
+        # Request approvals only, so this number matches the list it heads. Leave
+        # waiting on this person is shown separately (Home's "Waiting on you").
         total_pending_approvals = req_approvals_count
 
         # 2. Team Members & Headcount
@@ -409,7 +416,7 @@ class DashboardService:
                 Checklist.type == ChecklistType.onboarding,
                 Checklist.status == ChecklistStatus.in_progress,
             )
-            .order_by(Checklist.created_at.desc())
+            .order_by(Checklist.created_at.desc(), Checklist.id.desc())
             .limit(10)
             .all()
         )
@@ -441,7 +448,7 @@ class DashboardService:
                 Checklist.type == ChecklistType.offboarding,
                 Checklist.status == ChecklistStatus.in_progress,
             )
-            .order_by(Checklist.created_at.desc())
+            .order_by(Checklist.created_at.desc(), Checklist.id.desc())
             .limit(10)
             .all()
         )
@@ -492,7 +499,7 @@ class DashboardService:
                     ChecklistItem.owner_role_id == hr_role_id,
                     ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
                 )
-                .order_by(ChecklistItem.created_at.desc())
+                .order_by(ChecklistItem.created_at.desc(), ChecklistItem.id.desc())
                 .limit(10)
                 .all()
             )
@@ -512,7 +519,7 @@ class DashboardService:
         notifications = (
             self.db.query(Notification)
             .filter(Notification.user_id == self.user.user_id)
-            .order_by(Notification.created_at.desc())
+            .order_by(Notification.created_at.desc(), Notification.id.desc())
             .limit(10)
             .all()
         )
@@ -551,7 +558,7 @@ class DashboardService:
         return metrics, widgets
 
     def _get_it_admin_dashboard(self) -> tuple[dict[str, Any], dict[str, Any]]:
-        today = date.today()
+        today = local_today()
         thirty_days_later = today + timedelta(days=30)
 
         # 1. Open Maintenance Tickets
@@ -561,7 +568,7 @@ class DashboardService:
             .filter(
                 MaintenanceTicket.status.in_([MaintenanceStatus.open, MaintenanceStatus.in_progress])
             )
-            .order_by(MaintenanceTicket.created_at.desc())
+            .order_by(MaintenanceTicket.created_at.desc(), MaintenanceTicket.id.desc())
             .limit(10)
             .all()
         )
@@ -635,7 +642,7 @@ class DashboardService:
                     ChecklistItem.owner_role_id == it_role_id,
                     ChecklistItem.status.in_([ChecklistItemStatus.pending, ChecklistItemStatus.in_progress]),
                 )
-                .order_by(ChecklistItem.created_at.desc())
+                .order_by(ChecklistItem.created_at.desc(), ChecklistItem.id.desc())
                 .limit(10)
                 .all()
             )
@@ -655,7 +662,7 @@ class DashboardService:
         notifications = (
             self.db.query(Notification)
             .filter(Notification.user_id == self.user.user_id)
-            .order_by(Notification.created_at.desc())
+            .order_by(Notification.created_at.desc(), Notification.id.desc())
             .limit(10)
             .all()
         )
@@ -713,7 +720,7 @@ class DashboardService:
         audit_logs = (
             self.db.query(AuditLog)
             .options(joinedload(AuditLog.actor))
-            .order_by(AuditLog.created_at.desc())
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
             .limit(15)
             .all()
         )
@@ -731,7 +738,7 @@ class DashboardService:
         notifications = (
             self.db.query(Notification)
             .filter(Notification.user_id == self.user.user_id)
-            .order_by(Notification.created_at.desc())
+            .order_by(Notification.created_at.desc(), Notification.id.desc())
             .limit(10)
             .all()
         )

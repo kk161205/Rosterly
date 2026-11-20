@@ -186,7 +186,7 @@ class SuperAdminDashboardWidgets(BaseModel):
 
 class DashboardResponse(BaseModel):
     role: str  # primary role
-    roles: list[str] = []  # every role whose numbers are merged in, widest first (§5.14)
+    roles: list[str] = [] # every role whose numbers are merged in, widest first
     metrics: dict[str, Any]
     widgets: dict[str, Any]
 

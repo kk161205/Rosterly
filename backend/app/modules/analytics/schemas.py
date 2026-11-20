@@ -1,5 +1,5 @@
 """
-Analytics schemas — PRD §5.15 (revised 18 Oct 2026).
+Analytics schemas.
 
 Each report answers a question someone acts on:
 - savings: what we pay for and don't use (unused licence seats, idle stock)
@@ -42,7 +42,7 @@ class UnusedLicenceItem(BaseModel):
     assigned_seats: int
     unused_seats: int
     cost_per_seat: Optional[Decimal] = None
-    # cost_per_seat is per seat per (annual) renewal — see spec §1.18
+    # cost_per_seat is per seat per (annual) renewal
     unused_cost_per_year: Decimal
     renewal_date: Optional[date] = None
 
@@ -54,7 +54,7 @@ class IdleAssetItem(BaseModel):
     category: str
     in_stock_since: date
     days_idle: int
-    current_value: Decimal
+    purchase_cost: Decimal  # what it cost (there is no depreciation)
 
 
 class SavingsResponse(BaseModel):
@@ -98,7 +98,7 @@ class UnreturnedAsset(BaseModel):
     asset_id: UUID
     asset_tag: str
     name: str
-    current_value: Decimal
+    purchase_cost: Decimal  # what it cost (there is no depreciation)
 
 
 class LeaverWithDevices(BaseModel):

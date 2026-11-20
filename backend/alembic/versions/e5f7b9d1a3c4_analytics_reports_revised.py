@@ -1,7 +1,6 @@
-"""analytics permissions follow the revised §5.15 reports
+"""analytics permissions follow the revised reports
 
-The Analytics page now shows reports that answer a question someone acts on
-(spec §5.15, revised 18 Oct 2026). Three permissions are renamed to the report
+The Analytics page now shows reports that answer a question someone acts on. Three permissions are renamed to the report
 they now guard — their role grants carry over unchanged because grants point at
 permission ids — and one is added:
 
@@ -29,16 +28,16 @@ branch_labels = None
 depends_on = None
 
 RENAMES = [
-    ("asset_utilization", "budget_forecast", "View replacement forecast and expiring warranties (§5.15)"),
-    ("headcount_asset_ratio", "follow_ups", "View unreturned leaver devices and joiner readiness (§5.15)"),
-    ("license_usage", "savings", "View unused licence spend and idle equipment (§5.15)"),
+    ("asset_utilization", "budget_forecast", "View replacement forecast and expiring warranties"),
+    ("headcount_asset_ratio", "follow_ups", "View unreturned leaver devices and joiner readiness"),
+    ("license_usage", "savings", "View unused licence spend and idle equipment"),
 ]
 OLD_DESCRIPTIONS = {
-    "asset_utilization": "View asset utilization analytics (§5.15)",
-    "headcount_asset_ratio": "View headcount-to-asset ratio analytics (§5.15)",
-    "license_usage": "View software license usage analytics (§5.15)",
+    "asset_utilization": "View asset utilization analytics",
+    "headcount_asset_ratio": "View headcount-to-asset ratio analytics",
+    "license_usage": "View software license usage analytics",
 }
-TURNAROUND = ("analytics", "turnaround", "View approval and repair turnaround (§5.15)")
+TURNAROUND = ("analytics", "turnaround", "View approval and repair turnaround")
 TURNAROUND_ROLES = ["super_admin", "it_admin", "hr_admin", "auditor"]
 
 

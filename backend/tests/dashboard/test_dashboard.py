@@ -188,7 +188,7 @@ def test_dashboard_auditor():
 
 def test_dashboard_manager_pending_approvals_filter():
     """
-    Exercises the pending approvals filter in DashboardService (PRD §5.12 alignment):
+    Exercises the pending approvals filter in DashboardService (alignment):
     - Current step match: only approvals where step_order == request.current_step
     - Role queue guard: approvals with approver_id IS NULL only match caller's role_id
     - Direct assignment: approvals with approver_id == caller match directly
