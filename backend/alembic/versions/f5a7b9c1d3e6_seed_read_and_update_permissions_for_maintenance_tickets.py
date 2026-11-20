@@ -1,9 +1,9 @@
-"""seed RBAC permissions for asset lookup (§5.9) and maintenance tickets (§5.10)
+"""seed RBAC permissions for asset lookup and maintenance tickets
 
 Seeds the (resource, action) permissions and role_permissions grants backing:
-- GET /assets/lookup/{asset_tag} (§5.9):
+- GET /assets/lookup/{asset_tag}:
     (assets, lookup) -> it_admin, super_admin
-- GET /maintenance-tickets & PATCH /maintenance-tickets/{id} (§5.10):
+- GET /maintenance-tickets & PATCH /maintenance-tickets/{id}:
     (maintenance_ticket, read)   -> it_admin, super_admin, auditor
     (maintenance_ticket, update) -> it_admin, super_admin
 
@@ -28,9 +28,9 @@ branch_labels = None
 depends_on = None
 
 SEED_PERMISSIONS = [
-    ("assets", "lookup", "Lookup asset details by tag for QR scanner (§5.9)"),
-    ("maintenance_ticket", "read", "View maintenance tickets (§5.10)"),
-    ("maintenance_ticket", "update", "Update maintenance ticket status, priority, or assignee (§5.10)"),
+    ("assets", "lookup", "Lookup asset details by tag for QR scanner"),
+    ("maintenance_ticket", "read", "View maintenance tickets"),
+    ("maintenance_ticket", "update", "Update maintenance ticket status, priority, or assignee"),
 ]
 
 SEED_GRANTS = {

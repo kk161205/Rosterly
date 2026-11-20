@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.assets import AssetStatus, DepreciationMethod, MaintenancePriority, MaintenanceStatus
+from app.models.assets import AssetStatus, MaintenancePriority, MaintenanceStatus
 
 
 class CurrentHolderNested(BaseModel):
@@ -21,21 +21,25 @@ class AssetCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     category: str = Field(..., min_length=1, max_length=100)
     serial_number: str | None = Field(None, max_length=100)
-    vendor: str = Field(..., min_length=1, max_length=255)
-    purchase_date: date
-    purchase_cost: Decimal = Field(..., ge=0)
-    depreciation_method: DepreciationMethod
-    useful_life_months: int = Field(..., gt=0)
+    vendor: str | None = Field(None, max_length=255)
+    purchase_date: date | None = None
+    purchase_cost: Decimal | None = Field(None, ge=0)
+    useful_life_months: int | None = Field(None, gt=0, le=600)
     warranty_expiry: date | None = None
     amc_expiry: date | None = None
 
-    @field_validator("name", "vendor")
+    @field_validator("name")
     @classmethod
     def strip_whitespace(cls, v: str) -> str:
         v_stripped = v.strip()
         if not v_stripped:
             raise ValueError("Field cannot be empty or whitespace only")
         return v_stripped
+
+    @field_validator("vendor", "serial_number")
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        return (v.strip() or None) if v is not None else None
 
 
 class AssetUpdateRequest(BaseModel):
@@ -45,13 +49,12 @@ class AssetUpdateRequest(BaseModel):
     vendor: str | None = Field(None, min_length=1, max_length=255)
     purchase_date: date | None = None
     purchase_cost: Decimal | None = Field(None, ge=0)
-    depreciation_method: DepreciationMethod | None = None
-    useful_life_months: int | None = Field(None, gt=0)
+    useful_life_months: int | None = Field(None, gt=0, le=600)
     warranty_expiry: date | None = None
     amc_expiry: date | None = None
     status: AssetStatus | None = None
 
-    @field_validator("name", "vendor")
+    @field_validator("name")
     @classmethod
     def strip_whitespace_optional(cls, v: str | None) -> str | None:
         if v is not None:
@@ -73,18 +76,15 @@ class AssetResponse(BaseModel):
     name: str
     category: str
     serial_number: str | None = None
-    vendor: str
-    purchase_date: date
-    purchase_cost: Decimal
-    current_value: Decimal
-    depreciation_method: DepreciationMethod
-    useful_life_months: int
+    vendor: str | None = None
+    purchase_date: date | None = None
+    purchase_cost: Decimal | None = None
+    useful_life_months: int | None = None
     warranty_expiry: date | None = None
     amc_expiry: date | None = None
     status: AssetStatus
     current_holder_id: UUID | None = None
     current_holder: CurrentHolderNested | None = None
-    license_id: UUID | None = None
     is_expiring_soon: bool = False
     created_at: datetime
     updated_at: datetime
@@ -101,14 +101,14 @@ class AssetListResponse(BaseModel):
 
 
 class AssetMetaResponse(BaseModel):
-    """GET /assets/meta — filter option source data (project doc §5.7 addition)."""
+    """GET /assets/meta — filter option source data."""
 
     categories: list[str]
     statuses: list[str]
 
 
 class AssetSummaryResponse(BaseModel):
-    """GET /assets/summary — real aggregate counts for the Summary Ribbon (§5.7)."""
+    """GET /assets/summary — real aggregate counts for the Summary Ribbon."""
 
     total: int
     deployed: int
@@ -169,7 +169,7 @@ class AssetDetailResponse(BaseModel):
 
 
 class MaintenanceTicketCreateRequest(BaseModel):
-    """POST /maintenance-tickets (PRD §5.10, minimal slice for §5.8's Raise Ticket action)."""
+    """POST /maintenance-tickets (minimal slice for Raise Ticket action)."""
 
     asset_id: UUID
     issue_description: str = Field(..., min_length=1)
@@ -204,7 +204,7 @@ class MaintenanceTicketResponse(BaseModel):
 
 
 class MaintenanceTicketUpdateRequest(BaseModel):
-    """PATCH /maintenance-tickets/{id} (PRD §5.10)."""
+    """PATCH /maintenance-tickets/{id}."""
 
     status: MaintenanceStatus | None = None
     priority: MaintenancePriority | None = None
@@ -223,7 +223,7 @@ class MaintenanceTicketUpdateRequest(BaseModel):
 
 
 class MaintenanceTicketListResponse(BaseModel):
-    """GET /maintenance-tickets (PRD §5.10)."""
+    """GET /maintenance-tickets."""
 
     items: list[MaintenanceTicketResponse]
     total: int

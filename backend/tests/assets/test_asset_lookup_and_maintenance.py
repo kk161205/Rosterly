@@ -1,5 +1,5 @@
 """
-Comprehensive Unit & Integration Tests for Asset Lookup (QR §5.9) and Maintenance Tickets (§5.10).
+Comprehensive Unit & Integration Tests for Asset Lookup (QR) and Maintenance Tickets.
 Tests:
 - GET /api/v1/assets/lookup/{asset_tag} (it_admin/super_admin 200 OK, 404 if tag missing, 403 for auditor/manager/employee)
 - GET /api/v1/maintenance-tickets (it_admin/super_admin/auditor see all; employee sees only reported_by=self; negative test for other employee's ticket)
@@ -22,7 +22,6 @@ from app.models.assets import (
     Asset,
     AssetAssignment,
     AssetStatus,
-    DepreciationMethod,
     MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
@@ -127,20 +126,17 @@ def create_mock_asset(
         vendor="Apple",
         purchase_date=date(2026, 1, 1),
         purchase_cost=Decimal("2500.00"),
-        current_value=Decimal("2500.00"),
-        depreciation_method=DepreciationMethod.straight_line,
         useful_life_months=36,
         warranty_expiry=date(2029, 1, 1),
         amc_expiry=None,
         status=status,
         current_holder_id=holder_id,
-        license_id=None,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
 
 
-# --- 1. GET /api/v1/assets/lookup/{asset_tag} Tests (§5.9) ---
+# -- 1. GET /api/v1/assets/lookup/{asset_tag} Tests ---
 
 def test_lookup_asset_by_tag_success_it_admin():
     it_admin_id = uuid.uuid4()
@@ -240,7 +236,7 @@ def test_lookup_asset_by_tag_employee_forbidden():
         app.dependency_overrides.clear()
 
 
-# --- 2. GET /api/v1/maintenance-tickets Tests (§5.10) ---
+# -- 2. GET /api/v1/maintenance-tickets Tests ---
 
 def test_list_maintenance_tickets_admin_all():
     admin_id = uuid.uuid4()
@@ -339,7 +335,7 @@ def test_list_maintenance_tickets_employee_own_only():
         app.dependency_overrides.clear()
 
 
-# --- 3. POST /api/v1/maintenance-tickets Tests (§5.10) ---
+# -- 3. POST /api/v1/maintenance-tickets Tests ---
 
 def test_create_ticket_admin_any_asset():
     admin_id = uuid.uuid4()
@@ -514,7 +510,7 @@ def test_create_ticket_employee_historical_returned_assignment_forbidden():
 
 
 
-# --- 4. PATCH /api/v1/maintenance-tickets/{id} Tests (§5.10) ---
+# -- 4. PATCH /api/v1/maintenance-tickets/{id} Tests ---
 
 def test_patch_ticket_resolved_auto_sets_resolved_at():
     admin_id = uuid.uuid4()

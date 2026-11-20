@@ -1,5 +1,5 @@
 """
-Comprehensive Unit & Integration Tests for Asset Inventory API (§5.7).
+Comprehensive Unit & Integration Tests for Asset Inventory API.
 Tests all 5 endpoints: GET, POST, PATCH /{id}, PATCH /bulk, DELETE /{id},
 role permissions (it_admin, super_admin, auditor, manager, employee),
 department-scoped filtering, auto tag generation, atomic bulk update,
@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.main import app
-from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus, DepreciationMethod
+from app.models.assets import Asset, AssetAssignment, AssetCategory, AssetStatus
 from app.models.auth import Department, Role, RolePermission, User, UserStatus
 
 client = TestClient(app)
@@ -138,8 +138,6 @@ def create_mock_asset(
         vendor="Apple",
         purchase_date=date(2026, 1, 1),
         purchase_cost=Decimal("2500.00"),
-        current_value=Decimal("2500.00"),
-        depreciation_method=DepreciationMethod.straight_line,
         useful_life_months=36,
         warranty_expiry=date(2028, 1, 1),
         amc_expiry=date(2027, 1, 1),
@@ -175,7 +173,7 @@ def test_get_assets_employee_denied():
 
 
 def test_get_assets_hr_admin_denied():
-    """hr_admin role receives 403 Forbidden on GET /api/v1/assets (PRD §5.7)."""
+    """hr_admin role receives 403 Forbidden on GET /api/v1/assets."""
     hr_id = uuid.uuid4()
     set_user_context(hr_id, "hr_admin")
     mock_db, _ = create_rbac_mock_db(allowed_grants=[])
@@ -260,7 +258,6 @@ def test_post_asset_success_it_admin():
         "vendor": "Dell",
         "purchase_date": "2026-02-01",
         "purchase_cost": 1800.50,
-        "depreciation_method": "straight_line",
         "useful_life_months": 36,
         "warranty_expiry": "2029-02-01",
         "amc_expiry": "2027-02-01",
@@ -289,7 +286,6 @@ def test_post_asset_auditor_and_employee_forbidden():
         "vendor": "LG",
         "purchase_date": "2026-01-01",
         "purchase_cost": 300.00,
-        "depreciation_method": "none",
         "useful_life_months": 12,
     }
 
@@ -310,7 +306,6 @@ def test_post_asset_validation_errors():
         "vendor": "Dell",
         "purchase_date": "2026-01-01",
         "purchase_cost": -100.00,  # invalid
-        "depreciation_method": "straight_line",
         "useful_life_months": 0,    # invalid
     }
 
@@ -342,7 +337,7 @@ def test_patch_asset_retirement_by_it_admin():
 
 
 def test_patch_asset_retired_is_terminal_rejected_409():
-    """§7 rule 1: retired assets can never transition to any other status."""
+    """retired assets can never transition to any other status."""
     admin_id = uuid.uuid4()
     curr_u = set_user_context(admin_id, "it_admin")
 
@@ -376,7 +371,7 @@ def test_patch_asset_status_assigned_rejected_400():
 
 
 def test_patch_asset_closes_active_assignment_on_status_change():
-    """§7 rule 2: moving an asset away from 'assigned' via PATCH must close the
+    """moving an asset away from 'assigned' via PATCH must close the
     open asset_assignments row and clear current_holder_id in the same
     transaction, not just flip assets.status."""
     admin_id = uuid.uuid4()
@@ -435,7 +430,7 @@ def test_patch_bulk_assets_success():
     asset2 = create_mock_asset(asset_id=id2, status=AssetStatus.in_stock)
 
     mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "bulk_update")])
-    mock_query.filter.return_value.all.return_value = [asset1, asset2]
+    mock_query.filter.return_value.order_by.return_value.with_for_update.return_value.all.return_value = [asset1, asset2]
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.patch(
@@ -458,7 +453,7 @@ def test_patch_bulk_assets_atomic_failure_missing_id():
 
     mock_db, mock_query = create_rbac_mock_db([(curr_u.role_id, "assets", "bulk_update")])
     # Only asset1 is found in DB
-    mock_query.filter.return_value.all.return_value = [asset1]
+    mock_query.filter.return_value.order_by.return_value.with_for_update.return_value.all.return_value = [asset1]
     app.dependency_overrides[get_db] = lambda: mock_db
 
     response = client.patch(
@@ -532,7 +527,7 @@ def test_delete_asset_conflict_when_assignment_history_exists():
 
     response = client.delete(f"/api/v1/assets/{asset_id}")
     assert response.status_code == 409
-    assert "assignment or maintenance history" in response.json()["error"]["message"]
+    assert "assignment or repair history" in response.json()["error"]["message"]
 
 
 def test_delete_asset_success_when_clean():

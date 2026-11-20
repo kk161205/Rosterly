@@ -1,5 +1,5 @@
 """
-Maintenance Tickets API routes — project doc §5.10.
+Maintenance Tickets API routes.
 """
 from uuid import UUID
 
@@ -29,7 +29,7 @@ def list_maintenance_tickets(
     service: AssetService = Depends(get_asset_service),
 ) -> MaintenanceTicketListResponse:
     """
-    GET /api/v1/maintenance-tickets — List maintenance tickets (PRD §5.10).
+    GET /api/v1/maintenance-tickets — List maintenance tickets.
     - Roles: it_admin, super_admin, auditor (all tickets); employee (own reported tickets only).
     """
     return service.list_maintenance_tickets(
@@ -48,7 +48,7 @@ def create_maintenance_ticket(
     service: AssetService = Depends(get_asset_service),
 ) -> MaintenanceTicketResponse:
     """
-    POST /api/v1/maintenance-tickets — Raise a service ticket for an asset (PRD §5.10).
+    POST /api/v1/maintenance-tickets — Raise a service ticket for an asset.
     - Roles: it_admin, super_admin (any asset).
     - Any other authenticated role: only for an asset currently assigned to them.
     """
@@ -62,7 +62,7 @@ def update_maintenance_ticket(
     service: AssetService = Depends(get_asset_service),
 ) -> MaintenanceTicketResponse:
     """
-    PATCH /api/v1/maintenance-tickets/{id} — Update maintenance ticket details (PRD §5.10).
+    PATCH /api/v1/maintenance-tickets/{id} — Update maintenance ticket details.
     - Roles: it_admin, super_admin ONLY (403 for employee/auditor/manager).
     - Auto-sets resolved_at when status='resolved'; clears resolved_at when un-resolving to open/in_progress.
     """

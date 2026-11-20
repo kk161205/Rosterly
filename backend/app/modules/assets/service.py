@@ -6,6 +6,8 @@ from uuid import UUID
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.clock import local_today
+from app.models.auth import UserStatus
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.security import CurrentUser, check_permission, roles_granting
 from app.models.assets import (
@@ -36,19 +38,18 @@ from app.modules.assets.schemas import (
     MaintenanceTicketResponse,
     MaintenanceTicketUpdateRequest,
 )
-from app.modules.assets.jobs import calculate_current_value
 
 
 class AssetService:
     def __init__(self, db: Session, current_user: CurrentUser, ip_address: str | None = None):
         self.db = db
         self.current_user = current_user
-        # audit_logs.ip_address is NOT NULL (schema §1.16)
+        # audit_logs.ip_address is NOT NULL (schema)
         self.ip_address = ip_address or "127.0.0.1"
 
     def _format_asset_response(self, asset: Asset, today: date | None = None) -> AssetResponse:
         if today is None:
-            today = date.today()
+            today = local_today()
         thirty_days = today + timedelta(days=30)
 
         is_expiring = False
@@ -76,15 +77,12 @@ class AssetService:
             vendor=asset.vendor,
             purchase_date=asset.purchase_date,
             purchase_cost=asset.purchase_cost,
-            current_value=calculate_current_value(asset, as_of=today),
-            depreciation_method=asset.depreciation_method,
             useful_life_months=asset.useful_life_months,
             warranty_expiry=asset.warranty_expiry,
             amc_expiry=asset.amc_expiry,
             status=asset.status,
             current_holder_id=asset.current_holder_id,
             current_holder=holder_nested,
-            license_id=asset.license_id,
             is_expiring_soon=is_expiring,
             created_at=asset.created_at,
             updated_at=asset.updated_at,
@@ -92,16 +90,16 @@ class AssetService:
 
     def _check_asset_read_access(self, asset: Asset, allow_manager: bool = True) -> None:
         """
-        Two-layer access control check for Asset read operations (§2.3, PRD §5.8).
+        Two-layer access control check for Asset read operations.
         - Layer 1: Roles it_admin, super_admin, auditor pass unconditionally if check_permission passes.
         - Layer 2 (Row-level ABAC for manager/employee):
           - employee: allowed ONLY if asset.current_holder_id == current_user.id.
           - manager: allowed if asset.current_holder_id == current_user.id OR
                      (allow_manager is True AND asset.current_holder.manager_id == current_user.id).
-                     For GET /assets/{id}/maintenance, allow_manager=False per PRD §5.8.
+                     For GET /assets/{id}/maintenance, allow_manager=False.
           - Any other role (e.g. hr_admin): falls back to check_permission which raises ForbiddenError.
         """
-        # Multi-role (§5.14): each held role's rule is tried; any one allowing wins.
+        # Multi-role: each held role's rule is tried; any one allowing wins.
         cu = self.current_user
         if cu.has_role("it_admin", "super_admin", "auditor"):
             check_permission(cu, "assets", "read", self.db)
@@ -127,7 +125,7 @@ class AssetService:
 
     def get_asset_detail(self, asset_id: UUID) -> AssetDetailResponse:
         """
-        GET /assets/{id} (PRD §5.8): Full asset record + current assignment.
+        GET /assets/{id}: Full asset record + current assignment.
         """
         asset = (
             self.db.query(Asset)
@@ -168,7 +166,7 @@ class AssetService:
 
     def get_asset_detail_by_tag(self, asset_tag: str) -> AssetDetailResponse:
         """
-        GET /assets/lookup/{asset_tag} (PRD §5.9): Fast single-field tag lookup for QR scanning.
+        GET /assets/lookup/{asset_tag}: Fast single-field tag lookup for QR scanning.
         - Roles: it_admin, super_admin ONLY (enforced via check_permission(..., "assets", "lookup", ...)).
         """
         check_permission(self.current_user, "assets", "lookup", self.db)
@@ -210,7 +208,7 @@ class AssetService:
 
     def get_asset_assignments(self, asset_id: UUID) -> list[AssetAssignmentResponse]:
         """
-        GET /assets/{id}/assignments (PRD §5.8): Full assignment history for an asset.
+        GET /assets/{id}/assignments: Full assignment history for an asset.
         """
         asset = (
             self.db.query(Asset)
@@ -250,7 +248,7 @@ class AssetService:
 
     def assign_asset(self, asset_id: UUID, payload: AssetAssignRequest) -> AssetAssignmentResponse:
         """
-        POST /assets/{id}/assign (PRD §5.8): Assign an in-stock asset to an employee.
+        POST /assets/{id}/assign: Assign an in-stock asset to an employee.
         - Roles: it_admin, super_admin (RBAC action="update").
         - Concurrency: Row-locks asset via with_for_update() and re-checks status == in_stock.
         - Rejects with 409 Conflict if asset status != in_stock.
@@ -278,6 +276,8 @@ class AssetService:
         employee = self.db.query(User).filter(User.id == payload.employee_id).first()
         if not employee:
             raise NotFoundError(f"Employee with ID {payload.employee_id} not found")
+        if employee.status in (UserStatus.offboarding, UserStatus.terminated):
+            raise ConflictError(f"{employee.full_name} is leaving, so they can't be given equipment.", code="employee_leaving")
 
         now = datetime.now(timezone.utc)
         asset.status = AssetStatus.assigned
@@ -337,7 +337,7 @@ class AssetService:
 
     def return_asset(self, asset_id: UUID, payload: AssetReturnRequest) -> AssetAssignmentResponse:
         """
-        POST /assets/{id}/return (PRD §5.8): Return an assigned asset to stock.
+        POST /assets/{id}/return: Return an assigned asset to stock.
         - Roles: it_admin, super_admin (RBAC action="update").
         - Concurrency: Row-locks asset via with_for_update() and re-checks status == assigned.
         - Rejects with 409 Conflict if asset is not currently assigned.
@@ -422,9 +422,9 @@ class AssetService:
 
     def get_asset_maintenance(self, asset_id: UUID) -> list[MaintenanceTicketResponse]:
         """
-        GET /assets/{id}/maintenance (PRD §5.8): Service tickets raised for an asset.
+        GET /assets/{id}/maintenance: Service tickets raised for an asset.
         - Roles: it_admin, super_admin, auditor, current holder ONLY.
-        - Manager is explicitly excluded per PRD §5.8 (allow_manager=False).
+        - Manager is explicitly excluded (allow_manager=False).
         """
         asset = (
             self.db.query(Asset)
@@ -441,7 +441,7 @@ class AssetService:
             self.db.query(MaintenanceTicket)
             .options(joinedload(MaintenanceTicket.reporter), joinedload(MaintenanceTicket.assignee))
             .filter(MaintenanceTicket.asset_id == asset.id)
-            .order_by(MaintenanceTicket.created_at.desc())
+            .order_by(MaintenanceTicket.created_at.desc(), MaintenanceTicket.id.desc())
             .all()
         )
 
@@ -459,7 +459,7 @@ class AssetService:
         page_size: int = 20,
     ) -> MaintenanceTicketListResponse:
         """
-        GET /maintenance-tickets (PRD §5.10): List maintenance tickets with filtering & pagination.
+        GET /maintenance-tickets: List maintenance tickets with filtering & pagination.
         - Roles: it_admin, super_admin, auditor see ALL tickets (enforced via check_permission).
         - employee (or other non-admin roles): sees ONLY tickets where reported_by == self.current_user.user_id.
         """
@@ -486,7 +486,7 @@ class AssetService:
         total_pages = math.ceil(total / page_size) if total > 0 else 0
 
         tickets = (
-            query.order_by(MaintenanceTicket.created_at.desc())
+            query.order_by(MaintenanceTicket.created_at.desc(), MaintenanceTicket.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -507,7 +507,7 @@ class AssetService:
 
     def create_maintenance_ticket(self, payload: MaintenanceTicketCreateRequest) -> MaintenanceTicketResponse:
         """
-        POST /maintenance-tickets (PRD §5.10).
+        POST /maintenance-tickets.
         - Roles: it_admin, super_admin (check_permission — any asset).
         - Any other authenticated role: allowed ONLY if the asset is currently
           assigned to them (ABAC ownership check: asset_assignments row with
@@ -543,7 +543,9 @@ class AssetService:
             reported_by=self.current_user.user_id,
             assigned_to=None,
             issue_description=payload.issue_description,
-            priority=payload.priority,
+            # Reporters describe the problem; IT sets the priority when triaging
+            # so only IT and super admins choose it here.
+            priority=payload.priority if self.current_user.has_role("it_admin", "super_admin") else MaintenancePriority.medium,
             status=MaintenanceStatus.open,
             created_at=now,
             updated_at=now,
@@ -560,7 +562,7 @@ class AssetService:
         payload: MaintenanceTicketUpdateRequest,
     ) -> MaintenanceTicketResponse:
         """
-        PATCH /maintenance-tickets/{id} (PRD §5.10): Update maintenance ticket details.
+        PATCH /maintenance-tickets/{id}: Update maintenance ticket details.
         - Roles: it_admin, super_admin ONLY (enforced via check_permission(..., "maintenance_ticket", "update", ...)).
         - Auto-sets resolved_at when status='resolved'; clears resolved_at when un-resolving to open/in_progress.
         """
@@ -578,7 +580,9 @@ class AssetService:
         if payload.issue_description is not None:
             ticket.issue_description = payload.issue_description
 
-        if payload.assigned_to is not None:
+        if "assigned_to" in payload.model_fields_set and payload.assigned_to is None:
+            ticket.assigned_to = None
+        elif payload.assigned_to is not None:
             assignee_user = self.db.query(User).filter(User.id == payload.assigned_to).first()
             if not assignee_user:
                 raise NotFoundError(f"Assigned technician with ID {payload.assigned_to} not found")
@@ -603,7 +607,7 @@ class AssetService:
 
     @staticmethod
     def _ticket_response(t: MaintenanceTicket) -> MaintenanceTicketResponse:
-        """One shape for every ticket endpoint (§5.8, §5.10), including the asset's
+        """One shape for every ticket endpoint, including the asset's
         tag and name so ticket lists can say which device they're about."""
         return MaintenanceTicketResponse(
             id=t.id,
@@ -624,7 +628,7 @@ class AssetService:
 
     def _apply_role_scope(self, query, department_id: UUID | None = None):
         """
-        Shared ABAC scoping (project doc §3.2 step 3, §5.7) reused by list_assets,
+        Shared ABAC scoping (step 3) reused by list_assets,
         get_asset_meta, and get_asset_summary so the three endpoints can never drift
         out of sync on who sees what: manager is scoped to assets whose current
         holder is in the manager's own department; it_admin/super_admin/auditor see
@@ -633,7 +637,7 @@ class AssetService:
         result when is_empty is True (manager with no department, or a requested
         department_id outside the manager's own).
         """
-        # Manager department scope applies only when no wider role is held (§5.14).
+        # Manager department scope applies only when no wider role is held.
         if self.current_user.has_role("manager") and not self.current_user.has_role("it_admin", "super_admin", "auditor"):
             if not self.current_user.department_id:
                 return query, True
@@ -658,10 +662,10 @@ class AssetService:
         page: int = 1,
         page_size: int = 20,
     ) -> AssetListResponse:
-        # RBAC (project doc §3.2 step 2): GET /assets (§5.7) is granted to
+        # RBAC (step 2): GET /assets is granted to
         # it_admin, super_admin, auditor, manager — mapped to
         # (resource="assets", action="read"). ABAC department scoping for manager
-        # is applied below (§3.2 step 3) via the shared _apply_role_scope helper.
+        # is applied below (step 3) via the shared _apply_role_scope helper.
         check_permission(self.current_user, "assets", "read", self.db)
 
         query = self.db.query(Asset).options(
@@ -685,15 +689,16 @@ class AssetService:
                 (Asset.name.ilike(pattern))
                 | (Asset.asset_tag.ilike(pattern))
                 | (Asset.serial_number.ilike(pattern))
+                | (Asset.category.ilike(pattern))  # "laptop" finds every laptop, whatever its name
             )
 
         total = query.count()
         total_pages = math.ceil(total / page_size) if total > 0 else 0
 
         offset = (page - 1) * page_size
-        items_db = query.order_by(Asset.created_at.desc()).offset(offset).limit(page_size).all()
+        items_db = query.order_by(Asset.created_at.desc(), Asset.id.desc()).offset(offset).limit(page_size).all()
 
-        today = date.today()
+        today = local_today()
         items = [self._format_asset_response(a, today=today) for a in items_db]
 
         return AssetListResponse(
@@ -706,12 +711,12 @@ class AssetService:
 
     def get_asset_meta(self) -> AssetMetaResponse:
         """
-        GET /assets/meta (§5.7 addition): real filter-option data instead of a
-        hardcoded frontend list (rules.md §1.1). Categories are the DISTINCT
+        GET /assets/meta: real filter-option data instead of a
+        hardcoded frontend list. Categories are the DISTINCT
         values currently present on the (now open, admin-extensible) category
         column, scoped the same way as list_assets. Statuses stay the fixed,
         closed AssetStatus enum — status drives real workflow logic (assignment,
-        retirement, depreciation) and must remain a controlled set.
+        retirement, repair) and must remain a controlled set.
         """
         check_permission(self.current_user, "assets", "read", self.db)
 
@@ -726,7 +731,7 @@ class AssetService:
 
     def get_asset_summary(self) -> AssetSummaryResponse:
         """
-        GET /assets/summary (§5.7 addition): real grouped aggregate counts for
+        GET /assets/summary: real grouped aggregate counts for
         the Summary Ribbon, computed server-side across the whole (role-scoped)
         catalog — not derived client-side from a single paginated page.
         """
@@ -763,16 +768,15 @@ class AssetService:
     def create_asset(self, payload: AssetCreateRequest) -> AssetResponse:
         """
         POST /assets: Auto-generate sequential asset_tag server-side (AST-YYYY-XXXXX).
-        Validates depreciation_method and useful_life_months against strict enum and range bounds.
+        Only name and category are required.
         """
-        # RBAC (project doc §3.2 step 2): POST /assets (§5.7) is restricted to
+        # RBAC (step 2): POST /assets is restricted to
         # it_admin and super_admin — mapped to (resource="assets", action="create").
         check_permission(self.current_user, "assets", "create", self.db)
 
         # Auto-generate asset_tag
         asset_tag = self._generate_next_asset_tag()
 
-        # Initial current_value equals purchase_cost upon creation
         now = datetime.now(timezone.utc)
         asset = Asset(
             id=uuid.uuid4(),
@@ -783,8 +787,6 @@ class AssetService:
             vendor=payload.vendor,
             purchase_date=payload.purchase_date,
             purchase_cost=payload.purchase_cost,
-            current_value=payload.purchase_cost,
-            depreciation_method=payload.depreciation_method,
             useful_life_months=payload.useful_life_months,
             warranty_expiry=payload.warranty_expiry,
             amc_expiry=payload.amc_expiry,
@@ -809,7 +811,7 @@ class AssetService:
                     "name": asset.name,
                     "category": asset.category,
                     "vendor": asset.vendor,
-                    "purchase_cost": str(asset.purchase_cost),
+                    "purchase_cost": str(asset.purchase_cost) if asset.purchase_cost is not None else None,
                     "status": asset.status.value,
                 },
             )
@@ -821,7 +823,7 @@ class AssetService:
 
     def _validate_status_transition(self, asset: Asset, new_status: AssetStatus) -> None:
         """
-        Server-enforced status transitions (project doc §7 rule 1). `retired` is
+        Server-enforced status transitions. `retired` is
         terminal — the doc's explicit example ("cannot go from retired back to
         assigned") is extended to "no transition out of retired at all", since
         no re-activation flow is documented anywhere for this page.
@@ -835,11 +837,11 @@ class AssetService:
 
     def _close_active_assignment_if_needed(self, asset: Asset, new_status: AssetStatus) -> bool:
         """
-        §7 rule 2: current_holder_id must never drift from asset_assignments.
+        : current_holder_id must never drift from asset_assignments.
         Moving an asset away from 'assigned' via PATCH/bulk-update must close the
         open assignment in the same transaction — the auto-close approach agreed
         with the developer, rather than blocking the transition outright, so bulk
-        "mark retired" keeps working exactly as §5.7 describes.
+        "mark retired" keeps working exactly as describes.
         Returns True if an assignment was actually closed (for audit logging).
         """
         if asset.status != AssetStatus.assigned or new_status == AssetStatus.assigned:
@@ -859,12 +861,14 @@ class AssetService:
         """
         PATCH /assets/{id}: Update asset fields. Allows it_admin and super_admin to set status="retired".
         Setting status="assigned" is rejected — assignment is exclusively owned by
-        POST /assets/{id}/assign (§5.8), which also captures condition notes.
+        POST /assets/{id}/assign, which also captures condition notes.
         """
-        # RBAC (project doc §3.2 step 2): PATCH /assets/{id} (§5.7) is restricted to
+        # RBAC (step 2): PATCH /assets/{id} is restricted to
         # it_admin and super_admin — mapped to (resource="assets", action="update").
         check_permission(self.current_user, "assets", "update", self.db)
 
+        # Lock first (a plain query: FOR UPDATE can't apply to an outer-joined relation on Postgres).
+        self.db.query(Asset.id).filter(Asset.id == asset_id).with_for_update().first()
         asset = self.db.query(Asset).options(
             joinedload(Asset.current_holder).joinedload(User.department)
         ).filter(Asset.id == asset_id).first()
@@ -876,20 +880,17 @@ class AssetService:
             "name": asset.name,
             "category": asset.category,
             "status": asset.status.value if asset.status else None,
-            "purchase_cost": str(asset.purchase_cost),
+            "purchase_cost": str(asset.purchase_cost) if asset.purchase_cost is not None else None,
             "vendor": asset.vendor,
         }
 
         update_data = payload.model_dump(exclude_unset=True)
         new_status = update_data.pop("status", None)
 
+        # Optional details may be cleared by sending null; name and category may not.
         for key, value in update_data.items():
-            if value is not None:
+            if value is not None or key not in ("name", "category"):
                 setattr(asset, key, value)
-
-        # If purchase_cost updated, sync current_value if not otherwise recalculated
-        if "purchase_cost" in update_data and update_data["purchase_cost"] is not None:
-            asset.current_value = update_data["purchase_cost"]
 
         assignment_closed = False
         if new_status is not None:
@@ -906,7 +907,7 @@ class AssetService:
             "name": asset.name,
             "category": asset.category,
             "status": asset.status.value if asset.status else None,
-            "purchase_cost": str(asset.purchase_cost),
+            "purchase_cost": str(asset.purchase_cost) if asset.purchase_cost is not None else None,
             "vendor": asset.vendor,
         }
         if assignment_closed:
@@ -929,7 +930,7 @@ class AssetService:
         return self._format_asset_response(asset)
 
     def bulk_update_assets(self, payload: AssetBulkUpdateRequest) -> int:
-        # RBAC (project doc §3.2 step 2): PATCH /assets/bulk (§5.7) is restricted to
+        # RBAC (step 2): PATCH /assets/bulk is restricted to
         # it_admin and super_admin — mapped to (resource="assets", action="bulk_update").
         check_permission(self.current_user, "assets", "bulk_update", self.db)
 
@@ -944,7 +945,7 @@ class AssetService:
             )
 
         # Query all requested assets
-        assets = self.db.query(Asset).filter(Asset.id.in_(asset_ids)).all()
+        assets = self.db.query(Asset).filter(Asset.id.in_(asset_ids)).order_by(Asset.id).with_for_update().all()
 
         # Atomic whole-batch fails check
         found_ids = {a.id for a in assets}
@@ -980,7 +981,7 @@ class AssetService:
         return len(assets)
 
     def delete_asset(self, asset_id: UUID) -> None:
-        # RBAC (project doc §3.2 step 2): DELETE /assets/{id} (§5.7) is restricted
+        # RBAC (step 2): DELETE /assets/{id} is restricted
         # to super_admin only — it_admin is explicitly excluded. Mapped to
         # (resource="assets", action="delete").
         check_permission(self.current_user, "assets", "delete", self.db)
@@ -1000,7 +1001,7 @@ class AssetService:
 
         if (assignment_count or 0) > 0 or (ticket_count or 0) > 0:
             raise ConflictError(
-                "Cannot hard-delete asset with existing assignment or maintenance history. Retire the asset instead."
+                "This asset has assignment or repair history, so it can't be deleted. Change its status to Retired instead."
             )
 
         asset_tag = asset.asset_tag

@@ -2,6 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    Index,
     Column,
     Date,
     DateTime,
@@ -14,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 
 from app.db.session import Base
 
@@ -26,12 +27,6 @@ class AssetCategory(str, enum.Enum):
     software_license = "software_license"
     furniture = "furniture"
     other = "other"
-
-
-class DepreciationMethod(str, enum.Enum):
-    straight_line = "straight_line"
-    declining_balance = "declining_balance"
-    none = "none"
 
 
 class AssetStatus(str, enum.Enum):
@@ -65,10 +60,47 @@ class SoftwareLicense(Base):
     total_seats = Column(Integer, nullable=False)
     cost_per_seat = Column(Numeric(12, 2), nullable=True)
     renewal_date = Column(Date, nullable=True)
+    # Where seats come from: "manual" (IT assigns
+    # them here) or a connected provider such as "microsoft_365", which keeps
+    # them in step through app/modules/licenses/sync.py.
+    source = Column(String(50), nullable=False, default="manual")
+    external_sku_id = Column(String(255), nullable=True, unique=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    assets = relationship("Asset", back_populates="license")
+    assignments = relationship("LicenseAssignment", back_populates="license", cascade="all, delete-orphan")
+
+
+class LicenseAssignment(Base):
+    """One person holding one seat of a licence.
+    removed_at null = the seat is in use. Rows are kept after removal so the
+    history stays readable. A person holds at most one active seat per licence."""
+
+    __tablename__ = "license_assignments"
+    __table_args__ = (
+        Index(
+            "uq_license_assignments_active",
+            "license_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+            sqlite_where=text("removed_at IS NULL"),
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    license_id = Column(UUID(as_uuid=True), ForeignKey("software_licenses.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source = Column(String(50), nullable=False, default="manual")
+    external_id = Column(String(255), nullable=True)
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    removed_at = Column(DateTime(timezone=True), nullable=True)
+    removed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    license = relationship("SoftwareLicense", back_populates="assignments")
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class Asset(Base):
@@ -83,22 +115,22 @@ class Asset(Base):
     # AssetCategory below is kept only as a seed/reference list, not a DB constraint.
     category = Column(String(100), nullable=False)
     serial_number = Column(String(100), nullable=True, index=True)
-    vendor = Column(String(255), nullable=False)
-    purchase_date = Column(Date, nullable=False)
-    purchase_cost = Column(Numeric(12, 2), nullable=False)
-    current_value = Column(Numeric(12, 2), nullable=False)
-    depreciation_method = Column(Enum(DepreciationMethod, name="depreciation_method_enum", native_enum=False), nullable=False)
-    useful_life_months = Column(Integer, nullable=False)
+    # Only name and category are required: someone adding a
+    # monitor found in a cupboard may not know where or when it was bought.
+    vendor = Column(String(255), nullable=True)
+    purchase_date = Column(Date, nullable=True)
+    purchase_cost = Column(Numeric(12, 2), nullable=True)
+    # Optional expected life; drives "What to budget for" (replacements due).
+    # There is no depreciation: an asset's life is told by its status.
+    useful_life_months = Column(Integer, nullable=True)
     warranty_expiry = Column(Date, nullable=True)
     amc_expiry = Column(Date, nullable=True)
     status = Column(Enum(AssetStatus, name="asset_status_enum", native_enum=False), default=AssetStatus.in_stock, nullable=False)
     current_holder_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    license_id = Column(UUID(as_uuid=True), ForeignKey("software_licenses.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     current_holder = relationship("User", foreign_keys=[current_holder_id])
-    license = relationship("SoftwareLicense", back_populates="assets")
     assignments = relationship("AssetAssignment", back_populates="asset", cascade="all, delete-orphan")
     maintenance_tickets = relationship("MaintenanceTicket", back_populates="asset", cascade="all, delete-orphan")
 

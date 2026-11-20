@@ -1,17 +1,19 @@
 """
-Celery app + beat schedule for the scheduled jobs defined in
-project doc §6:
-  - Nightly depreciation job (assets.current_value recalculation)
-  - Daily warranty/AMC expiry check (30-day-out notifications)
-  - Daily software-license renewal check (30-day-out notifications)
-  - Email dispatch worker (short interval, sends queued notifications)
+Celery app + beat schedule for the background jobs.
 
-Task implementations live in their feature modules (app/modules/...) — this
-file only wires up the schedule. See rules.md §3 rule 1: don't add a second
-parallel task runner if one already exists here, extend this file.
+  - Daily jobs (warranty/AMC expiry, licence renewals) run through
+    app.core.daily_jobs.run_due_daily_jobs: checked hourly and when the worker
+    starts, each runs once per day — so a sleeping free-tier host still catches up.
+  - Email dispatch runs every 2 minutes.
+
+On Render the worker runs in the same service as the API (start command in
+the README); the broker is Render's Key Value (Redis-compatible) service.
+Task implementations live in their feature modules; don't add a second task
+runner.
 """
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 from app.core.config import settings
 
@@ -20,6 +22,7 @@ from app.core.config import settings
 # `include`, the scheduled tasks below would never be registered and beat's
 # messages would be rejected as unregistered.
 TASK_MODULES = [
+    "app.core.celery_app",
     "app.modules.assets.jobs",
     "app.modules.licenses.jobs",
     "app.modules.notifications.dispatch",
@@ -33,17 +36,9 @@ celery_app = Celery(
 )
 
 celery_app.conf.beat_schedule = {
-    "nightly-depreciation": {
-        "task": "app.modules.assets.jobs.run_depreciation_job",
-        "schedule": crontab(hour=2, minute=0),
-    },
-    "daily-warranty-expiry-check": {
-        "task": "app.modules.assets.jobs.check_warranty_amc_expiry",
-        "schedule": crontab(hour=3, minute=0),
-    },
-    "daily-license-renewal-check": {
-        "task": "app.modules.licenses.jobs.check_license_renewals",
-        "schedule": crontab(hour=4, minute=0),
+    "daily-jobs-catch-up": {
+        "task": "app.core.celery_app.run_daily_jobs",
+        "schedule": crontab(minute=5),  # every hour; each daily job still runs once a day
     },
     "email-dispatch-worker": {
         "task": "app.modules.notifications.dispatch.dispatch_pending_emails",
@@ -51,3 +46,23 @@ celery_app.conf.beat_schedule = {
     },
 }
 celery_app.conf.timezone = "UTC"
+celery_app.conf.task_ignore_result = True  # nothing reads results; keeps the small Key Value free
+
+
+@celery_app.task(name="app.core.celery_app.run_daily_jobs")
+def run_daily_jobs() -> dict:
+    """Runs whichever daily jobs haven't run today (app/core/daily_jobs.py)."""
+    from app.core.daily_jobs import run_due_daily_jobs
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return run_due_daily_jobs(db)
+    finally:
+        db.close()
+
+
+@worker_ready.connect
+def _catch_up_on_start(**_kwargs) -> None:
+    """The worker just woke up (e.g. after the host slept): catch up now."""
+    run_daily_jobs.delay()

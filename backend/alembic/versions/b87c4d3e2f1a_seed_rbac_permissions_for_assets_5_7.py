@@ -1,19 +1,19 @@
 ﻿"""seed RBAC permissions for assets page 5.7
 
-Seeds (resource, action) permissions and role_permissions grants for asset management (PRD §5.7):
+Seeds (resource, action) permissions and role_permissions grants for asset management:
 
     (assets, read)        -> it_admin, super_admin, auditor, manager
-        GET /assets (§5.7 — browse catalog; manager is further scoped by department ABAC)
+        GET /assets (browse catalog; manager is further scoped by department ABAC)
     (assets, create)      -> it_admin, super_admin
-        POST /assets (§5.7 — provision new asset)
+        POST /assets (provision new asset)
     (assets, update)      -> it_admin, super_admin
-        PATCH /assets/{id} (§5.7 — edit asset details / set status='retired')
+        PATCH /assets/{id} (edit asset details / set status='retired')
     (assets, bulk_update) -> it_admin, super_admin
-        PATCH /assets/bulk (§5.7 — atomic bulk status update)
+        PATCH /assets/bulk (atomic bulk status update)
     (assets, delete)      -> super_admin
-        DELETE /assets/{id} (§5.7 — hard delete; it_admin is explicitly excluded)
+        DELETE /assets/{id} (hard delete; it_admin is explicitly excluded)
 
-Extends migration 975ba61cee70 (which seeded §5.1–§5.6 permissions) to cover §5.7.
+Extends migration 975ba61cee70 (which seeded permissions) to cover.
 Roles are already present from 975ba61cee70 — this migration only adds permissions
 and grants; it does NOT re-seed roles.
 
@@ -37,11 +37,11 @@ depends_on = None
 
 # (resource, action, description)
 SEED_PERMISSIONS = [
-    ("assets", "read",        "Browse and search the asset catalog (§5.7)"),
-    ("assets", "create",      "Provision a new asset record (§5.7)"),
-    ("assets", "update",      "Update asset details or set status=retired (§5.7)"),
-    ("assets", "bulk_update", "Atomic bulk asset status update (§5.7)"),
-    ("assets", "delete",      "Hard-delete an asset record — data-entry mistakes only (§5.7)"),
+    ("assets", "read", "Browse and search the asset catalog"),
+    ("assets", "create", "Provision a new asset record"),
+    ("assets", "update", "Update asset details or set status=retired"),
+    ("assets", "bulk_update", "Atomic bulk asset status update"),
+    ("assets", "delete", "Hard-delete an asset record — data-entry mistakes only"),
 ]
 
 # (resource, action) -> [role names]

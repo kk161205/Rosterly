@@ -1,11 +1,12 @@
 """
-Asset Inventory API routes — project doc §5.7.
+Asset Inventory API routes.
 """
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.request_context import client_ip
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.assets import AssetStatus
@@ -33,8 +34,8 @@ def get_asset_service(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AssetService:
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    return AssetService(db=db, current_user=current_user, ip_address=client_ip)
+    ip = client_ip(request)
+    return AssetService(db=db, current_user=current_user, ip_address=ip)
 
 
 @router.get("", response_model=AssetListResponse)
@@ -49,7 +50,7 @@ def list_assets(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetListResponse:
     """
-    GET /api/v1/assets — Browse and search the asset catalog (PRD §5.7).
+    GET /api/v1/assets — Browse and search the asset catalog.
     - Roles: it_admin, super_admin, auditor (full catalog); manager (scoped to current holder's department).
     - Employee role receives 403 Forbidden.
     """
@@ -69,7 +70,7 @@ def get_asset_meta(
 ) -> AssetMetaResponse:
     """
     GET /api/v1/assets/meta — real filter-option data for the Category and
-    Status dropdowns (PRD §5.7 addition; rules.md §1.1). Categories are the
+    Status dropdowns. Categories are the
     distinct values currently in use (role-scoped); statuses are the fixed
     AssetStatus enum.
     """
@@ -82,7 +83,7 @@ def get_asset_summary(
 ) -> AssetSummaryResponse:
     """
     GET /api/v1/assets/summary — real aggregate counts for the Summary Ribbon
-    (PRD §5.7 addition), computed server-side across the whole role-scoped
+    , computed server-side across the whole role-scoped
     catalog rather than derived client-side from one paginated page.
     """
     return service.get_asset_summary()
@@ -94,7 +95,7 @@ def lookup_asset_by_tag(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetDetailResponse:
     """
-    GET /api/v1/assets/lookup/{asset_tag} — Fast QR tag lookup (PRD §5.9).
+    GET /api/v1/assets/lookup/{asset_tag} — Fast QR tag lookup.
     - Roles: it_admin, super_admin ONLY (403 for auditor/manager/employee).
     - Returns 404 if tag does not exist.
     """
@@ -107,7 +108,7 @@ def get_asset_detail(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetDetailResponse:
     """
-    GET /api/v1/assets/{id} — Full asset record + current assignment (PRD §5.8).
+    GET /api/v1/assets/{id} — Full asset record + current assignment.
     - Roles: it_admin, super_admin, auditor, current holder, holder's manager.
     """
     return service.get_asset_detail(asset_id=id)
@@ -119,7 +120,7 @@ def get_asset_assignments(
     service: AssetService = Depends(get_asset_service),
 ) -> list[AssetAssignmentResponse]:
     """
-    GET /api/v1/assets/{id}/assignments — Full assignment history (PRD §5.8).
+    GET /api/v1/assets/{id}/assignments — Full assignment history.
     - Roles: it_admin, super_admin, auditor, current holder, holder's manager.
     """
     return service.get_asset_assignments(asset_id=id)
@@ -131,9 +132,9 @@ def get_asset_maintenance(
     service: AssetService = Depends(get_asset_service),
 ) -> list[MaintenanceTicketResponse]:
     """
-    GET /api/v1/assets/{id}/maintenance — Service tickets for an asset (PRD §5.8).
+    GET /api/v1/assets/{id}/maintenance — Service tickets for an asset.
     - Roles: it_admin, super_admin, auditor, current holder ONLY.
-    - Manager is explicitly excluded per PRD §5.8.
+    - Manager is explicitly excluded.
     """
     return service.get_asset_maintenance(asset_id=id)
 
@@ -145,7 +146,7 @@ def assign_asset(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetAssignmentResponse:
     """
-    POST /api/v1/assets/{id}/assign — Assign an in-stock asset to an employee (PRD §5.8).
+    POST /api/v1/assets/{id}/assign — Assign an in-stock asset to an employee.
     - Roles: it_admin, super_admin.
     - Concurrency-safe: pessimistic row locking via with_for_update() + status re-check.
     """
@@ -159,7 +160,7 @@ def return_asset(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetAssignmentResponse:
     """
-    POST /api/v1/assets/{id}/return — Return an assigned asset to stock (PRD §5.8).
+    POST /api/v1/assets/{id}/return — Return an assigned asset to stock.
     - Roles: it_admin, super_admin.
     - Concurrency-safe: pessimistic row locking via with_for_update() + status re-check.
     """
@@ -173,7 +174,7 @@ def create_asset(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetResponse:
     """
-    POST /api/v1/assets — Provision a new asset (PRD §5.7).
+    POST /api/v1/assets — Provision a new asset.
     - Roles: it_admin, super_admin.
     - Auto-generates asset_tag server-side (AST-YYYY-XXXXX).
     """
@@ -186,7 +187,7 @@ def bulk_update_assets(
     service: AssetService = Depends(get_asset_service),
 ) -> dict[str, int]:
     """
-    PATCH /api/v1/assets/bulk — Atomic bulk status update (PRD §5.7).
+    PATCH /api/v1/assets/bulk — Atomic bulk status update.
     - Roles: it_admin, super_admin.
     """
     count = service.bulk_update_assets(payload)
@@ -200,7 +201,7 @@ def update_asset(
     service: AssetService = Depends(get_asset_service),
 ) -> AssetResponse:
     """
-    PATCH /api/v1/assets/{id} — Update an asset record (PRD §5.7).
+    PATCH /api/v1/assets/{id} — Update an asset record.
     - Roles: it_admin, super_admin.
     - Note: standard retirement is performed via status='retired'.
     """
@@ -213,7 +214,7 @@ def delete_asset(
     service: AssetService = Depends(get_asset_service),
 ) -> Response:
     """
-    DELETE /api/v1/assets/{id} — Hard delete an asset record (PRD §5.7).
+    DELETE /api/v1/assets/{id} — Hard delete an asset record.
     - Role: super_admin ONLY (it_admin receives 403 Forbidden).
     - Reserved for data-entry mistakes only; blocked (409 Conflict) if asset has assignment or maintenance history.
     """

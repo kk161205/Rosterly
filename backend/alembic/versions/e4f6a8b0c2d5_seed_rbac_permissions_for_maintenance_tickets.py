@@ -1,7 +1,7 @@
-"""seed RBAC permissions for maintenance tickets (§5.10 minimal slice)
+"""seed RBAC permissions for maintenance tickets (minimal slice)
 
 Seeds the (resource, action) permission and role_permissions grant backing
-POST /maintenance-tickets (PRD §5.10, the minimal slice needed by §5.8's
+POST /maintenance-tickets (the minimal slice needed by the
 "Raise Ticket" action):
 
     (maintenance_ticket, create) -> it_admin, super_admin
@@ -35,7 +35,7 @@ branch_labels = None
 depends_on = None
 
 SEED_PERMISSIONS = [
-    ("maintenance_ticket", "create", "Raise a maintenance ticket for any asset (§5.10)"),
+    ("maintenance_ticket", "create", "Raise a maintenance ticket for any asset"),
 ]
 
 SEED_GRANTS = {

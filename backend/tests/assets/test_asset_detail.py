@@ -1,12 +1,11 @@
 """
-Comprehensive Unit & Integration Tests for Asset Detail API (§5.8).
+Comprehensive Unit & Integration Tests for Asset Detail API.
 Tests:
 - GET /assets/{id} (two-layer permission: admin, auditor, current holder, holder's manager, 403 for unrelated manager/employee)
 - GET /assets/{id}/assignments
 - POST /assets/{id}/assign (201 success, 409 if not in_stock, 404 if employee missing, 403 for non-admins)
 - POST /assets/{id}/return (200 success, 409 if not assigned, 403 for non-admins)
-- GET /assets/{id}/maintenance (holder allowed, holder's manager gets 403 per PRD §5.8)
-- Dynamic depreciation math calculation across useful life points
+- GET /assets/{id}/maintenance (holder allowed, holder's manager gets 403 per)
 """
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -24,13 +23,11 @@ from app.models.assets import (
     Asset,
     AssetAssignment,
     AssetStatus,
-    DepreciationMethod,
     MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
 )
 from app.models.auth import Department, Role, RolePermission, User, UserStatus
-from app.modules.assets.jobs import calculate_current_value
 
 client = TestClient(app)
 
@@ -160,8 +157,6 @@ def create_mock_asset(
         vendor="Apple",
         purchase_date=pdate,
         purchase_cost=purchase_cost,
-        current_value=purchase_cost,
-        depreciation_method=DepreciationMethod.straight_line,
         useful_life_months=useful_life_months,
         warranty_expiry=date(2028, 1, 1),
         amc_expiry=date(2027, 1, 1),
@@ -275,7 +270,7 @@ def test_get_asset_detail_unrelated_manager_denied():
 # ============================================================================
 
 def test_get_asset_maintenance_holders_manager_denied():
-    """PRD §5.8 / Feedback Item 1: Holder's manager is EXCLUDED from maintenance endpoint and gets 403."""
+    """ / Feedback Item 1: Holder's manager is EXCLUDED from maintenance endpoint and gets 403."""
     manager = create_mock_user(role_name="manager")
     emp = create_mock_user(role_name="employee", manager_id=manager.id)
     set_user_context(manager.id, "manager")
@@ -443,40 +438,6 @@ def test_return_asset_rejects_when_not_assigned():
 
 # ============================================================================
 # 5. Dynamic Depreciation Calculation Verification
-# ============================================================================
-
-def test_depreciation_calculated_at_multiple_life_points():
-    """DoD 5.6: Depreciation value is computed correctly at multiple points in useful life."""
-    purchase_cost = Decimal("2400.00")
-    useful_life = 24  # 24 months useful life -> $100 / month straight line depreciation
-
-    # Purchase date: 2025-01-01
-    purchase_dt = date(2025, 1, 1)
-    asset = create_mock_asset(
-        purchase_date=purchase_dt,
-        purchase_cost=purchase_cost,
-        useful_life_months=useful_life,
-    )
-
-    # Point 1: As of purchase date (0 months elapsed) -> $2400.00
-    val_day0 = calculate_current_value(asset, as_of=date(2025, 1, 1))
-    assert val_day0 == Decimal("2400.00")
-
-    # Point 2: Halfway through (12 months elapsed: 2026-01-01) -> $1200.00
-    val_month12 = calculate_current_value(asset, as_of=date(2026, 1, 1))
-    assert val_month12 == Decimal("1200.00")
-
-    # Point 3: End of useful life (24 months elapsed: 2027-01-01) -> $0.00
-    val_month24 = calculate_current_value(asset, as_of=date(2027, 1, 1))
-    assert val_month24 == Decimal("0.00")
-
-    # Point 4: Beyond useful life (30 months elapsed: 2027-07-01) -> floors at $0.00
-    val_month30 = calculate_current_value(asset, as_of=date(2027, 7, 1))
-    assert val_month30 == Decimal("0.00")
-
-
-# ============================================================================
-# 6. POST /api/v1/maintenance-tickets - §5.10 minimal slice for §5.8's Raise Ticket
 # ============================================================================
 
 def test_create_maintenance_ticket_it_admin_success():
