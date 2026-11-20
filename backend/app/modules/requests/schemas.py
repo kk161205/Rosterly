@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -61,6 +61,9 @@ class RequestResponse(BaseModel):
     total_steps: int = 0
     # Role name of the pending step (e.g. "it_admin"); None once decided
     waiting_on_role: Optional[str] = None
+    fulfilment_note: Optional[str] = None
+    fulfilled_by_name: Optional[str] = None
+    fulfilled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -82,3 +85,10 @@ class ApprovalAction(BaseModel):
 
 class RejectAction(BaseModel):
     comments: str = Field(..., min_length=1)
+
+
+class FulfilmentAction(BaseModel):
+    """Move an approved request on: in_progress ("we're on it") or completed."""
+
+    status: Literal["in_progress", "completed"]
+    note: Optional[str] = Field(default=None, max_length=2000)

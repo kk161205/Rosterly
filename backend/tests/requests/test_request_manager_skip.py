@@ -1,7 +1,7 @@
 """
-§5.11/§5.12 approval routing when the requester has no reporting manager.
+/ approval routing when the requester has no reporting manager.
 
-A manager step is created with status `skipped` (§1.13) and the chain starts at
+A manager step is created with status `skipped` and the chain starts at
 the next step, so top-level staff aren't blocked; the remaining approvals still
 apply. Uses a real SQLite database so the full create → approve flow runs.
 """

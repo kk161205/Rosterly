@@ -4,11 +4,13 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.request_context import client_ip
 from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.requests import RequestPriority, RequestStatus, RequestType
 from app.modules.requests.schemas import (
     ApprovalAction,
+    FulfilmentAction,
     RejectAction,
     RequestCreate,
     RequestDetailResponse,
@@ -19,13 +21,6 @@ from app.modules.requests.service import RequestService
 router = APIRouter()
 
 
-def _get_ip_address(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "127.0.0.1"
-
-
 @router.post("", response_model=RequestDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_request(
     data: RequestCreate,
@@ -34,10 +29,10 @@ def create_request(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    POST /requests (PRD §5.11):
+    POST /requests:
     Create a new unified request, resolve its approval chain, and notify step 1.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.create_request(data)
 
 
@@ -51,10 +46,10 @@ def get_my_requests(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    GET /requests/mine (PRD §5.11):
+    GET /requests/mine:
     Retrieve paginated requests submitted by the authenticated user.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.get_my_requests(status=status, page=page, page_size=page_size)
 
 
@@ -69,12 +64,37 @@ def get_pending_approvals(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    GET /requests/pending-approval (PRD §5.12):
+    GET /requests/pending-approval:
     Approvals Queue: actionable current-step requests routed to caller.
     Registered BEFORE /{id} to avoid route shadowing.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.get_pending_approvals(request_type=type, priority=priority, page=page, page_size=page_size)
+
+
+@router.get("/to-fulfil", response_model=RequestListResponse)
+def requests_to_fulfil(
+    request: Request,
+    status_filter: Optional[RequestStatus] = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """GET /requests/to-fulfil: approved and in-progress requests for the caller's team."""
+    return RequestService(db, current_user, client_ip(request)).to_fulfil(status_filter, page, page_size)
+
+
+@router.post("/{id}/fulfilment", response_model=RequestDetailResponse)
+def update_fulfilment(
+    id: uuid.UUID,
+    data: FulfilmentAction,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """POST /requests/{id}/fulfilment: approved → in_progress → completed, with a note."""
+    return RequestService(db, current_user, client_ip(request)).fulfil(id, data)
 
 
 @router.get("/{id}", response_model=RequestDetailResponse, status_code=status.HTTP_200_OK)
@@ -85,11 +105,11 @@ def get_request_detail(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    GET /requests/{id} (PRD §5.11):
+    GET /requests/{id}:
     Detailed view with full approval chain progression.
     Accessible to requester, assigned approvers, super_admin, and auditor.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.get_request_detail(id)
 
 
@@ -101,10 +121,10 @@ def cancel_request(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    POST /requests/{id}/cancel (PRD §5.11):
+    POST /requests/{id}/cancel:
     Requester cancels own request while pending. Closes open approval steps.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.cancel_request(id)
 
 
@@ -117,10 +137,10 @@ def approve_request(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    POST /requests/{id}/approve (PRD §5.12):
+    POST /requests/{id}/approve:
     Approve the current step. Row locked; 409 if already acted. Advances step or marks approved.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.approve_request(id, data)
 
 
@@ -133,8 +153,8 @@ def reject_request(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    POST /requests/{id}/reject (PRD §5.12):
+    POST /requests/{id}/reject:
     Reject request with mandatory comments. Stops further steps and marks remaining as skipped.
     """
-    service = RequestService(db=db, current_user=current_user, ip_address=_get_ip_address(request))
+    service = RequestService(db=db, current_user=current_user, ip_address=client_ip(request))
     return service.reject_request(id, data)

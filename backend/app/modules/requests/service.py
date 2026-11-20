@@ -15,7 +15,8 @@ from app.core.errors import (
 from app.core.approver_resolution import step_recipient_ids
 from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset
-from app.models.auth import Role, User
+from app.core.role_policy import user_holds_role_names
+from app.models.auth import SIGN_IN_STATUSES, Role, User, UserStatus
 from app.models.requests import (
     ApprovalChainStep,
     ApprovalChainTemplate,
@@ -29,6 +30,7 @@ from app.models.requests import (
 from app.models.system import AuditLog, Notification, NotificationChannel
 from app.modules.requests.schemas import (
     ApprovalAction,
+    FulfilmentAction,
     RejectAction,
     RequestApprovalResponse,
     RequestCreate,
@@ -36,6 +38,16 @@ from app.modules.requests.schemas import (
     RequestListResponse,
     RequestResponse,
 )
+
+
+# Who fulfils each kind of approved request (super admins can fulfil any).
+FULFILLERS: dict[RequestType, tuple[str, ...]] = {
+    RequestType.asset_request: ("it_admin",),
+    RequestType.access_request: ("it_admin",),
+    RequestType.it_ticket: ("it_admin",),
+    RequestType.other: ("hr_admin",),
+}
+FULFILMENT_STATUSES = (RequestStatus.approved, RequestStatus.in_progress, RequestStatus.completed)
 
 
 class RequestService:
@@ -48,7 +60,7 @@ class RequestService:
         self, request_type: RequestType, estimated_cost: Optional[Decimal]
     ) -> ApprovalChainTemplate:
         """
-        P0 Approval Chain Resolver (§5.18, §7 rule 10).
+        Approval chain resolver.
         Selection rule: among active templates for the request_type whose
         min_amount is null or <= estimated_cost, pick the highest min_amount.
         If none found, raises 409 with code no_approval_chain.
@@ -82,7 +94,7 @@ class RequestService:
 
     def create_request(self, data: RequestCreate) -> RequestDetailResponse:
         """
-        POST /requests (PRD §5.11):
+        POST /requests:
         Resolves approval chain, populates request_approvals rows with role-queue
         or manager resolution, dispatches in-app notifications to step 1 approver(s),
         and records an audit log entry in the same transaction.
@@ -112,7 +124,7 @@ class RequestService:
         ordered_steps = sorted(template.steps, key=lambda s: s.step_order)
 
         # 4. Manager steps for a requester with no reporting manager are skipped
-        # (status `skipped`, §1.13) rather than blocking the request. If that
+        # (status `skipped`) rather than blocking the request. If that
         # would leave no step anyone can act on, the request can't be routed.
         manager_role = self.db.query(Role).filter(Role.name == "manager").first()
 
@@ -121,9 +133,13 @@ class RequestService:
                 return True
             return bool(manager_role and step.approver_role_id == manager_role.id)
 
-        skip_step_ids = {
-            step.id for step in ordered_steps if _is_manager_step(step) and not requester.manager_id
-        }
+        # A manager who can no longer act (inactive, leaving, left) counts as none.
+        manager_id = requester.manager_id
+        if manager_id is not None:
+            manager = self.db.query(User).filter(User.id == manager_id).first()
+            if manager is None or manager.status not in SIGN_IN_STATUSES:
+                manager_id = None
+        skip_step_ids = {step.id for step in ordered_steps if _is_manager_step(step) and not manager_id}
         if len(skip_step_ids) == len(ordered_steps):
             raise ValidationAppError(
                 "This request needs your manager's approval, but you have no reporting manager assigned",
@@ -154,12 +170,12 @@ class RequestService:
             approval_row = RequestApproval(
                 id=uuid.uuid4(),
                 request_id=new_request.id,
-                approver_id=requester.manager_id if _is_manager_step(step) else None,
+                approver_id=manager_id if _is_manager_step(step) and not skipped else None,
                 approver_role_id=step.approver_role_id,
                 step_order=step.step_order,
                 status=ApprovalStatus.skipped if skipped else ApprovalStatus.pending,
                 decision_at=now if skipped else None,
-                comments="Skipped automatically: requester has no reporting manager" if skipped else None,
+                comments="Skipped automatically: no reporting manager who can approve" if skipped else None,
             )
             self.db.add(approval_row)
             created_approvals.append(approval_row)
@@ -201,7 +217,7 @@ class RequestService:
         self, status: Optional[RequestStatus] = None, page: int = 1, page_size: int = 25
     ) -> RequestListResponse:
         """
-        GET /requests/mine (PRD §5.11):
+        GET /requests/mine:
         All authenticated users viewing their own submitted requests.
         """
         check_permission(self.current_user, "request", "read", self.db)
@@ -220,7 +236,7 @@ class RequestService:
 
         total = query.count()
         items = (
-            query.order_by(Request.created_at.desc())
+            query.order_by(Request.created_at.desc(), Request.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -235,7 +251,7 @@ class RequestService:
 
     def get_request_detail(self, request_id: uuid.UUID) -> RequestDetailResponse:
         """
-        GET /requests/{id} (PRD §5.11):
+        GET /requests/{id}:
         Coarse RBAC (request, read) + ABAC row-level check:
         requester, assigned approvers, super_admin, auditor.
         Role-based eligibility applies strictly to role-queue steps with approver_id IS NULL.
@@ -274,14 +290,15 @@ class RequestService:
                         is_assigned_approver = True
                         break
 
-            if not (is_requester or is_assigned_approver):
+            is_fulfiller = req.status in FULFILMENT_STATUSES and self._is_fulfiller(req.request_type)
+            if not (is_requester or is_assigned_approver or is_fulfiller):
                 raise ForbiddenError("You do not have permission to view this request")
 
         return self._format_request_detail_from_model(req)
 
     def cancel_request(self, request_id: uuid.UUID) -> RequestDetailResponse:
         """
-        POST /requests/{id}/cancel (PRD §5.11):
+        POST /requests/{id}/cancel:
         Requester only, only while status is pending (including mid-chain).
         Locks row with with_for_update, re-checks pending status, closes open
         pending approval rows with status 'skipped', and logs audit entry.
@@ -345,7 +362,7 @@ class RequestService:
         Requests whose CURRENT step is waiting on the caller: assigned to them
         directly (a manager step), or a role-queue step for the caller's role.
         Never the caller's own requests. Shared by GET /requests/pending-approval
-        (§5.12) and the Inbox (§5.2) so both apply the same eligibility rule.
+        and the Inbox so both apply the same eligibility rule.
         Callers check `request:approve` themselves.
         """
         DecidedStep = aliased(RequestApproval)
@@ -373,7 +390,7 @@ class RequestService:
                         RequestApproval.approver_role_id.in_(self.current_user.role_ids),
                     ),
                 ),
-                # One step per person (§5.14): hide requests where the caller
+                # One step per person: hide requests where the caller
                 # already decided an earlier step.
                 ~exists().where(
                     DecidedStep.request_id == Request.id,
@@ -391,7 +408,7 @@ class RequestService:
         page_size: int = 25,
     ) -> RequestListResponse:
         """
-        GET /requests/pending-approval (PRD §5.12):
+        GET /requests/pending-approval:
         RBAC: check_permission(request, approve) (manager, hr_admin, it_admin, super_admin).
         Filter: current-step pending rows where approver_id == caller OR
         (role-queue step AND caller holds that role). Excludes caller's own requests.
@@ -406,7 +423,7 @@ class RequestService:
 
         total = query.count()
         items = (
-            query.order_by(Request.created_at.desc())
+            query.order_by(Request.created_at.desc(), Request.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -419,113 +436,67 @@ class RequestService:
             page_size=page_size,
         )
 
-    def approve_request(self, request_id: uuid.UUID, data: ApprovalAction) -> RequestDetailResponse:
-        """
-        POST /requests/{id}/approve (PRD §5.12):
-        Locks the request row with with_for_update.
-        Re-checks step is still pending, caller is eligible AFTER locking, 409 if already acted.
-        Prevents self-approval. Advances current_step or sets status=approved on final step.
-        """
+    def _lock_for_decision(self, request_id: uuid.UUID) -> tuple[Request, RequestApproval]:
+        """Shared by approve and reject: permission, row lock, then
+        in this order, so non-participants learn nothing about the request —
+        participation, pending state, current-step eligibility and the
+        one-step-per-person rule."""
         check_permission(self.current_user, "request", "approve", self.db)
-
-        req = (
-            self.db.query(Request)
-            .filter(Request.id == request_id)
-            .with_for_update()
-            .first()
-        )
+        req = self.db.query(Request).filter(Request.id == request_id).with_for_update().first()
         if not req:
             raise NotFoundError(f"Request with ID {request_id} not found")
-
-        # Self-approval guard
         if req.requester_id == self.current_user.user_id:
-            raise ForbiddenError("Requesters cannot approve their own requests")
+            raise ForbiddenError("Requesters cannot approve or reject their own requests")
 
-        # Confirm caller is a participant on some step of this request BEFORE revealing request status.
-        # Otherwise return 403 (no 409 for non-participants).
-        all_steps = (
-            self.db.query(RequestApproval)
-            .filter(RequestApproval.request_id == req.id)
-            .all()
-        )
-
+        all_steps = self.db.query(RequestApproval).filter(RequestApproval.request_id == req.id).all()
         manager_role = self.db.query(Role).filter(Role.name == "manager").first()
         manager_role_id = manager_role.id if manager_role else None
+        caller = self.current_user.user_id
 
-        caller_user_id = self.current_user.user_id
-
-        def _is_step_participant(step: RequestApproval) -> bool:
-            # Direct assignment or past acting approver
-            if step.approver_id is not None and step.approver_id == caller_user_id:
+        def participant(step: RequestApproval) -> bool:
+            if step.approver_id is not None and step.approver_id == caller:
                 return True
-            # Manager steps require approver_id == caller; role-based participation
-            # applies only to role-queue steps (steps with approver_id IS NULL or
-            # acted steps whose approver_role_id is not the manager role)
-            is_manager_step = (
-                (manager_role_id is not None and step.approver_role_id == manager_role_id)
-                or (getattr(step, "approver_role", None) and getattr(step.approver_role, "name", None) == "manager")
-            )
-            if is_manager_step:
-                return False
+            if manager_role_id is not None and step.approver_role_id == manager_role_id:
+                return False  # manager steps belong to one named person
+            return self.current_user.holds_role_id(step.approver_role_id)
 
-            if self.current_user.holds_role_id(step.approver_role_id):
-                return True
-            return False
-
-        is_participant = any(_is_step_participant(step) for step in all_steps)
-        if not is_participant:
+        if not any(participant(step) for step in all_steps):
             raise ForbiddenError("You are not an authorized approver for this request")
-
         if req.status != RequestStatus.pending:
-            raise ConflictError(
-                message=f"Request is already in '{req.status.value}' state",
-                code="already_acted",
-            )
+            raise ConflictError(message=f"Request is already in '{req.status.value}' state", code="already_acted")
 
-        # Current step row with lock
-        current_step_row = (
+        current = (
             self.db.query(RequestApproval)
-            .filter(
-                RequestApproval.request_id == req.id,
-                RequestApproval.step_order == req.current_step,
-            )
+            .filter(RequestApproval.request_id == req.id, RequestApproval.step_order == req.current_step)
             .with_for_update()
             .first()
         )
-        if not current_step_row or current_step_row.status != ApprovalStatus.pending:
+        if not current or current.status != ApprovalStatus.pending:
             raise ConflictError(
-                message="Current approval step is not pending or has already been acted upon",
-                code="already_acted",
+                message="Current approval step is not pending or has already been acted upon", code="already_acted"
             )
-
-        # Check caller eligibility AFTER locking
-        if current_step_row.approver_id is not None:
-            if current_step_row.approver_id != caller_user_id:
+        if current.approver_id is not None:
+            if current.approver_id != caller:
                 raise ForbiddenError("You are not the assigned approver for this step")
-        else:
-            if not self.current_user.holds_role_id(current_step_row.approver_role_id):
-                raise ForbiddenError("You do not hold the required role for this approval step")
-
-        # Segregation of duties (§5.14 multi-role): one person decides at most one
-        # step of a request, even if they hold the roles for several.
+        elif not self.current_user.holds_role_id(current.approver_role_id):
+            raise ForbiddenError("You do not hold the required role for this approval step")
         if any(
-            step.id != current_step_row.id
-            and step.approver_id == caller_user_id
-            and step.status in (ApprovalStatus.approved, ApprovalStatus.rejected)
+            step.id != current.id and step.approver_id == caller and step.status in (ApprovalStatus.approved, ApprovalStatus.rejected)
             for step in all_steps
         ):
-            raise ForbiddenError(
-                "You already decided an earlier step of this request; someone else must decide this one"
-            )
+            raise ForbiddenError("You already decided an earlier step of this request; someone else must decide this one")
+        return req, current
 
+    def approve_request(self, request_id: uuid.UUID, data: ApprovalAction) -> RequestDetailResponse:
+        """POST /requests/{id}/approve: advances to the next waiting step,
+        or marks the request approved after the last one and tells the requester."""
+        req, current_step_row = self._lock_for_decision(request_id)
         now = datetime.now(timezone.utc)
         current_step_row.approver_id = self.current_user.user_id
         current_step_row.status = ApprovalStatus.approved
         current_step_row.decision_at = now
         current_step_row.comments = data.comments
 
-        # Advance to the next step still waiting for a decision (skipped steps
-        # are passed over); none left means this was the final approval.
         previous_step = req.current_step
         next_pending = (
             self.db.query(RequestApproval)
@@ -537,23 +508,11 @@ class RequestService:
             .order_by(RequestApproval.step_order.asc())
             .first()
         )
-
         if next_pending is None:
             req.status = RequestStatus.approved
-            # Notify requester of full approval
-            self.db.add(
-                Notification(
-                    id=uuid.uuid4(),
-                    user_id=req.requester_id,
-                    type="request_status_change",
-                    title="Request Approved",
-                    message=f"Your request '{req.title}' has been fully approved.",
-                    related_entity_type="request",
-                    related_entity_id=req.id,
-                    channel=NotificationChannel.in_app,
-                    is_critical=False,
-                )
-            )
+            self._notify_requester(req, "Request approved", f"Your request '{req.title}' was approved. You'll hear when work starts.")
+            for user_id in self._fulfiller_ids(req):
+                self._add_notification(user_id, "approval_needed", "Approved request to fulfil", f"'{req.title}' was approved and is ready for you.", req.id)
         else:
             req.current_step = next_pending.step_order
             self._notify_step_approvers(
@@ -564,180 +523,145 @@ class RequestService:
                 message=f"Request '{req.title}' is awaiting your approval (Step {req.current_step}).",
             )
 
-        # Audit log entry
-        self.db.add(
-            AuditLog(
-                id=uuid.uuid4(),
-                actor_id=self.current_user.user_id,
-                action="request.approved" if req.status == RequestStatus.approved else "request.step_approved",
-                entity_type="request",
-                entity_id=req.id,
-                before_state={"current_step": previous_step, "status": RequestStatus.pending.value},
-                after_state={"current_step": req.current_step, "status": req.status.value},
-                ip_address=self.ip_address,
-            )
+        self._audit(
+            "request.approved" if req.status == RequestStatus.approved else "request.step_approved",
+            req,
+            {"current_step": previous_step, "status": RequestStatus.pending.value},
+            {"current_step": req.current_step, "status": req.status.value},
         )
-
         self.db.commit()
         return self._format_request_detail(req.id)
 
     def reject_request(self, request_id: uuid.UUID, data: RejectAction) -> RequestDetailResponse:
-        """
-        POST /requests/{id}/reject (PRD §5.12):
-        Locks the request row with with_for_update.
-        Requires non-empty comments.
-        Sets status=rejected, marks remaining steps as skipped, notifies requester.
-        """
-        check_permission(self.current_user, "request", "approve", self.db)
-
+        """POST /requests/{id}/reject: a reason is required; later steps are skipped."""
         if not data.comments or not data.comments.strip():
             raise ValidationAppError(
                 "Comments are mandatory when rejecting a request",
                 field_errors={"comments": "Rejection comments are required"},
             )
-
-        req = (
-            self.db.query(Request)
-            .filter(Request.id == request_id)
-            .with_for_update()
-            .first()
-        )
-        if not req:
-            raise NotFoundError(f"Request with ID {request_id} not found")
-
-        # Self-rejection guard
-        if req.requester_id == self.current_user.user_id:
-            raise ForbiddenError("Requesters cannot reject their own requests")
-
-        # Confirm caller is a participant on some step of this request BEFORE revealing request status.
-        # Otherwise return 403 (no 409 for non-participants).
-        all_steps = (
-            self.db.query(RequestApproval)
-            .filter(RequestApproval.request_id == req.id)
-            .all()
-        )
-
-        manager_role = self.db.query(Role).filter(Role.name == "manager").first()
-        manager_role_id = manager_role.id if manager_role else None
-
-        caller_user_id = self.current_user.user_id
-
-        def _is_step_participant(step: RequestApproval) -> bool:
-            # Direct assignment or past acting approver
-            if step.approver_id is not None and step.approver_id == caller_user_id:
-                return True
-            # Manager steps require approver_id == caller; role-based participation
-            # applies only to role-queue steps (steps with approver_id IS NULL or
-            # acted steps whose approver_role_id is not the manager role)
-            is_manager_step = (
-                (manager_role_id is not None and step.approver_role_id == manager_role_id)
-                or (getattr(step, "approver_role", None) and getattr(step.approver_role, "name", None) == "manager")
-            )
-            if is_manager_step:
-                return False
-
-            if self.current_user.holds_role_id(step.approver_role_id):
-                return True
-            return False
-
-        is_participant = any(_is_step_participant(step) for step in all_steps)
-        if not is_participant:
-            raise ForbiddenError("You are not an authorized approver for this request")
-
-        if req.status != RequestStatus.pending:
-            raise ConflictError(
-                message=f"Request is already in '{req.status.value}' state",
-                code="already_acted",
-            )
-
-        current_step_row = (
-            self.db.query(RequestApproval)
-            .filter(
-                RequestApproval.request_id == req.id,
-                RequestApproval.step_order == req.current_step,
-            )
-            .with_for_update()
-            .first()
-        )
-        if not current_step_row or current_step_row.status != ApprovalStatus.pending:
-            raise ConflictError(
-                message="Current approval step is not pending or has already been acted upon",
-                code="already_acted",
-            )
-
-        # Check caller eligibility AFTER locking
-        if current_step_row.approver_id is not None:
-            if current_step_row.approver_id != caller_user_id:
-                raise ForbiddenError("You are not the assigned approver for this step")
-        else:
-            if not self.current_user.holds_role_id(current_step_row.approver_role_id):
-                raise ForbiddenError("You do not hold the required role for this approval step")
-
-        # Segregation of duties (§5.14 multi-role): one person decides at most one
-        # step of a request, even if they hold the roles for several.
-        if any(
-            step.id != current_step_row.id
-            and step.approver_id == caller_user_id
-            and step.status in (ApprovalStatus.approved, ApprovalStatus.rejected)
-            for step in all_steps
-        ):
-            raise ForbiddenError(
-                "You already decided an earlier step of this request; someone else must decide this one"
-            )
-
+        req, current_step_row = self._lock_for_decision(request_id)
+        reason = data.comments.strip()
         now = datetime.now(timezone.utc)
         current_step_row.approver_id = self.current_user.user_id
         current_step_row.status = ApprovalStatus.rejected
         current_step_row.decision_at = now
-        current_step_row.comments = data.comments.strip()
-
-        # Mark all subsequent steps as skipped
-        subsequent_steps = (
+        current_step_row.comments = reason
+        for later in (
             self.db.query(RequestApproval)
-            .filter(
-                RequestApproval.request_id == req.id,
-                RequestApproval.step_order > req.current_step,
-            )
+            .filter(RequestApproval.request_id == req.id, RequestApproval.step_order > req.current_step)
             .all()
-        )
-        for s in subsequent_steps:
-            s.status = ApprovalStatus.skipped
-            s.decision_at = now
-            s.comments = "Skipped due to prior step rejection"
-
+        ):
+            later.status = ApprovalStatus.skipped
+            later.decision_at = now
+            later.comments = "Skipped due to prior step rejection"
         req.status = RequestStatus.rejected
+        self._notify_requester(req, "Request rejected", f"Your request '{req.title}' was rejected: {reason}")
+        self._audit("request.rejected", req, {"status": RequestStatus.pending.value}, {"status": RequestStatus.rejected.value, "reason": reason})
+        self.db.commit()
+        return self._format_request_detail(req.id)
 
-        # Notify requester
+    # ----------------------------------------------------------- fulfilment
+
+    def _is_fulfiller(self, request_type: RequestType) -> bool:
+        return self.current_user.has_role("super_admin", *FULFILLERS[request_type])
+
+    def _fulfiller_ids(self, req: Request) -> list[uuid.UUID]:
+        names = list(FULFILLERS[req.request_type])
+        return [
+            u.id
+            for u in self.db.query(User).filter(
+                user_holds_role_names(names), User.status == UserStatus.active, User.id != req.requester_id
+            )
+        ]
+
+    def to_fulfil(self, status: Optional[RequestStatus], page: int, page_size: int) -> RequestListResponse:
+        """GET /requests/to-fulfil — approved and in-progress requests the caller
+        can fulfil: asset, access and IT requests for IT admins, other requests
+        for HR admins, everything for super admins."""
+        check_permission(self.current_user, "request", "fulfil", self.db)
+        types = [t for t in RequestType if self._is_fulfiller(t)]
+        statuses = [status] if status else [RequestStatus.approved, RequestStatus.in_progress]
+        if any(s not in (RequestStatus.approved, RequestStatus.in_progress, RequestStatus.completed) for s in statuses):
+            raise ValidationAppError("Validation failed", field_errors={"status": "Use approved, in_progress or completed."})
+        query = (
+            self.db.query(Request)
+            .options(
+                joinedload(Request.requester).joinedload(User.department),
+                joinedload(Request.related_asset),
+                selectinload(Request.approvals).joinedload(RequestApproval.approver_role),
+                joinedload(Request.fulfiller),
+            )
+            .filter(Request.request_type.in_(types), Request.status.in_(statuses))
+        )
+        total = query.count()
+        items = query.order_by(Request.updated_at.asc(), Request.id.asc()).offset((page - 1) * page_size).limit(page_size).all()
+        return RequestListResponse(items=[self._format_request_summary(r) for r in items], total=total, page=page, page_size=page_size)
+
+    def fulfil(self, request_id: uuid.UUID, data: FulfilmentAction) -> RequestDetailResponse:
+        """POST /requests/{id}/fulfilment — approved → in_progress → completed
+        (approved → completed directly is fine too). The requester is told at
+        each change. Audited."""
+        check_permission(self.current_user, "request", "fulfil", self.db)
+        req = self.db.query(Request).filter(Request.id == request_id).with_for_update().first()
+        if not req:
+            raise NotFoundError(f"Request with ID {request_id} not found")
+        if not self._is_fulfiller(req.request_type):
+            raise ForbiddenError("This kind of request is fulfilled by another team.")
+        target = RequestStatus(data.status)
+        allowed = {
+            RequestStatus.approved: {RequestStatus.in_progress, RequestStatus.completed},
+            RequestStatus.in_progress: {RequestStatus.completed},
+        }
+        if target not in allowed.get(req.status, set()):
+            raise ConflictError(f"A {req.status.value} request can't move to {target.value}.", code="invalid_state")
+        before = {"status": req.status.value}
+        req.status = target
+        note = (data.note or "").strip() or None
+        if note:
+            req.fulfilment_note = note
+        req.fulfilled_by = self.current_user.user_id
+        req.fulfilled_at = datetime.now(timezone.utc)
+        if target == RequestStatus.in_progress:
+            self._notify_requester(req, "Your request is being worked on", f"'{req.title}' is in progress." + (f" {note}" if note else ""))
+        else:
+            self._notify_requester(req, "Your request is done", f"'{req.title}' is done." + (f" {note}" if note else ""))
+        self._audit("request.fulfilment_updated", req, before, {"status": target.value, "note": note})
+        self.db.commit()
+        return self._format_request_detail(req.id)
+
+    # ------------------------------------------------------------ shared helpers
+
+    def _add_notification(self, user_id: uuid.UUID, type_: str, title: str, message: str, request_id: uuid.UUID) -> None:
         self.db.add(
             Notification(
                 id=uuid.uuid4(),
-                user_id=req.requester_id,
-                type="request_status_change",
-                title="Request Rejected",
-                message=f"Your request '{req.title}' was rejected: {data.comments.strip()}",
+                user_id=user_id,
+                type=type_,
+                title=title,
+                message=message,
                 related_entity_type="request",
-                related_entity_id=req.id,
+                related_entity_id=request_id,
                 channel=NotificationChannel.in_app,
                 is_critical=False,
             )
         )
 
-        # Audit log entry
+    def _notify_requester(self, req: Request, title: str, message: str) -> None:
+        self._add_notification(req.requester_id, "request_status_change", title, message, req.id)
+
+    def _audit(self, action: str, req: Request, before: Optional[dict], after: Optional[dict]) -> None:
         self.db.add(
             AuditLog(
                 id=uuid.uuid4(),
                 actor_id=self.current_user.user_id,
-                action="request.rejected",
+                action=action,
                 entity_type="request",
                 entity_id=req.id,
-                before_state={"status": RequestStatus.pending.value},
-                after_state={"status": RequestStatus.rejected.value, "reason": data.comments.strip()},
+                before_state=before,
+                after_state=after,
                 ip_address=self.ip_address,
             )
         )
-
-        self.db.commit()
-        return self._format_request_detail(req.id)
 
     def _notify_step_approvers(
         self,
@@ -747,7 +671,7 @@ class RequestService:
         title: str,
         message: str,
     ) -> None:
-        """In-app approval_needed notification (§6) for one step: its assigned
+        """In-app approval_needed notification for one step: its assigned
         manager, or every active member of its role queue. The requester is
         never notified about their own request (self-action rule)."""
         recipient_ids = step_recipient_ids(self.db, step.approver_id, step.approver_role_id, exclude_user_id)
@@ -774,7 +698,7 @@ class RequestService:
             req.requester.department.name if req.requester and req.requester.department else None
         )
         related_asset_name = req.related_asset.name if req.related_asset else None
-        # Plain-language position for lists (§5.11 "Waiting on IT admin"): the role of the step now pending
+        # Plain-language position for lists ("Waiting on IT admin"): the role of the step now pending
         current = next(
             (a for a in req.approvals if a.step_order == req.current_step and a.status == ApprovalStatus.pending),
             None,
@@ -797,6 +721,9 @@ class RequestService:
             current_step=req.current_step,
             total_steps=len(req.approvals),
             waiting_on_role=current.approver_role.name if current and current.approver_role else None,
+            fulfilment_note=req.fulfilment_note,
+            fulfilled_by_name=req.fulfiller.full_name if req.fulfiller else None,
+            fulfilled_at=req.fulfilled_at,
             created_at=req.created_at,
             updated_at=req.updated_at,
         )

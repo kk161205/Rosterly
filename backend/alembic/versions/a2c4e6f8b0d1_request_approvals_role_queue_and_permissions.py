@@ -22,10 +22,10 @@ depends_on = None
 _REQUIRED_ROLES = {"super_admin", "it_admin", "hr_admin", "manager", "employee", "auditor"}
 
 SEED_PERMISSIONS = [
-    ("request", "create", "Submit a new request in the portal (§5.11)"),
-    ("request", "read", "View own requests or assigned/audit requests (§5.11)"),
-    ("request", "update", "Cancel an active pending request (§5.11)"),
-    ("request", "approve", "Access approvals queue and approve/reject requests (§5.12)"),
+    ("request", "create", "Submit a new request in the portal"),
+    ("request", "read", "View own requests or assigned/audit requests"),
+    ("request", "update", "Cancel an active pending request"),
+    ("request", "approve", "Access approvals queue and approve/reject requests"),
 ]
 
 SEED_GRANTS = {
