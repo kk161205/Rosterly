@@ -7,17 +7,18 @@ import type { ManagedUser } from '@/features/admin/types/users'
 import { roleLabel, rolesLabel } from '@/features/auth/hooks/useCurrentUser'
 import { getErrorMessage } from '@/lib/errors'
 import { Alert, Button, Dialog, SelectField, Skeleton, cn } from '@/ui'
+import { useAssignableRoles } from '@/features/admin/hooks/useAssignableRoles'
 
-// Primary-only (§5.14): super admin already holds everything; employee is everyone's baseline
+// Primary-only: super admin already holds everything; employee is everyone's baseline
 const PRIMARY_ONLY = ['super_admin', 'employee']
 
 /**
- * Roles for one person (§5.14 multi-role): a primary role — their title — plus
+ * Roles for one person (multi-role): a primary role — their title — plus
  * additional roles. Access is the union, previewed live from the server before
  * saving. Roles that can't be combined are disabled with the reason.
  */
 export const RolesDialog: React.FC<{ user: ManagedUser; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
-  const assignable = useQuery({ queryKey: ['assignable-roles'], queryFn: userManagementService.assignableRoles })
+  const assignable = useAssignableRoles()
   // Conflicts live on the roles list (role:read — super admin, who is also the only one who assigns roles)
   const roleList = useQuery({ queryKey: ['admin', 'roles'], queryFn: roleManagementService.roles })
   const [primary, setPrimary] = useState(user.role_id)

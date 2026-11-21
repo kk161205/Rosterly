@@ -1,28 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Lock, Plus } from 'lucide-react'
 import { roleManagementService } from '@/features/admin/services/roleManagementService'
 import type { Permission, Role } from '@/features/admin/types/roles'
 import { actionLabel, resourceLabel } from '@/features/admin/lib/permissionLabels'
-import { CURRENT_USER_KEY, roleLabel } from '@/features/auth/hooks/useCurrentUser'
-import { getErrorMessage, getFieldErrors } from '@/lib/errors'
-import { Alert, Button, Dialog, EmptyState, ErrorState, PageHeader, SelectField, Skeleton, TextField, cn } from '@/ui'
+import { CURRENT_USER_KEY, roleLabel, useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
+import { getErrorMessage } from '@/lib/errors'
+import { Alert, Button, EmptyState, ErrorState, PageHeader, SelectField, Skeleton, cn } from '@/ui'
 
-// Primary-only roles (§5.14) never sit alongside another role, so they need no conflict entries
+// Primary-only roles never sit alongside another role, so they need no conflict entries
 const PRIMARY_ONLY = ['super_admin', 'employee']
 
 /**
- * Roles (§5.13): pick a role, tick what it may do, save. Changes apply to
- * everyone holding the role on their next request — sessions re-check live.
- * Below the permissions: the roles it can't be combined with (§5.14).
+ * Roles: the six roles are fixed. This page explains what each one can
+ * do (read-only) and which roles one person may not hold together.
  */
 export const RoleManagementPage: React.FC = () => {
   const queryClient = useQueryClient()
   const roles = useQuery({ queryKey: ['admin', 'roles'], queryFn: roleManagementService.roles })
-  const permissions = useQuery({ queryKey: ['admin', 'permissions'], queryFn: roleManagementService.permissions })
   const [roleId, setRoleId] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!roleId && roles.data?.length) setRoleId(roles.data[0].id)
@@ -30,31 +25,22 @@ export const RoleManagementPage: React.FC = () => {
 
   const role = roles.data?.find((r) => r.id === roleId) ?? null
 
-  if (roles.isLoading || permissions.isLoading)
+  if (roles.isLoading)
     return (
       <div className="flex flex-col gap-4" aria-label="Loading roles">
         <Skeleton className="h-10 w-1/3" />
         <Skeleton className="h-64 w-full" />
       </div>
     )
-  if (roles.isError || permissions.isError)
-    return <ErrorState message={getErrorMessage(roles.error ?? permissions.error, 'Roles could not be loaded.')} onRetry={() => { roles.refetch(); permissions.refetch() }} />
+  if (roles.isError)
+    return <ErrorState message={getErrorMessage(roles.error, 'Roles could not be loaded.')} onRetry={() => roles.refetch()} />
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Roles"
-        description="What each role can see and do. Changes reach everyone with the role on their next click."
-        actions={
-          <Button variant="secondary" onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New role
-          </Button>
-        }
-      />
+      <PageHeader title="Roles" description="What each role can see and do. Give people roles from Users or their profile." />
 
       {/* Phones: a role picker instead of the side list */}
-      <SelectField
+      <SelectField data-guide="roles.pick"
         label="Role"
         className="lg:hidden"
         options={(roles.data ?? []).map((r) => ({ value: r.id, label: `${roleLabel(r.name)} · ${r.user_count} ${r.user_count === 1 ? 'person' : 'people'}` }))}
@@ -76,14 +62,7 @@ export const RoleManagementPage: React.FC = () => {
                     r.id === roleId ? 'bg-row-selected' : 'hover:bg-row-hover',
                   )}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-body font-medium text-ink">{roleLabel(r.name)}</span>
-                    {r.is_system_role && (
-                      <span title="Built-in role — it can't be deleted">
-                        <Lock className="h-3.5 w-3.5 shrink-0 text-muted" aria-label="Built-in role" />
-                      </span>
-                    )}
-                  </span>
+                  <span className="truncate text-body font-medium text-ink">{roleLabel(r.name)}</span>
                   <span className="shrink-0 text-meta tabular-nums text-muted">{r.user_count}</span>
                 </button>
               </li>
@@ -92,158 +71,75 @@ export const RoleManagementPage: React.FC = () => {
         </nav>
 
         {role ? (
-          <Matrix
+          <RoleDetail
             key={role.id}
             role={role}
             roles={roles.data ?? []}
-            all={permissions.data ?? []}
-            onDelete={() => setDeleting(true)}
             onSaved={() => {
               void queryClient.invalidateQueries({ queryKey: ['admin', 'roles'] })
-              void queryClient.invalidateQueries({ queryKey: ['assignable-roles'] })
               void queryClient.invalidateQueries({ queryKey: CURRENT_USER_KEY })
             }}
           />
         ) : (
-          <EmptyState title="No roles yet" />
+          <EmptyState title="No roles found" />
         )}
       </div>
-
-      <NewRoleDialog
-        open={creating}
-        onOpenChange={setCreating}
-        onCreated={(r) => {
-          void queryClient.invalidateQueries({ queryKey: ['admin', 'roles'] })
-          void queryClient.invalidateQueries({ queryKey: ['assignable-roles'] })
-          setRoleId(r.id)
-        }}
-      />
-      {role && (
-        <DeleteRoleDialog
-          role={role}
-          open={deleting}
-          onOpenChange={setDeleting}
-          onDeleted={() => {
-            setRoleId(null)
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'roles'] })
-            void queryClient.invalidateQueries({ queryKey: ['assignable-roles'] })
-          }}
-        />
-      )}
     </div>
   )
 }
 
-const Matrix: React.FC<{ role: Role; roles: Role[]; all: Permission[]; onSaved: () => void; onDelete: () => void }> = ({
-  role,
-  roles,
-  all,
-  onSaved,
-  onDelete,
-}) => {
+const RoleDetail: React.FC<{ role: Role; roles: Role[]; onSaved: () => void }> = ({ role, roles, onSaved }) => {
   const current = useQuery({ queryKey: ['admin', 'roles', role.id, 'permissions'], queryFn: () => roleManagementService.rolePermissions(role.id) })
-  const [granted, setGranted] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
-  const original = useMemo(() => new Set((current.data?.permissions ?? []).map((p) => p.id)), [current.data])
-  useEffect(() => setGranted(new Set(original)), [original])
-
-  const byResource = useMemo(() => {
+  const byArea = useMemo(() => {
     const map = new Map<string, Permission[]>()
-    for (const p of all) map.set(p.resource, [...(map.get(p.resource) ?? []), p])
+    for (const p of current.data?.permissions ?? []) map.set(p.resource, [...(map.get(p.resource) ?? []), p])
     return [...map.entries()].sort(([a], [b]) => resourceLabel(a).localeCompare(resourceLabel(b)))
-  }, [all])
-
-  const dirty = granted.size !== original.size || [...granted].some((id) => !original.has(id))
-  const toggle = (id: string, on: boolean) => {
-    setSaved(false)
-    setGranted((prev) => {
-      const next = new Set(prev)
-      if (on) next.add(id)
-      else next.delete(id)
-      return next
-    })
-  }
-
-  const save = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      await roleManagementService.savePermissions(role.id, [...granted])
-      await current.refetch()
-      setSaved(true)
-      onSaved()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  }, [current.data])
 
   return (
-    <section aria-labelledby="matrix-heading" className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 id="matrix-heading" className="font-display text-panel text-ink">
-            {roleLabel(role.name)}
-          </h2>
-          <p className="text-body text-muted">
-            {role.description || 'No description.'} · {role.user_count} {role.user_count === 1 ? 'person holds' : 'people hold'} it
-          </p>
-        </div>
-        {!role.is_system_role && (
-          <Button variant="danger" size="sm" onClick={onDelete}>
-            Delete role
-          </Button>
-        )}
+    <section aria-labelledby="role-heading" className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 id="role-heading" className="font-display text-panel text-ink">
+          {roleLabel(role.name)}
+        </h2>
+        <p className="text-body text-muted">{role.description}</p>
+        <p className="text-meta text-muted">
+          {role.user_count} {role.user_count === 1 ? 'person holds' : 'people hold'} it
+        </p>
       </div>
-      {error && <Alert>{error}</Alert>}
+
+      <h3 className="text-section text-ink">What they can do</h3>
       {current.isLoading ? (
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-48 w-full" />
       ) : current.isError ? (
         <ErrorState message={getErrorMessage(current.error)} onRetry={() => current.refetch()} />
+      ) : byArea.length === 0 ? (
+        <p className="text-body text-muted">Only what everyone can do with their own records.</p>
       ) : (
-        <div className="border-t border-ink">
-          {byResource.map(([resource, perms]) => (
-            <fieldset key={resource} className="m-0 grid gap-x-6 gap-y-2 border-0 border-b border-line-soft p-0 py-3.5 sm:grid-cols-[12rem_minmax(0,1fr)]">
-              <legend className="float-left text-body font-medium text-ink">{resourceLabel(resource)}</legend>
-              <div className="flex flex-wrap gap-x-6 gap-y-2.5 sm:col-start-2">
+        <dl className="m-0 border-t border-ink">
+          {byArea.map(([resource, perms]) => (
+            <div key={resource} className="grid gap-x-6 gap-y-1 border-b border-line-soft py-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
+              <dt className="text-body font-medium text-ink">{resourceLabel(resource)}</dt>
+              <dd className="m-0 text-body text-muted">
                 {perms
-                  .slice()
-                  .sort((a, b) => a.action.localeCompare(b.action))
-                  .map((p) => (
-                    <label key={p.id} className="flex cursor-pointer items-center gap-2 text-body text-ink" title={p.description ?? undefined}>
-                      <input type="checkbox" className="h-4 w-4 accent-navy" checked={granted.has(p.id)} onChange={(e) => toggle(p.id, e.target.checked)} />
-                      {actionLabel(p.action)}
-                    </label>
-                  ))}
-              </div>
-            </fieldset>
+                  .map((p) => actionLabel(p.action))
+                  .sort((a, b) => a.localeCompare(b))
+                  .join(', ')}
+              </dd>
+            </div>
           ))}
-        </div>
+        </dl>
       )}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" disabled={!dirty} isLoading={busy} onClick={save}>
-          Save changes
-        </Button>
-        {dirty && (
-          <Button variant="ghost" onClick={() => setGranted(new Set(original))} disabled={busy}>
-            Undo changes
-          </Button>
-        )}
-        <span className="text-meta text-muted" aria-live="polite">
-          {saved && !dirty ? 'Saved. Applies to live sessions straight away.' : 'Applies to live sessions as soon as you save.'}
-        </span>
-      </div>
+
       {!PRIMARY_ONLY.includes(role.name) && <Conflicts key={role.id} role={role} roles={roles} onSaved={onSaved} />}
     </section>
   )
 }
 
-/** Roles one person may not hold together with this one (§5.14), e.g. Auditor and IT admin. */
+/** Roles one person may not hold together with this one, e.g. Auditor and IT admin. Read-only without role:update. */
 const Conflicts: React.FC<{ role: Role; roles: Role[]; onSaved: () => void }> = ({ role, roles, onSaved }) => {
+  const editable = useCurrentUser().can('role:update')
   const original = useMemo(() => new Set(role.conflicts_with.map((c) => c.id)), [role.conflicts_with])
   const [picked, setPicked] = useState<Set<string>>(original)
   const [busy, setBusy] = useState(false)
@@ -284,8 +180,9 @@ const Conflicts: React.FC<{ role: Role; roles: Role[]; onSaved: () => void }> = 
           <label key={r.id} className="flex cursor-pointer items-center gap-2 text-body text-ink">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-navy"
+              className="h-4 w-4 accent-navy disabled:opacity-60"
               checked={picked.has(r.id)}
+              disabled={!editable}
               onChange={(e) =>
                 setPicked((prev) => {
                   const next = new Set(prev)
@@ -299,126 +196,18 @@ const Conflicts: React.FC<{ role: Role; roles: Role[]; onSaved: () => void }> = 
           </label>
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="secondary" disabled={!dirty} isLoading={busy} onClick={save}>
-          Save combinations
-        </Button>
-        {dirty && (
-          <Button variant="ghost" onClick={() => setPicked(new Set(original))} disabled={busy}>
-            Undo
+      {editable && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" disabled={!dirty} isLoading={busy} onClick={save}>
+            Save combinations
           </Button>
-        )}
-      </div>
+          {dirty && (
+            <Button variant="ghost" onClick={() => setPicked(new Set(original))} disabled={busy}>
+              Undo
+            </Button>
+          )}
+        </div>
+      )}
     </section>
-  )
-}
-
-const NewRoleDialog: React.FC<{ open: boolean; onOpenChange: (o: boolean) => void; onCreated: (r: Role) => void }> = ({ open, onOpenChange, onCreated }) => {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [busy, setBusy] = useState(false)
-  useEffect(() => {
-    if (open) {
-      setName('')
-      setDescription('')
-      setError(null)
-      setErrors({})
-    }
-  }, [open])
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="New role"
-      description="It starts with no permissions; tick them after creating it."
-      footer={
-        <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            isLoading={busy}
-            disabled={!name.trim()}
-            onClick={async () => {
-              setBusy(true)
-              setError(null)
-              try {
-                const r = await roleManagementService.create(name.trim().toLowerCase().replace(/\s+/g, '_'), description.trim())
-                onCreated(r)
-                onOpenChange(false)
-              } catch (err) {
-                setError(getErrorMessage(err))
-                setErrors(getFieldErrors(err))
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
-            Create role
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-5">
-        {error && <Alert>{error}</Alert>}
-        <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} hint="e.g. Facilities" maxLength={50} />
-        <TextField label="Description" value={description} onChange={(e) => setDescription(e.target.value)} error={errors.description} maxLength={500} />
-      </div>
-    </Dialog>
-  )
-}
-
-const DeleteRoleDialog: React.FC<{ role: Role; open: boolean; onOpenChange: (o: boolean) => void; onDeleted: () => void }> = ({
-  role,
-  open,
-  onOpenChange,
-  onDeleted,
-}) => {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      busy={busy}
-      title={`Delete ${roleLabel(role.name)}?`}
-      description={
-        role.user_count > 0
-          ? `${role.user_count} ${role.user_count === 1 ? 'person still holds' : 'people still hold'} this role, as their main or an extra role — change their roles first.`
-          : 'This can’t be undone.'
-      }
-      footer={
-        <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-            Keep it
-          </Button>
-          <Button
-            variant="danger"
-            isLoading={busy}
-            disabled={role.user_count > 0}
-            onClick={async () => {
-              setBusy(true)
-              setError(null)
-              try {
-                await roleManagementService.remove(role.id)
-                onOpenChange(false)
-                onDeleted()
-              } catch (err) {
-                setError(getErrorMessage(err))
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
-            Delete role
-          </Button>
-        </>
-      }
-    >
-      {error ? <Alert>{error}</Alert> : <span />}
-    </Dialog>
   )
 }

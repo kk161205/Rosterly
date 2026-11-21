@@ -1,7 +1,7 @@
 import { apiClient } from '@/lib/api-client'
-import type { AccessPreview, AssignableRole, InvitePayload, ManagedUser, UserListResponse } from '@/features/admin/types/users'
+import type { AccessPreview, AssignableRole, ManagedUser, SignInLink, UserListResponse } from '@/features/admin/types/users'
 
-/** Accounts (§5.14): super admin and HR admin; role changes and force sign-out are super admin only. */
+/** Accounts: super admin and HR admin; role changes and force sign-out are super admin only. */
 export const userManagementService = {
   async list(params: { search?: string; role_id?: string; status?: string; page: number; page_size: number }): Promise<UserListResponse> {
     return (await apiClient.get<UserListResponse>('/users', { params })).data
@@ -9,10 +9,11 @@ export const userManagementService = {
   async assignableRoles(): Promise<AssignableRole[]> {
     return (await apiClient.get<AssignableRole[]>('/users/assignable-roles')).data
   },
-  async invite(payload: InvitePayload): Promise<ManagedUser> {
-    return (await apiClient.post<ManagedUser>('/users', payload)).data
+  /** A single-use set-password link to hand over; a new one cancels the old. */
+  async createSignInLink(id: string): Promise<SignInLink> {
+    return (await apiClient.post<SignInLink>(`/users/${id}/sign-in-link`)).data
   },
-  /** Primary role plus additional roles (§5.14); the server checks conflicts and privileged roles. */
+  /** Primary role plus additional roles; the server checks conflicts and privileged roles. */
   async setRoles(id: string, roleId: string, additionalRoleIds: string[]): Promise<ManagedUser> {
     return (
       await apiClient.patch<ManagedUser>(`/users/${id}/role`, { role_id: roleId, additional_role_ids: additionalRoleIds })
@@ -25,6 +26,10 @@ export const userManagementService = {
   },
   async setStatus(id: string, status: 'active' | 'inactive'): Promise<ManagedUser> {
     return (await apiClient.patch<ManagedUser>(`/users/${id}/status`, { status })).data
+  },
+  /** Clears someone's two-step sign-in (lost phone) and signs them out everywhere. Super admin only. */
+  async resetMfa(id: string): Promise<void> {
+    await apiClient.post(`/users/${id}/mfa/reset`)
   },
   async forceLogout(id: string): Promise<void> {
     await apiClient.post(`/users/${id}/force-logout`)

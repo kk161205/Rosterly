@@ -1,13 +1,17 @@
 import { humanize } from '@/lib/format'
 
-/** Readable names for permission resources and actions (§5.13), shared by Roles and the Roles dialog. */
+/** Readable names for permission resources and actions, shared by Roles and the Roles dialog. */
 const RESOURCE_LABEL: Record<string, string> = {
   analytics: 'Analytics',
+  approval_chain: 'Approval chains',
   assets: 'Assets',
+  audit_log: 'Audit log',
   employee: 'People',
+  leave_request: 'Leave approvals',
   maintenance_ticket: 'Maintenance tickets',
   request: 'Requests',
   role: 'Roles',
+  software_license: 'Licences',
   user: 'Users',
 }
 
@@ -20,6 +24,12 @@ const ACTION_LABEL: Record<string, string> = {
   bulk_update: 'Bulk update',
   assign_role: 'Assign roles',
   force_logout: 'Force sign-out',
+  lookup: 'Scan QR codes',
+  create: 'Add',
+  read: 'View',
+  update: 'Edit',
+  delete: 'Delete',
+  approve: 'Approve',
 }
 
 export function resourceLabel(resource: string): string {

@@ -1,4 +1,4 @@
-// /roles and /permissions (§5.13)
+// /roles and /permissions
 
 export interface RoleRef {
   id: string
@@ -10,7 +10,7 @@ export interface Role {
   name: string
   description: string | null
   is_system_role: boolean
-  /** People holding it as primary or additional role (§5.14). */
+  /** People holding it as primary or additional role. */
   user_count: number
   /** Roles one person may not hold together with this one. */
   conflicts_with: RoleRef[]

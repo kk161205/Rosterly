@@ -1,8 +1,9 @@
-// /users (§5.14)
+// /users
 
 import type { RoleRef } from '@/features/admin/types/roles'
 
 export interface ManagedUser {
+  mfa_enabled?: boolean
   id: string
   employee_code: string
   full_name: string
@@ -10,7 +11,7 @@ export interface ManagedUser {
   role_id: string
   /** Primary role. */
   role_name: string
-  /** §5.14 multi-role; effective access is the union with the primary role. */
+  /** multi-role; effective access is the union with the primary role. */
   additional_roles: RoleRef[]
   department_id: string | null
   department_name: string | null
@@ -40,11 +41,10 @@ export interface AccessPreview {
   conflicts: [string, string][]
 }
 
-export interface InvitePayload {
-  full_name: string
-  email: string
-  role_id: string
-  department_id?: string
-  designation?: string
-  date_of_joining?: string
+
+/** POST /users/{id}/sign-in-link */
+export interface SignInLink {
+  link: string
+  purpose: 'invite' | 'reset'
+  expires_in_minutes: number
 }

@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { MoreHorizontal, UserPlus } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { RolesDialog } from '@/features/admin/components/RolesDialog'
+import { useAssignableRoles } from '@/features/admin/hooks/useAssignableRoles'
 import { userManagementService } from '@/features/admin/services/userManagementService'
-import type { ManagedUser } from '@/features/admin/types/users'
-import { employeeService } from '@/features/employees/services/employeeService'
+import type { ManagedUser, SignInLink } from '@/features/admin/types/users'
 import { roleLabel, useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
-import { useSearchParamText, useUrlFilters } from '@/lib/useUrlFilters'
-import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { useSearchParamText, useUrlFilters, pageFrom } from '@/lib/useUrlFilters'
+import { getErrorMessage } from '@/lib/errors'
 import { formatAge } from '@/lib/format'
 import {
   Alert,
   Button,
+  CopyField,
   Dialog,
   EmptyState,
   ErrorState,
@@ -24,7 +25,6 @@ import {
   Status,
   Table,
   Td,
-  TextField,
   Th,
   THead,
   Tr,
@@ -33,10 +33,10 @@ import {
 
 const PAGE_SIZE = 25
 const USERS_KEY = ['admin', 'users'] as const
-type Action = { kind: 'role' | 'status' | 'logout'; user: ManagedUser }
-type ConfirmAction = { kind: 'status' | 'logout'; user: ManagedUser }
+type Action = { kind: 'role' | 'status' | 'logout' | 'link' | 'mfa'; user: ManagedUser }
+type ConfirmAction = { kind: 'status' | 'logout' | 'mfa'; user: ManagedUser }
 
-/** Primary role, then any additional roles (§5.14 multi-role). */
+/** Primary role, then any additional roles (multi-role). */
 const RolesCell: React.FC<{ user: ManagedUser }> = ({ user }) => (
   <span className="flex flex-col gap-0.5">
     <span className="text-ink">{roleLabel(user.role_name)}</span>
@@ -47,8 +47,9 @@ const RolesCell: React.FC<{ user: ManagedUser }> = ({ user }) => (
 )
 
 /**
- * Users (§5.14): accounts, their roles and status. Invite creates the account
- * and sends a set-password link; row actions each confirm first.
+ * Users: accounts, their roles and status. New people are added from
+ * People → Onboarding; here admins manage access — roles, sign-in links,
+ * sign-outs and deactivation. Row actions each confirm first.
  */
 export const UserManagementPage: React.FC = () => {
   const { user: me, can } = useCurrentUser()
@@ -58,17 +59,15 @@ export const UserManagementPage: React.FC = () => {
   const search = params.get('search') ?? ''
   const roleId = params.get('role') ?? ''
   const status = params.get('status') ?? ''
-  const page = Number(params.get('page') ?? '1')
-  const [inviting, setInviting] = useState(false)
+  const page = pageFrom(params)
   const [action, setAction] = useState<Action | null>(null)
 
 
   const query = { search: search || undefined, role_id: roleId || undefined, status: status || undefined, page, page_size: PAGE_SIZE }
   const list = useQuery({ queryKey: [...USERS_KEY, query], queryFn: () => userManagementService.list(query), placeholderData: keepPreviousData })
-  const roles = useQuery({ queryKey: ['assignable-roles'], queryFn: userManagementService.assignableRoles })
+  const roles = useAssignableRoles()
   const items = list.data?.items ?? []
 
-  const canInvite = can('user:create')
   const canRole = can('user:assign_role')
   const canStatus = can('user:update')
   const canLogout = can('user:force_logout')
@@ -78,20 +77,12 @@ export const UserManagementPage: React.FC = () => {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Users"
-        description="Who can sign in, with which roles, and when they were last active."
-        actions={
-          canInvite && (
-            <Button variant="primary" onClick={() => setInviting(true)}>
-              <UserPlus className="h-4 w-4" aria-hidden="true" />
-              Invite someone
-            </Button>
-          )
-        }
+        description="Who can sign in, with which roles, and when they were last active. Add new people from People → Onboarding."
       />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <SearchInput label="Search users" placeholder="Search name, email or code" value={searchText} onChange={setSearchText} className="sm:w-72" />
-        <SelectField
+        <SearchInput data-guide="users.search" label="Search users" placeholder="Search name, email or code" value={searchText} onChange={setSearchText} className="sm:w-72" />
+        <SelectField data-guide="users.role"
           label="Role"
           hideLabel
           className="sm:w-48"
@@ -99,7 +90,7 @@ export const UserManagementPage: React.FC = () => {
           value={roleId}
           onChange={(e) => update({ role: e.target.value })}
         />
-        <SelectField
+        <SelectField data-guide="users.status"
           label="Status"
           hideLabel
           className="sm:w-44"
@@ -181,7 +172,7 @@ export const UserManagementPage: React.FC = () => {
         </div>
       )}
 
-      <InviteDialog open={inviting} onOpenChange={setInviting} />
+      {action?.kind === 'link' && <SignInLinkDialog user={action.user} onClose={() => setAction(null)} />}
       {action?.kind === 'role' ? (
         <RolesDialog
           user={action.user}
@@ -189,7 +180,7 @@ export const UserManagementPage: React.FC = () => {
           onSaved={() => void queryClient.invalidateQueries({ queryKey: USERS_KEY })}
         />
       ) : (
-        <ActionDialog action={action as ConfirmAction | null} onClose={() => setAction(null)} />
+        <ActionDialog action={action?.kind === 'link' ? null : (action as ConfirmAction | null)} onClose={() => setAction(null)} />
       )}
     </div>
   )
@@ -217,6 +208,16 @@ const RowMenu: React.FC<{
           {canRole && (
             <Menu.Item className={cn(item, 'text-ink')} onSelect={() => onAction({ kind: 'role', user })}>
               Change roles
+            </Menu.Item>
+          )}
+          {canStatus && user.status !== 'terminated' && (
+            <Menu.Item className={cn(item, 'text-ink')} onSelect={() => onAction({ kind: 'link', user })}>
+              Create sign-in link
+            </Menu.Item>
+          )}
+          {canRole && user.mfa_enabled && (
+            <Menu.Item className={cn(item, 'text-ink')} onSelect={() => onAction({ kind: 'mfa', user })}>
+              Reset two-step sign-in
             </Menu.Item>
           )}
           {canLogout && (
@@ -253,6 +254,12 @@ const ActionDialog: React.FC<{ action: ConfirmAction | null; onClose: () => void
   const deactivating = user.status !== 'inactive'
   const copy = {
     logout: { title: `Sign ${first} out everywhere?`, body: 'Every session ends now. They can sign in again straight away.', confirm: 'Sign out everywhere', danger: false },
+    mfa: {
+      title: `Reset ${first}’s two-step sign-in?`,
+      body: `Use this if ${first} lost their phone. They’re signed out everywhere and sign in with just their password until they set it up again.`,
+      confirm: 'Reset',
+      danger: true,
+    },
     status: deactivating
       ? { title: `Deactivate ${first}?`, body: `${first} is signed out and can't sign in until reactivated.`, confirm: 'Deactivate', danger: true }
       : { title: `Reactivate ${first}?`, body: `${first} can sign in again.`, confirm: 'Reactivate', danger: false },
@@ -263,6 +270,7 @@ const ActionDialog: React.FC<{ action: ConfirmAction | null; onClose: () => void
     setError(null)
     try {
       if (kind === 'logout') await userManagementService.forceLogout(user.id)
+      if (kind === 'mfa') await userManagementService.resetMfa(user.id)
       if (kind === 'status') await userManagementService.setStatus(user.id, deactivating ? 'inactive' : 'active')
       await queryClient.invalidateQueries({ queryKey: USERS_KEY })
       onClose()
@@ -299,122 +307,69 @@ const ActionDialog: React.FC<{ action: ConfirmAction | null; onClose: () => void
   )
 }
 
-const InviteDialog: React.FC<{ open: boolean; onOpenChange: (o: boolean) => void }> = ({ open, onOpenChange }) => {
-  const queryClient = useQueryClient()
-  const roles = useQuery({ queryKey: ['assignable-roles'], queryFn: userManagementService.assignableRoles, enabled: open })
-  const departments = useQuery({ queryKey: ['departments'], queryFn: employeeService.getDepartments, enabled: open })
-  const [form, setForm] = useState({ full_name: '', email: '', role_id: '', department_id: '', designation: '', date_of_joining: '' })
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [error, setError] = useState<string | null>(null)
+/** A single-use set-password link to hand over. Shown once; a new one cancels the old. */
+const SignInLinkDialog: React.FC<{ user: ManagedUser; onClose: () => void }> = ({ user, onClose }) => {
   const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [link, setLink] = useState<SignInLink | null>(null)
+  const first = user.full_name.split(' ')[0]
 
-  useEffect(() => {
-    if (!open) return
-    setForm({ full_name: '', email: '', role_id: '', department_id: '', designation: '', date_of_joining: '' })
-    setErrors({})
-    setError(null)
-    setSent(null)
-  }, [open])
-  useEffect(() => {
-    // Default to the plain employee role once roles load
-    if (open && !form.role_id && roles.data) {
-      const employee = roles.data.find((r) => r.name === 'employee')
-      if (employee) setForm((f) => ({ ...f, role_id: employee.id }))
-    }
-  }, [open, roles.data]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }))
-
-  const submit = async () => {
-    const v: Record<string, string> = {}
-    if (!form.full_name.trim()) v.full_name = 'Enter their name.'
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) v.email = 'Enter a valid work email.'
-    if (!form.role_id) v.role_id = 'Choose a role.'
-    setErrors(v)
-    if (Object.keys(v).length) return
+  const create = async () => {
     setBusy(true)
     setError(null)
     try {
-      const created = await userManagementService.invite({
-        full_name: form.full_name.trim(),
-        email: form.email.trim(),
-        role_id: form.role_id,
-        ...(form.department_id ? { department_id: form.department_id } : {}),
-        ...(form.designation.trim() ? { designation: form.designation.trim() } : {}),
-        ...(form.date_of_joining ? { date_of_joining: form.date_of_joining } : {}),
-      })
-      await queryClient.invalidateQueries({ queryKey: USERS_KEY })
-      await queryClient.invalidateQueries({ queryKey: ['employees'] })
-      setSent(`${created.full_name} (${created.employee_code}) was added.`)
+      setLink(await userManagementService.createSignInLink(user.id))
     } catch (err) {
       setError(getErrorMessage(err))
-      setErrors(getFieldErrors(err))
     } finally {
       setBusy(false)
     }
   }
 
+  const expiry = link
+    ? link.expires_in_minutes >= 60
+      ? `${Math.round(link.expires_in_minutes / 60)} hours`
+      : `${link.expires_in_minutes} minutes`
+    : ''
+
   return (
     <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Invite someone"
-      description="Creates their account and a set-password link that works for 72 hours."
-      className="max-w-xl"
+      open
+      onOpenChange={(o) => !o && onClose()}
+      busy={busy}
+      title={link ? `Sign-in link for ${first}` : `Create a sign-in link for ${first}?`}
+      description={user.email}
       footer={
-        sent ? (
-          <Button variant="primary" onClick={() => onOpenChange(false)}>
+        link ? (
+          <Button variant="primary" onClick={onClose}>
             Done
           </Button>
         ) : (
           <>
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            <Button variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button variant="primary" isLoading={busy} onClick={submit}>
-              Send invite
+            <Button variant="primary" isLoading={busy} onClick={create}>
+              Create link
             </Button>
           </>
         )
       }
     >
-      {sent ? (
-        <div className="flex flex-col gap-3">
-          <Alert tone="success">{sent}</Alert>
+      <div className="flex flex-col gap-4">
+        {error && <Alert>{error}</Alert>}
+        {link ? (
+          <CopyField
+            label="Set-password link"
+            value={link.link}
+            hint={`Send it to ${first} yourself. It works once and expires in ${expiry}. Any earlier link stops working.`}
+          />
+        ) : (
           <p className="text-body text-muted">
-            The account stays inactive until they set a password from the invite email. Invite emails go out once email delivery is switched
-            on for this workspace. Start their onboarding from People → Onboarding.
+            {first} uses it to set a new password, then signs in. Use it when they’ve forgotten their password or never got their first link.
           </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {error && <Alert>{error}</Alert>}
-          <div className="grid gap-5 sm:grid-cols-2">
-            <TextField label="Full name" value={form.full_name} onChange={set('full_name')} error={errors.full_name} />
-            <TextField label="Work email" type="email" value={form.email} onChange={set('email')} error={errors.email} />
-            <SelectField
-              label="Role"
-              hint="Add more roles from Users once they’ve joined."
-              options={(roles.data ?? []).map((r) => ({ value: r.id, label: roleLabel(r.name) }))}
-              value={form.role_id}
-              onChange={set('role_id')}
-              error={errors.role_id}
-            />
-            <SelectField
-              label="Department"
-              options={[{ value: '', label: 'Not yet' }, ...(departments.data ?? []).map((d) => ({ value: d.id, label: d.name }))]}
-              value={form.department_id}
-              onChange={set('department_id')}
-              error={errors.department_id}
-            />
-            <TextField label="Job title" value={form.designation} onChange={set('designation')} error={errors.designation} />
-            <TextField label="Joining date" type="date" value={form.date_of_joining} onChange={set('date_of_joining')} error={errors.date_of_joining} />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </Dialog>
   )
 }
-

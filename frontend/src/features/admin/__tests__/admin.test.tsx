@@ -11,7 +11,7 @@ vi.mock('@/features/admin/services/userManagementService', () => ({
   userManagementService: {
     list: vi.fn(),
     assignableRoles: vi.fn(),
-    invite: vi.fn(),
+    createSignInLink: vi.fn(),
     setRoles: vi.fn(),
     accessPreview: vi.fn(),
     setStatus: vi.fn(),
@@ -21,12 +21,8 @@ vi.mock('@/features/admin/services/userManagementService', () => ({
 vi.mock('@/features/admin/services/roleManagementService', () => ({
   roleManagementService: {
     roles: vi.fn(),
-    permissions: vi.fn(),
     rolePermissions: vi.fn(),
-    savePermissions: vi.fn(),
     saveConflicts: vi.fn(),
-    create: vi.fn(),
-    remove: vi.fn(),
   },
 }))
 vi.mock('@/features/employees/services/employeeService', () => ({ employeeService: { getDepartments: vi.fn().mockResolvedValue([]) } }))
@@ -60,18 +56,14 @@ beforeEach(() => {
   })
   vi.mocked(roleManagementService.roles).mockResolvedValue([
     { id: 'r-emp', name: 'employee', description: 'Everyone', is_system_role: true, user_count: 12, conflicts_with: [], created_at: null },
-    { id: 'r-fac', name: 'facilities', description: null, is_system_role: false, user_count: 0, conflicts_with: [], created_at: null },
+    { id: 'r-hr', name: 'hr_admin', description: null, is_system_role: true, user_count: 1, conflicts_with: [], created_at: null },
     { id: 'r-it', name: 'it_admin', description: null, is_system_role: true, user_count: 2, conflicts_with: [{ id: 'r-aud', name: 'auditor' }], created_at: null },
     { id: 'r-aud', name: 'auditor', description: null, is_system_role: true, user_count: 1, conflicts_with: [{ id: 'r-it', name: 'it_admin' }], created_at: null },
-  ])
-  vi.mocked(roleManagementService.permissions).mockResolvedValue([
-    { id: 'p1', resource: 'request', action: 'create', description: null },
-    { id: 'p2', resource: 'request', action: 'approve', description: null },
   ])
   vi.mocked(roleManagementService.rolePermissions).mockResolvedValue({ role_id: 'r-emp', role_name: 'employee', permissions: [{ id: 'p1', resource: 'request', action: 'create', description: null }] })
 })
 
-describe('Users (§5.14)', () => {
+describe('Users', () => {
   it('shows extra roles next to the primary role', async () => {
     mockUser('super_admin', ['user:read'])
     renderPage(<UserManagementPage />)
@@ -112,28 +104,35 @@ describe('Users (§5.14)', () => {
     expect(screen.queryByRole('menuitem', { name: 'Change roles' })).not.toBeInTheDocument()
   })
 
-  it('validates the invite form before sending', async () => {
-    mockUser('hr_admin', ['user:read', 'user:create'])
+  it('creates a one-time sign-in link to copy and hand over', async () => {
+    mockUser('hr_admin', ['user:read', 'user:update'])
+    vi.mocked(userManagementService.createSignInLink).mockResolvedValue({
+      link: 'https://rosterly.app/reset-password?token=abc',
+      purpose: 'reset',
+      expires_in_minutes: 15,
+    })
     renderPage(<UserManagementPage />)
-    fireEvent.click(await screen.findByRole('button', { name: /Invite someone/ }))
-    const dialog = await screen.findByRole('dialog', { name: 'Invite someone' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Send invite' }))
-    expect(await within(dialog).findByText('Enter their name.')).toBeInTheDocument()
-    expect(userManagementService.invite).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Invite/ })).not.toBeInTheDocument()
+    const table = await screen.findByRole('table', { name: 'Users' })
+    fireEvent.keyDown(within(table).getByRole('button', { name: 'Actions for Aman Gupta' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Create sign-in link' }))
+    const dialog = await screen.findByRole('dialog', { name: /Create a sign-in link for Aman/ })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create link' }))
+    expect(await screen.findByDisplayValue('https://rosterly.app/reset-password?token=abc')).toBeInTheDocument()
+    expect(screen.getByText(/expires in 15 minutes/)).toBeInTheDocument()
   })
 })
 
-describe('Roles (§5.13)', () => {
-  it('shows the matrix for a role and saves the full set', async () => {
+describe('Roles', () => {
+  it('explains what a role can do, read-only, with no way to create or delete roles', async () => {
     mockUser('super_admin', ['role:read', 'role:update'])
-    vi.mocked(roleManagementService.savePermissions).mockResolvedValue({ role_id: 'r-emp', role_name: 'employee', permissions: [] })
     renderPage(<RoleManagementPage />)
-    const approve = await screen.findByRole('checkbox', { name: 'Approve' })
-    expect(screen.getByRole('checkbox', { name: 'Create' })).toBeChecked()
-    expect(approve).not.toBeChecked()
-    fireEvent.click(approve)
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(roleManagementService.savePermissions).toHaveBeenCalledWith('r-emp', ['p1', 'p2']))
+    expect(await screen.findByText('Requests')).toBeInTheDocument()
+    expect(screen.getByText('Add')).toBeInTheDocument()
+    expect(screen.getByText('Everyone')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Add' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /New role/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Delete role/ })).not.toBeInTheDocument()
   })
 
   it('saves which roles can’t be held together', async () => {
@@ -143,17 +142,17 @@ describe('Roles (§5.13)', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: /IT admin/ }))[0])
     const section = await screen.findByRole('region', { name: 'Can’t be held together with' })
     expect(within(section).getByRole('checkbox', { name: 'Auditor' })).toBeChecked()
-    fireEvent.click(within(section).getByRole('checkbox', { name: 'Facilities' }))
+    fireEvent.click(within(section).getByRole('checkbox', { name: 'HR admin' }))
     fireEvent.click(within(section).getByRole('button', { name: 'Save combinations' }))
-    await waitFor(() => expect(roleManagementService.saveConflicts).toHaveBeenCalledWith('r-it', ['r-aud', 'r-fac']))
+    await waitFor(() => expect(roleManagementService.saveConflicts).toHaveBeenCalledWith('r-it', ['r-aud', 'r-hr']))
   })
 
-  it('only offers delete for custom roles', async () => {
-    mockUser('super_admin', ['role:read'])
+  it('shows auditors the combinations without a way to change them', async () => {
+    mockUser('auditor', ['role:read'])
     renderPage(<RoleManagementPage />)
-    await screen.findByRole('heading', { level: 2, name: 'Employee' })
-    expect(screen.queryByRole('button', { name: 'Delete role' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getAllByRole('button', { name: /Facilities/ })[0])
-    expect(await screen.findByRole('button', { name: 'Delete role' })).toBeInTheDocument()
+    fireEvent.click((await screen.findAllByRole('button', { name: /IT admin/ }))[0])
+    const section = await screen.findByRole('region', { name: 'Can’t be held together with' })
+    expect(within(section).getByRole('checkbox', { name: 'Auditor' })).toBeDisabled()
+    expect(within(section).queryByRole('button', { name: 'Save combinations' })).not.toBeInTheDocument()
   })
 })
