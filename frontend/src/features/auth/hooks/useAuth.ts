@@ -71,7 +71,7 @@ export function useAuth() {
     setIsLoading(true)
     setErrorMessage(null)
     try {
-      await authService.forgotPassword({ email })
+      return (await authService.forgotPassword({ email })).message
     } catch (err: unknown) {
       setErrorMessage(getErrorMessage(err, 'Failed to send password reset link. Please try again.'))
       throw err

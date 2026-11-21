@@ -42,15 +42,19 @@ export const authService = {
     return response.data
   },
 
-  /**
-   * POST /auth/mfa/resend
-   * Requests a fresh MFA code for a pending mfa_session_id.
-   */
-  async resendMFA(mfaSessionId: string): Promise<MessageResponse> {
-    const response = await apiClient.post<MessageResponse>('/auth/mfa/resend', {
-      mfa_session_id: mfaSessionId,
-    })
-    return response.data
+  /** POST /auth/mfa/setup — start setting up two-step sign-in (secret + QR-code URI). */
+  async startMfaSetup(): Promise<{ secret: string; otpauth_uri: string }> {
+    return (await apiClient.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/setup')).data
+  },
+
+  /** POST /auth/mfa/enable — confirm with a current code; returns one-time recovery codes. */
+  async enableMfa(code: string): Promise<{ recovery_codes: string[] }> {
+    return (await apiClient.post<{ recovery_codes: string[] }>('/auth/mfa/enable', { code })).data
+  },
+
+  /** POST /auth/mfa/disable — needs the password and a current (or recovery) code. */
+  async disableMfa(password: string, code: string): Promise<MessageResponse> {
+    return (await apiClient.post<MessageResponse>('/auth/mfa/disable', { password, code })).data
   },
 
   /**

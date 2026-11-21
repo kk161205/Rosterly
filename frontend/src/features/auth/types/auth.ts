@@ -4,10 +4,15 @@ export interface UserProfile {
   full_name: string
   /** Primary role — the person's title. */
   role: string
-  /** Every role held, primary first (§5.14 multi-role). Permissions are already their union. */
+  /** Every role held, primary first (multi-role). Permissions are already their union. */
   roles?: string[]
   permissions: string[]
   department_id?: string | null
+  mfa_enabled?: boolean
+  /** The company requires two-step sign-in for this person's role and it isn't set up yet. */
+  mfa_setup_required?: boolean
+  /** The company requires two-step sign-in for this person's role (so it can't be turned off). */
+  mfa_required_by_company?: boolean
 }
 
 export interface LoginRequest {

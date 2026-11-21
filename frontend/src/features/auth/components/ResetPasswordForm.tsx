@@ -10,7 +10,7 @@ interface ResetPasswordFormProps {
   errorMessage?: string | null
 }
 
-// Mirrors the server-side policy exactly (doc §7 rule 9): 10+ characters, at
+// Mirrors the server-side policy exactly: 10+ characters, at
 // least one letter, at least one number. No special-character requirement —
 // the backend doesn't enforce one, so the frontend shouldn't imply it does.
 const RULES = [

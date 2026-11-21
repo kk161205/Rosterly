@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { Alert, Button, TextField } from '@/ui'
 
 interface ForgotPasswordFormProps {
-  onSubmit: (email: string) => Promise<void>
+  /** Resolves with the server's message (it differs when email isn't set up). */
+  onSubmit: (email: string) => Promise<string | void>
   onBackToLogin: () => void
   isLoading?: boolean
   errorMessage?: string | null
@@ -19,7 +20,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
   const [email, setEmail] = useState('')
   const [emailTouched, setEmailTouched] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
-  const [isSuccess, setIsSuccess] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
 
   const validateEmail = (val: string): boolean => {
     if (!val.trim()) {
@@ -39,8 +40,8 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     setEmailTouched(true)
     if (!validateEmail(email)) return
     try {
-      await onSubmit(email.trim())
-      setIsSuccess(true)
+      const message = await onSubmit(email.trim())
+      setResult(message || 'If an account exists for that email, a reset link is on its way.')
     } catch {
       // errorMessage is set by the parent hook
     }
@@ -50,15 +51,12 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="font-display text-page text-ink">Reset your password</h2>
-        <p className="mt-1.5 text-lead text-muted">We&apos;ll email a link to set a new one.</p>
+        <p className="mt-1.5 text-lead text-muted">Enter your work email to get a link to set a new one.</p>
       </div>
 
-      {isSuccess ? (
+      {result ? (
         <div className="flex flex-col gap-5">
-          <Alert tone="success">
-            If an active account exists for <span className="font-medium">{email}</span>, a reset link is on its way.
-            It expires in 15 minutes.
-          </Alert>
+          <Alert tone="success">{result}</Alert>
           <Button variant="primary" size="lg" onClick={onBackToLogin} className="w-full">
             Back to sign in
           </Button>

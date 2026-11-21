@@ -1,5 +1,5 @@
 /**
- * One reader for the backend's standard error envelope (project doc §7 rule 7):
+ * One reader for the backend's standard error envelope:
  *   { error: { code: string, message: string, field_errors: object | null } }
  * Every page uses these instead of parsing axios errors itself.
  */

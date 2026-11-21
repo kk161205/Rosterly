@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AccountLockoutNotice } from '@/features/auth/components/AccountLockoutNotice'
 import { ForgotPasswordForm } from '@/features/auth/components/ForgotPasswordForm'
@@ -6,12 +6,13 @@ import { LoginForm } from '@/features/auth/components/LoginForm'
 import { MFAForm } from '@/features/auth/components/MFAForm'
 import { ResetPasswordForm } from '@/features/auth/components/ResetPasswordForm'
 import { useAuth } from '@/features/auth/hooks/useAuth'
+import { wakeServer } from '@/lib/api-client'
 import { Logo } from '@/ui'
 
 /** What the product covers — stated plainly, no sample data. */
 const CAPABILITIES: { title: string; text: string }[] = [
   { title: 'Joiners and leavers', text: 'Onboarding and offboarding checklists with an owner and a date on every step.' },
-  { title: 'Assets', text: 'Who holds each device, plus its warranty, value and full history.' },
+  { title: 'Assets', text: 'Who holds each device, plus its warranty and full history.' },
   { title: 'Approvals', text: 'Requests routed to the right approvers in order, with an audit trail.' },
 ]
 
@@ -33,6 +34,21 @@ export const LoginPage: React.FC = () => {
     handleResetPasswordSubmit,
     handleLockoutExpired,
   } = useAuth()
+
+  // Wake the server while the person types, and say so if signing in is slow
+  // (a free-tier host can take up to a minute to wake).
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    wakeServer()
+  }, [])
+  useEffect(() => {
+    if (!isLoading) {
+      setSlow(false)
+      return
+    }
+    const t = setTimeout(() => setSlow(true), 4000)
+    return () => clearTimeout(t)
+  }, [isLoading])
 
   // A set-password / invite link (?token=…) opens straight on the reset step
   useEffect(() => {
@@ -118,6 +134,11 @@ export const LoginPage: React.FC = () => {
               onLockoutExpired={handleLockoutExpired}
               onBackToLogin={backToLogin}
             />
+          )}
+          {slow && (
+            <p role="status" className="mt-5 text-meta text-muted">
+              Waking the server — the first sign-in after a quiet spell can take up to a minute.
+            </p>
           )}
           </div>
         </section>

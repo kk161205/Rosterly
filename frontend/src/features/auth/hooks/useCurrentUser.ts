@@ -6,13 +6,16 @@ export const CURRENT_USER_KEY = ['auth', 'me'] as const
 
 /**
  * The signed-in user from GET /auth/me — live role and "resource:action"
- * permissions. Frontend gating is convenience only (§3.2); the API enforces.
+ * permissions. Frontend gating is convenience only; the API enforces.
  */
-export function useCurrentUser() {
+/** `enabled` is false only where there may be no session yet (the shell, before it redirects). */
+export function useCurrentUser(enabled = true) {
   const query = useQuery({
     queryKey: CURRENT_USER_KEY,
     queryFn: authService.getCurrentUser,
+    enabled,
     staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
   return { ...query, user: query.data ?? null, can: (permission: string) => hasPermission(query.data, permission) }
 }
@@ -21,7 +24,7 @@ export function hasPermission(user: UserProfile | null | undefined, permission: 
   return Boolean(user?.permissions?.includes(permission))
 }
 
-/** Every role the user holds, primary first (§5.14 multi-role). */
+/** Every role the user holds, primary first (multi-role). */
 export function rolesOf(user: UserProfile | null | undefined): string[] {
   if (!user) return []
   return user.roles?.length ? user.roles : [user.role]
@@ -46,7 +49,7 @@ const ROLE_LABELS: Record<string, string> = {
   auditor: 'Auditor',
 }
 
-/** "IT admin" from "it_admin"; custom roles are humanised. */
+/** "IT admin" from "it_admin"; an unknown role name is humanised. */
 export function roleLabel(role: string | null | undefined): string {
   if (!role) return ''
   return ROLE_LABELS[role] ?? role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, ' ')

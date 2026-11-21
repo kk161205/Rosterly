@@ -2,13 +2,19 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { authStorage } from '@/lib/authStorage'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || '/api/v1'
+/** The AI service. Empty = no AI: the Guide uses the page map only. */
+export const AI_BASE_URL = ((import.meta.env.VITE_AI_BASE_URL as string) || '').replace(/\/$/, '')
+
+/** Fired when the API says two-step sign-in must be set up first (403 mfa_setup_required). */
+export const MFA_REQUIRED_EVENT = 'rosterly:mfa-setup-required'
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  // Long enough for a free-tier host to wake from sleep (about a minute).
+  timeout: 70000,
 })
 
 // Attach live access token to every outgoing request
@@ -45,6 +51,10 @@ interface ExtendedAxiosRequestConfig extends InternalAxiosRequestConfig {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    const code = (error.response?.data as { error?: { code?: string } } | undefined)?.error?.code
+    if (error.response?.status === 403 && code === 'mfa_setup_required' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(MFA_REQUIRED_EVENT))
+    }
     const originalRequest = error.config as ExtendedAxiosRequestConfig | undefined
 
     // Bypass refresh logic for unauthenticated public auth endpoints
@@ -107,9 +117,14 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest)
       } catch (refreshErr) {
         processQueue(refreshErr, null)
-        authStorage.clearTokens()
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.href = '/login'
+        // Only an invalid or expired refresh token ends the session. A timeout, a busy
+        // server (429/5xx) or a dropped connection must not sign someone out mid-form.
+        const status = axios.isAxiosError(refreshErr) ? refreshErr.response?.status : undefined
+        if (status === 400 || status === 401) {
+          authStorage.clearTokens()
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = '/login'
+          }
         }
         return Promise.reject(refreshErr)
       } finally {
@@ -120,3 +135,15 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/**
+ * Wakes the API if it's asleep (free hosting sleeps after a quiet spell), so
+ * by the time someone has typed their password the server is ready. Errors
+ * are ignored — this is only a nudge.
+ */
+export function wakeServer(): void {
+  const healthUrl = API_BASE_URL.replace(/\/api\/v\d+\/?$/, '') + '/health'
+  fetch(healthUrl, { method: 'GET', cache: 'no-store' }).catch(() => undefined)
+  // The AI service sleeps too; wake it alongside so the Guide is ready (Deployment).
+  if (AI_BASE_URL) fetch(`${AI_BASE_URL}/health`, { method: 'GET', cache: 'no-store' }).catch(() => undefined)
+}

@@ -13,7 +13,7 @@ vi.mock('@/features/auth/services/authService', () => ({
   },
 }))
 
-describe('LoginPage Component (PRD §5.1)', () => {
+describe('LoginPage Component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -118,7 +118,7 @@ describe('LoginPage Component (PRD §5.1)', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('Two-factor authentication')).toBeInTheDocument()
+      expect(screen.getByText('Two-step sign-in')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /verify & continue/i })).toBeInTheDocument()
     })
   })
