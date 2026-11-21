@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { Table, THead, Th, Tr, Td, RowButton, Pagination, Status, EmptyState } from '@/ui'
+import { Alert, Button, Table, THead, Th, Tr, Td, RowButton, Pagination, Status, EmptyState } from '@/ui'
 import { LeaveNoteDrawer } from '@/features/leave/components/LeaveNoteDrawer'
 import type { LeaveRequestResponse } from '@/features/leave/types/leave'
+import { formatDate, formatShortDate } from '@/lib/format'
+import { getErrorMessage } from '@/lib/errors'
 
 interface MyLeaveTableProps {
   items: LeaveRequestResponse[]
@@ -10,6 +12,7 @@ interface MyLeaveTableProps {
   pageSize: number
   onPageChange: (page: number) => void
   onApplyClick?: () => void
+  onCancel?: (id: string) => Promise<void>
 }
 
 export const MyLeaveTable: React.FC<MyLeaveTableProps> = ({
@@ -19,23 +22,22 @@ export const MyLeaveTable: React.FC<MyLeaveTableProps> = ({
   pageSize,
   onPageChange,
   onApplyClick,
+  onCancel,
 }) => {
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequestResponse | null>(null)
 
   if (items.length === 0) {
     return (
       <EmptyState
-        title="No leave requests submitted yet"
-        description="Apply for time off, vacation days, or report sick leave."
+        title="No leave yet"
+        description="Your requests and their status will show here."
         action={
           onApplyClick && (
-            <button
-              type="button"
-              onClick={onApplyClick}
-              className="rounded-pill bg-navy px-4 py-2 text-body font-medium text-paper hover:bg-navy-hover"
-            >
-              Apply for Leave
-            </button>
+            <Button variant="primary" onClick={onApplyClick}>
+              Ask for leave
+            </Button>
           )
         }
       />
@@ -44,25 +46,20 @@ export const MyLeaveTable: React.FC<MyLeaveTableProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
+      {cancelError && <Alert>{cancelError}</Alert>}
       <Table label="My leave requests history">
         <THead>
-          <Th>Date Range</Th>
-          <Th>Leave Type</Th>
-          <Th>Total Days</Th>
+          <Th>Dates</Th>
+          <Th>Type</Th>
+          <Th>Days</Th>
           <Th>Status</Th>
-          <Th>Approver Note</Th>
+          <Th>Approver note</Th>
+          {onCancel && <Th srOnly>Actions</Th>}
         </THead>
         <tbody>
           {items.map((leave) => {
-            const startStr = new Date(leave.start_date).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-            })
-            const endStr = new Date(leave.end_date).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            })
+            const startStr = formatShortDate(leave.start_date)
+            const endStr = formatDate(leave.end_date)
 
             return (
               <Tr
@@ -73,18 +70,18 @@ export const MyLeaveTable: React.FC<MyLeaveTableProps> = ({
               >
                 <Td>
                   <RowButton
-                    label={`View details for ${leave.leave_type} leave from ${startStr} to ${endStr}`}
+                    label={`View details for ${leave.leave_type.name} from ${startStr} to ${endStr}`}
                     onClick={() => setSelectedLeave(leave)}
                   >
                     <span className="font-medium text-ink">
                       {startStr} – {endStr}
                     </span>
                     <span className="text-micro text-muted">
-                      Applied {new Date(leave.created_at).toLocaleDateString('en-IN')}
+                      Applied {formatDate(leave.created_at)}
                     </span>
                   </RowButton>
                 </Td>
-                <Td className="capitalize text-ink">{leave.leave_type}</Td>
+                <Td className="text-ink">{leave.leave_type.name}</Td>
                 <Td className="font-mono text-ink">
                   {leave.total_days} {leave.total_days === 1 ? 'day' : 'days'}
                 </Td>
@@ -92,10 +89,32 @@ export const MyLeaveTable: React.FC<MyLeaveTableProps> = ({
                   <Status value={leave.status} />
                 </Td>
                 <Td className="max-w-xs truncate text-meta text-muted">
-                  {leave.decision_comments || (
-                    <span className="italic text-muted">No note</span>
-                  )}
+                  {leave.decision_comments || <span className="text-muted">No note</span>}
                 </Td>
+                {onCancel && (
+                  <Td className="text-right">
+                    {leave.can_cancel && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        isLoading={cancelling === leave.id}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          setCancelling(leave.id)
+                          try {
+                            await onCancel(leave.id)
+                          } catch (err) {
+                            setCancelError(getErrorMessage(err, 'That leave couldn’t be cancelled. Try again.'))
+                          } finally {
+                            setCancelling(null)
+                          }
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </Td>
+                )}
               </Tr>
             )
           })}

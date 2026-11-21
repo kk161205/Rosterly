@@ -3,6 +3,7 @@ import { Check, X } from 'lucide-react'
 import { Table, THead, Th, Tr, Td, Button, Pagination, EmptyState } from '@/ui'
 import { LeaveDecisionModal } from '@/features/leave/components/LeaveDecisionModal'
 import type { LeaveDecision, LeaveRejection, LeaveRequestResponse } from '@/features/leave/types/leave'
+import { formatDate, formatShortDate } from '@/lib/format'
 
 interface PendingLeaveTableProps {
   items: LeaveRequestResponse[]
@@ -49,8 +50,8 @@ export const PendingLeaveTable: React.FC<PendingLeaveTableProps> = ({
   if (items.length === 0) {
     return (
       <EmptyState
-        title="No pending leave requests"
-        description="All direct report time-off submissions have been reviewed and acted upon."
+        title="Nothing to decide"
+        description="Leave your team asks for will appear here for you to approve."
       />
     )
   }
@@ -67,15 +68,8 @@ export const PendingLeaveTable: React.FC<PendingLeaveTableProps> = ({
         </THead>
         <tbody>
           {items.map((leave) => {
-            const startStr = new Date(leave.start_date).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-            })
-            const endStr = new Date(leave.end_date).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            })
+            const startStr = formatShortDate(leave.start_date)
+            const endStr = formatDate(leave.end_date)
 
             return (
               <Tr key={leave.id}>
@@ -85,7 +79,7 @@ export const PendingLeaveTable: React.FC<PendingLeaveTableProps> = ({
                     <span className="text-micro text-muted">{leave.employee_email}</span>
                   </div>
                 </Td>
-                <Td className="capitalize text-ink">{leave.leave_type}</Td>
+                <Td className="text-ink">{leave.leave_type.name}</Td>
                 <Td>
                   <div className="flex flex-col">
                     <span className="font-medium text-ink">

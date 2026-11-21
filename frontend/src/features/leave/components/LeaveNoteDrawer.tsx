@@ -1,85 +1,52 @@
 import React from 'react'
-import { SidePanel, DetailRow, Status, Button } from '@/ui'
+import { Button, DetailRow, SidePanel, Status } from '@/ui'
+import { formatDate } from '@/lib/format'
 import type { LeaveRequestResponse } from '@/features/leave/types/leave'
 
-interface LeaveNoteDrawerProps {
-  leave: LeaveRequestResponse | null
-  onClose: () => void
-}
-
-export const LeaveNoteDrawer: React.FC<LeaveNoteDrawerProps> = ({ leave, onClose }) => {
+/** One of your leave requests: dates, your note, and the decision with its note. */
+export const LeaveNoteDrawer: React.FC<{ leave: LeaveRequestResponse | null; onClose: () => void }> = ({ leave, onClose }) => {
   if (!leave) return null
-
-  const startFormatted = new Date(leave.start_date).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-  const endFormatted = new Date(leave.end_date).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
+  const decided = leave.status === 'approved' || leave.status === 'rejected'
 
   return (
     <SidePanel
-      open={Boolean(leave)}
+      open
       onOpenChange={(open) => !open && onClose()}
-      title="Leave Request Details"
-      description={`Submission record for ${leave.leave_type.toUpperCase()} leave.`}
+      title={leave.leave_type.name}
+      description={`${formatDate(leave.start_date)} – ${formatDate(leave.end_date)}`}
       footer={
-        <div className="flex w-full items-center justify-end">
+        <div className="flex w-full justify-end">
           <Button variant="secondary" size="sm" onClick={onClose}>
             Close
           </Button>
         </div>
       }
     >
-      <div className="flex flex-col gap-6">
-        <section className="flex flex-col rounded-card border border-line bg-ground/40 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="font-semibold capitalize text-ink">
-              {leave.leave_type} Leave
-            </span>
+      <div className="flex flex-col gap-8">
+        <section>
+          <DetailRow label="Status">
             <Status value={leave.status} />
-          </div>
-          <DetailRow label="Date duration">
-            {startFormatted} – {endFormatted}
           </DetailRow>
-          <DetailRow label="Working days count">
-            <span className="font-mono font-medium text-navy">{leave.total_days} business days</span>
-          </DetailRow>
-          <DetailRow label="Submission date">
-            {new Date(leave.created_at).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            })}
-          </DetailRow>
+          <DetailRow label="Working days">{leave.total_days}</DetailRow>
+          <DetailRow label="Asked on">{formatDate(leave.created_at)}</DetailRow>
+          <DetailRow label="Your note">{leave.reason || <span className="text-muted">None</span>}</DetailRow>
         </section>
 
-        {/* Requester reason */}
-        <section className="flex flex-col gap-2">
-          <h4 className="text-body font-semibold text-ink">Reason for Request</h4>
-          <p className="rounded-card border border-line bg-paper p-3 text-body text-ink">
-            {leave.reason || <span className="italic text-muted">No comment provided.</span>}
-          </p>
-        </section>
-
-        {/* Approver decision note */}
-        <section className="flex flex-col gap-2">
-          <h4 className="text-body font-semibold text-ink">Approver Decision & Comments</h4>
-          <div className="flex flex-col gap-2 rounded-card border border-line bg-paper p-3 text-body">
-            <div className="flex items-center justify-between text-meta text-muted">
-              <span>Decision Actor: {leave.approver_name || 'Pending Review'}</span>
-              <span>Updated: {new Date(leave.updated_at).toLocaleDateString('en-IN')}</span>
-            </div>
-            <p className="mt-1 text-ink">
-              {leave.decision_comments || (
-                <span className="italic text-muted">No approver comments recorded.</span>
-              )}
+        <section aria-labelledby="leave-decision">
+          <h3 id="leave-decision" className="border-b border-ink pb-2 text-section text-ink">
+            Decision
+          </h3>
+          {decided ? (
+            <>
+              <DetailRow label="By">{leave.approver_name || '—'}</DetailRow>
+              <DetailRow label="On">{formatDate(leave.updated_at)}</DetailRow>
+              <DetailRow label="Note">{leave.decision_comments || <span className="text-muted">None</span>}</DetailRow>
+            </>
+          ) : (
+            <p className="pt-3 text-body text-muted">
+              {leave.status === 'cancelled' ? 'You cancelled this request.' : `Waiting for ${leave.approver_name || 'a decision'}.`}
             </p>
-          </div>
+          )}
         </section>
       </div>
     </SidePanel>

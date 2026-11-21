@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import { useAttendance } from '@/features/leave/hooks/useAttendance'
+import { useHolidays } from '@/features/leave/hooks/useLeave'
 import type { AttendanceRecord, AttendanceStatus } from '@/features/leave/types/attendance'
 import { Skeleton, ErrorState } from '@/ui'
+import { getErrorMessage } from '@/lib/errors'
 
 const STATUS_CONFIG: Record<
   AttendanceStatus,
@@ -10,33 +12,33 @@ const STATUS_CONFIG: Record<
 > = {
   present: {
     label: 'Present',
-    bg: 'bg-emerald-50 border-emerald-200',
-    text: 'text-emerald-800',
-    dot: 'bg-emerald-600',
+    bg: 'bg-paper border-line-soft',
+    text: 'text-status-ok',
+    dot: 'bg-status-ok',
   },
   on_leave: {
     label: 'On Leave',
-    bg: 'bg-amber-50 border-amber-200',
-    text: 'text-amber-800',
-    dot: 'bg-amber-500',
+    bg: 'bg-paper border-line-soft',
+    text: 'text-status-warn',
+    dot: 'bg-status-warn',
   },
   half_day: {
     label: 'Half Day',
-    bg: 'bg-orange-50 border-orange-200',
-    text: 'text-orange-800',
-    dot: 'bg-orange-500',
+    bg: 'bg-paper border-line-soft',
+    text: 'text-status-info',
+    dot: 'bg-status-info',
   },
   absent: {
     label: 'Absent',
-    bg: 'bg-rose-50 border-rose-200',
-    text: 'text-rose-800',
-    dot: 'bg-rose-600',
+    bg: 'bg-paper border-line-soft',
+    text: 'text-status-bad',
+    dot: 'bg-status-bad',
   },
   holiday: {
     label: 'Holiday',
-    bg: 'bg-slate-50 border-slate-200',
-    text: 'text-slate-700',
-    dot: 'bg-slate-400',
+    bg: 'bg-paper border-line-soft',
+    text: 'text-status-mute',
+    dot: 'bg-status-mute',
   },
 }
 
@@ -64,6 +66,9 @@ export const AttendanceHeatmap: React.FC<{ employeeId?: string }> = ({ employeeI
     page_size: 100,
   })
 
+  const holidays = useHolidays(year)
+  const holidayDates = new Set((holidays.data ?? []).map((h) => h.date))
+
   const records = data?.records || []
   const recordMap = new Map<string, AttendanceRecord>()
   records.forEach((r) => recordMap.set(r.date, r))
@@ -80,12 +85,12 @@ export const AttendanceHeatmap: React.FC<{ employeeId?: string }> = ({ employeeI
   const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   return (
-    <div className="flex flex-col gap-4 rounded-card border border-line bg-paper p-5">
+    <div className="flex flex-col gap-4">
       {/* Month Navigation Header */}
-      <div className="flex items-center justify-between border-b border-line pb-4">
+      <div className="flex items-center justify-between border-b border-ink pb-2">
         <div className="flex items-center gap-2.5">
-          <Calendar className="h-5 w-5 text-navy" aria-hidden="true" />
-          <h3 className="font-display text-panel text-ink">{monthName}</h3>
+          <Calendar className="h-4 w-4 text-muted" aria-hidden="true" />
+          <h3 className="text-section text-ink">{monthName}</h3>
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -115,7 +120,7 @@ export const AttendanceHeatmap: React.FC<{ employeeId?: string }> = ({ employeeI
         </div>
       ) : isError ? (
         <ErrorState
-          message={error instanceof Error ? error.message : 'Could not load attendance calendar.'}
+          message={getErrorMessage(error, 'Could not load attendance calendar.')}
           onRetry={() => refetch()}
         />
       ) : (
@@ -145,7 +150,7 @@ export const AttendanceHeatmap: React.FC<{ employeeId?: string }> = ({ employeeI
               const isWeekend = cellDate.getDay() === 0 || cellDate.getDay() === 6
 
               let statusConfig = record ? STATUS_CONFIG[record.status] : null
-              if (!statusConfig && isWeekend) {
+              if (!statusConfig && (isWeekend || holidayDates.has(dateKey))) {
                 statusConfig = STATUS_CONFIG.holiday
               }
 
@@ -195,7 +200,7 @@ export const AttendanceHeatmap: React.FC<{ employeeId?: string }> = ({ employeeI
                       </span>
                     )}
                     {checkInTime && (
-                      <span className="font-mono text-[10px] text-muted">
+                      <span className="text-micro text-muted">
                         {checkInTime}
                         {checkOutTime ? `–${checkOutTime}` : ''}
                       </span>
@@ -212,23 +217,23 @@ export const AttendanceHeatmap: React.FC<{ employeeId?: string }> = ({ employeeI
           {/* Legend */}
           <div className="mt-4 flex flex-wrap items-center justify-center gap-5 border-t border-line-soft pt-3 text-meta text-muted">
             <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+              <span className="h-2.5 w-2.5 rounded-full bg-status-ok" />
               <span>Present</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+              <span className="h-2.5 w-2.5 rounded-full bg-status-warn" />
               <span>On Leave</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+              <span className="h-2.5 w-2.5 rounded-full bg-status-info" />
               <span>Half Day</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
+              <span className="h-2.5 w-2.5 rounded-full bg-status-bad" />
               <span>Absent</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+              <span className="h-2.5 w-2.5 rounded-full bg-status-mute" />
               <span>Weekend / Holiday</span>
             </div>
           </div>

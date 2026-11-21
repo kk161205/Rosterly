@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react'
-import { Dialog, Button, TextAreaField, Alert } from '@/ui'
+import React, { useEffect, useState } from 'react'
+import { Alert, Button, DetailRow, Dialog, TextAreaField } from '@/ui'
+import { formatDate } from '@/lib/format'
 import type { LeaveRequestResponse } from '@/features/leave/types/leave'
+import { getErrorMessage } from '@/lib/errors'
 
 interface LeaveDecisionModalProps {
   open: boolean
@@ -11,17 +13,12 @@ interface LeaveDecisionModalProps {
   isPending?: boolean
 }
 
-export const LeaveDecisionModal: React.FC<LeaveDecisionModalProps> = ({
-  open,
-  onClose,
-  leave,
-  action,
-  onConfirm,
-  isPending,
-}) => {
+const days = (n: number | string) => `${n} working ${Number(n) === 1 ? 'day' : 'days'}`
+
+/** Approve or reject one leave request; rejecting needs a reason the person will see. */
+export const LeaveDecisionModal: React.FC<LeaveDecisionModalProps> = ({ open, onClose, leave, action, onConfirm, isPending }) => {
   const [comments, setComments] = useState('')
   const [error, setError] = useState<string | null>(null)
-
   const isReject = action === 'reject'
 
   useEffect(() => {
@@ -31,84 +28,50 @@ export const LeaveDecisionModal: React.FC<LeaveDecisionModalProps> = ({
   }, [open])
 
   if (!leave) return null
+  const name = leave.employee_name || 'this person'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (isReject && !comments.trim()) {
-      setError('A comment explaining the rejection reason is required.')
-      return
-    }
-
+    if (isReject && !comments.trim()) return setError(`Say why, so ${name} knows what to change.`)
     try {
       setError(null)
-      await onConfirm({
-        id: leave.id,
-        action,
-        comments: comments.trim() || undefined,
-      })
+      await onConfirm({ id: leave.id, action, comments: comments.trim() || undefined })
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : `Failed to ${action} leave request.`)
+      setError(getErrorMessage(err, 'That didn’t go through. Try again.'))
     }
   }
-
-  const employeeName = leave.employee_name || 'the employee'
 
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={isReject ? `Reject Leave for ${employeeName}` : `Approve Leave for ${employeeName}`}
-      description={
-        isReject
-          ? 'Provide justification for rejecting this time-off request. The employee will receive notification.'
-          : 'Confirm approval for this leave request. Attendance records will be marked as on_leave.'
-      }
+      title={isReject ? `Reject ${name}’s leave?` : `Approve ${name}’s leave?`}
+      description={isReject ? `${name} is told, with your reason.` : `${name} is told, and the days come off their balance.`}
       busy={isPending}
       footer={
         <div className="flex w-full items-center justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button
-            variant={isReject ? 'danger' : 'primary'}
-            onClick={handleSubmit}
-            disabled={isPending}
-          >
-            {isReject ? 'Reject Request' : 'Approve Request'}
+          <Button variant={isReject ? 'danger' : 'primary'} onClick={handleSubmit} disabled={isPending}>
+            {isReject ? 'Reject' : 'Approve'}
           </Button>
         </div>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4 pt-2">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4 pt-1">
         {error && <Alert tone="error">{error}</Alert>}
-
-        <div className="rounded-card border border-line bg-ground/50 p-3 text-body">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-ink capitalize">{leave.leave_type} Leave</span>
-            <span className="font-mono text-meta font-semibold text-navy">
-              {leave.total_days} business days
-            </span>
-          </div>
-          <div className="mt-1 text-meta text-muted">
-            {new Date(leave.start_date).toLocaleDateString('en-IN')} –{' '}
-            {new Date(leave.end_date).toLocaleDateString('en-IN')}
-          </div>
-          {leave.reason && (
-            <p className="mt-2 text-micro text-ink">
-              <span className="font-semibold text-muted">Reason: </span>
-              {leave.reason}
-            </p>
-          )}
+        <div>
+          <DetailRow label="Type">{leave.leave_type.name}</DetailRow>
+          <DetailRow label="Dates">
+            {formatDate(leave.start_date)} – {formatDate(leave.end_date)} · {days(leave.total_days)}
+          </DetailRow>
+          {leave.reason && <DetailRow label="Their note">{leave.reason}</DetailRow>}
         </div>
-
         <TextAreaField
-          label={isReject ? 'Rejection Reason (Required)' : 'Comments (Optional)'}
-          placeholder={
-            isReject
-              ? 'Explain why this leave cannot be granted (e.g. critical project milestone)'
-              : 'Add any notes for the employee'
-          }
+          label={isReject ? 'Reason' : 'Note (optional)'}
+          placeholder={isReject ? 'e.g. Release week — could you move it to the week after?' : 'Anything they should know'}
           value={comments}
           onChange={(e) => setComments(e.target.value)}
           required={isReject}
