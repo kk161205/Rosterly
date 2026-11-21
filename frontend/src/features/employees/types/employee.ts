@@ -37,6 +37,8 @@ export interface Department {
   name: string
   code: string
   head_count: number
+  manager_id?: string | null
+  manager_name?: string | null
 }
 
 export interface EmployeeQueryFilters {
@@ -56,17 +58,6 @@ export interface EmployeePaginatedResponse {
   page_size: number
 }
 
-export interface OrgChartNode {
-  id: string
-  full_name: string
-  designation: string
-  department_name: string
-  status: EmployeeStatus
-  avatar_url?: string | null
-  manager_id?: string | null
-  direct_reports?: OrgChartNode[]
-}
-
 export interface EmployeeUpdatePayload {
   full_name?: string
   designation?: string
@@ -75,10 +66,5 @@ export interface EmployeeUpdatePayload {
   phone?: string | null
   status?: string | null
   manager_id?: string | null
-}
-
-export interface RoleOption {
-  id: string
-  name: string
 }
 

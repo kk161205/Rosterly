@@ -8,7 +8,7 @@ export interface ReportingNode {
   role?: string | null
 }
 
-/** GET /employees/{id} — backend EmployeeProfileResponse (§5.4) */
+/** GET /employees/{id} — backend EmployeeProfileResponse */
 export interface EmployeeProfile {
   id: string
   employee_code: string
@@ -17,7 +17,7 @@ export interface EmployeeProfile {
   role_id: string
   /** Primary role. */
   role_name: string
-  /** §5.14 multi-role: extra roles; access is the union. */
+  /** multi-role: extra roles; access is the union. */
   additional_roles?: { id: string; name: string }[]
   department_id: string | null
   department_name: string | null

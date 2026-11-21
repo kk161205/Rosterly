@@ -10,11 +10,11 @@ import { getErrorStatus } from '@/lib/errors'
 import { formatDate, humanize } from '@/lib/format'
 import { Alert, Button, ButtonLink, DetailRow, SidePanel, Skeleton, Status } from '@/ui'
 
-// Starting an offboarding is HR's and super admins' (§5.6, role-checked by the API)
+// Starting an offboarding is HR's and super admins' (role-checked by the API)
 const OFFBOARDERS = ['hr_admin', 'super_admin']
 
 /**
- * A person from the directory (§5.3): contact details, what they hold, and —
+ * A person from the directory: contact details, what they hold, and
  * for HR and super admins — Edit and Start offboarding without leaving the list.
  */
 export const PersonPanel: React.FC<{ person: Employee | null; onClose: () => void }> = ({ person, onClose }) => {
@@ -26,8 +26,12 @@ export const PersonPanel: React.FC<{ person: Employee | null; onClose: () => voi
   const id = person?.id
 
   const isSelf = Boolean(user && id === user.id)
-  // Profiles need employee:read (§5.4) — everyone can open their own
-  const canOpen = can('employee:read') || isSelf
+  // Who can open a profile: HR, admins and auditors anyone's; a manager their own
+  // department's; everyone their own. (employee:read alone is held by everyone.)
+  const canOpen =
+    isSelf ||
+    hasRole(user, 'super_admin', 'hr_admin', 'auditor') ||
+    (hasRole(user, 'manager') && Boolean(person?.department_id) && person?.department_id === user?.department_id)
   const canEdit = can('employee:update') && !isSelf
   const canOffboard =
     hasRole(user, ...OFFBOARDERS) && !isSelf && (person?.status === 'active' || person?.status === 'onboarding')
@@ -133,7 +137,7 @@ export const PersonPanel: React.FC<{ person: Employee | null; onClose: () => voi
                     )
                     return (
                       <li key={a.id} className="border-t border-line-soft first:border-t-0">
-                        {/* Asset records open for IT, auditors and the holder (§5.8) */}
+                        {/* Asset records open for IT, auditors and the holder */}
                         {can('assets:read') || isSelf ? (
                           <Link to={`/assets/${a.asset_id}`} className="flex items-baseline justify-between gap-4 py-2.5 hover:bg-row-hover">
                             {body}

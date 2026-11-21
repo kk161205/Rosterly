@@ -9,6 +9,7 @@ import { EditProfileDialog } from '@/features/employees/components/EditProfileDi
 import { StartOffboardingDialog } from '@/features/lifecycle/components/StartOffboardingDialog'
 import type { EmployeeProfile } from '@/features/employees/types/profile'
 import { roleLabel, useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
+import { TwoStepSignIn } from '@/features/auth/components/TwoStepSignIn'
 import { getErrorMessage, getErrorStatus } from '@/lib/errors'
 import { formatDate, humanize } from '@/lib/format'
 import {
@@ -28,7 +29,7 @@ import {
 } from '@/ui'
 
 /**
- * Profile (§5.4): who someone is, what they hold, their documents and their
+ * Profile: who someone is, what they hold, their documents and their
  * joiner/leaver checklist. /profile shows the signed-in user's own.
  */
 export const EmployeeProfilePage: React.FC = () => {
@@ -102,7 +103,7 @@ export const EmployeeProfilePage: React.FC = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(canEditAll || canEditSelf) && (
-              <Button variant="primary" onClick={() => setEditing(true)}>
+              <Button data-guide="profile.edit" variant="primary" onClick={() => setEditing(true)}>
                 {canEditAll ? 'Edit profile' : 'Edit contact details'}
               </Button>
             )}
@@ -121,9 +122,10 @@ export const EmployeeProfilePage: React.FC = () => {
       <Tabs defaultValue="overview">
         <TabsList label="Profile sections">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="equipment">Equipment</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="lifecycle">Joining and leaving</TabsTrigger>
+          <TabsTrigger data-guide="profile.equipment" value="equipment">Equipment</TabsTrigger>
+          <TabsTrigger data-guide="profile.documents" value="documents">Documents</TabsTrigger>
+          <TabsTrigger data-guide="profile.lifecycle" value="lifecycle">Joining and leaving</TabsTrigger>
+          {isSelf && <TabsTrigger data-guide="profile.security" value="security">Sign-in</TabsTrigger>}
         </TabsList>
         <TabsContent value="overview" className="pt-6 focus:outline-none">
           <Overview p={p} />
@@ -137,6 +139,16 @@ export const EmployeeProfilePage: React.FC = () => {
         <TabsContent value="lifecycle" className="pt-6 focus:outline-none">
           <Lifecycle id={p.id} />
         </TabsContent>
+        {isSelf && (
+          <TabsContent value="security" className="pt-6 focus:outline-none">
+            <section aria-labelledby="two-step-heading" className="flex max-w-2xl flex-col gap-3">
+              <h2 id="two-step-heading" className="text-section text-ink">
+                Two-step sign-in
+              </h2>
+              <TwoStepSignIn enabled={Boolean(user?.mfa_enabled)} required={Boolean(user?.mfa_required_by_company)} />
+            </section>
+          </TabsContent>
+        )}
       </Tabs>
 
       <EditProfileDialog profile={p} full={canEditAll} open={editing} onOpenChange={setEditing} onSaved={refresh} />
@@ -293,6 +305,7 @@ const Documents: React.FC<{ id: string; canUpload: boolean; canDelete: boolean }
   const q = useQuery({ queryKey: ['profile', id, 'documents'], queryFn: () => profileService.getEmployeeDocuments(id) })
   const [uploading, setUploading] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['profile', id, 'documents'] })
   const docType = (t: string) => DOC_TYPES.find((d) => d.value === t)?.label ?? humanize(t)
@@ -304,7 +317,7 @@ const Documents: React.FC<{ id: string; canUpload: boolean; canDelete: boolean }
           Documents
         </h2>
         {canUpload && (
-          <Button variant="secondary" size="sm" onClick={() => setUploading(true)}>
+          <Button data-guide="profile.upload" variant="secondary" size="sm" onClick={() => setUploading(true)}>
             <Upload className="h-4 w-4" aria-hidden="true" />
             Upload
           </Button>
@@ -322,9 +335,21 @@ const Documents: React.FC<{ id: string; canUpload: boolean; canDelete: boolean }
           {(q.data ?? []).map((d) => (
             <li key={d.id} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line-soft py-3">
               <span className="flex min-w-0 flex-col gap-0.5">
-                <a href={d.file_url} target="_blank" rel="noreferrer" className="truncate text-body font-medium text-navy underline decoration-control underline-offset-4">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError(null)
+                    try {
+                      await profileService.downloadEmployeeDocument(d.file_url, d.file_name)
+                    } catch (err) {
+                      setError(getErrorMessage(err, 'The file could not be downloaded.'))
+                    }
+                  }}
+                  className="truncate text-left text-body font-medium text-navy underline decoration-control underline-offset-4"
+                  aria-label={`Download ${d.file_name}`}
+                >
                   {d.file_name}
-                </a>
+                </button>
                 <span className="flex flex-wrap items-center gap-x-2 text-meta text-muted">
                   {docType(d.doc_type)} · {formatDate(d.uploaded_at)}
                   {d.uploaded_by_name && ` · by ${d.uploaded_by_name}`}
@@ -335,12 +360,22 @@ const Documents: React.FC<{ id: string; canUpload: boolean; canDelete: boolean }
                   )}
                 </span>
               </span>
-              {canDelete && (
+              {canDelete && confirmRemove !== d.id && (
+                <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(d.id)}>
+                  Remove
+                </Button>
+              )}
+              {canDelete && confirmRemove === d.id && (
+                <span className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(null)} disabled={removing === d.id}>
+                    Keep it
+                  </Button>
                 <Button
-                  variant="ghost"
+                  variant="danger"
                   size="sm"
                   isLoading={removing === d.id}
                   onClick={async () => {
+                    setConfirmRemove(null)
                     setRemoving(d.id)
                     setError(null)
                     try {
@@ -353,8 +388,9 @@ const Documents: React.FC<{ id: string; canUpload: boolean; canDelete: boolean }
                     }
                   }}
                 >
-                  Remove
+                  Yes, remove
                 </Button>
+                </span>
               )}
             </li>
           ))}
@@ -388,6 +424,7 @@ const UploadDialog: React.FC<{ id: string; open: boolean; onOpenChange: (o: bool
   return (
     <Dialog
       open={open}
+      busy={busy}
       onOpenChange={(o) => {
         if (!o) reset()
         onOpenChange(o)

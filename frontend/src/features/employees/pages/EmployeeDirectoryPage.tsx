@@ -6,7 +6,7 @@ import { employeeService } from '@/features/employees/services/employeeService'
 import type { Employee } from '@/features/employees/types/employee'
 import { useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
 import { PersonPanel } from '@/features/employees/components/PersonPanel'
-import { useSearchParamText, useUrlFilters } from '@/lib/useUrlFilters'
+import { useSearchParamText, useUrlFilters, pageFrom } from '@/lib/useUrlFilters'
 import { getErrorMessage } from '@/lib/errors'
 import {
   Button,
@@ -33,7 +33,7 @@ const PAGE_SIZE = 25
 type View = 'list' | 'chart'
 
 /**
- * Directory (§5.3): everyone the caller may see (the API scopes managers to
+ * Directory: everyone the caller may see (the API scopes managers to
  * their department), searchable, with two filters and a profile side panel.
  * The org chart is a separate view built from manager links.
  */
@@ -45,7 +45,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
   const search = params.get('search') ?? ''
   const department = params.get('department') ?? ''
   const status = params.get('status') ?? ''
-  const page = Number(params.get('page') ?? '1')
+  const page = pageFrom(params)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
 
@@ -75,7 +75,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
         description="Everyone at the company, their team, and who they report to."
         actions={
           can('employee:create') && (
-            <ButtonLink to="/onboarding" variant="primary">
+            <ButtonLink data-guide="directory.onboard" to="/onboarding" variant="primary">
               <UserPlus className="h-4 w-4" aria-hidden="true" />
               Onboard someone
             </ButtonLink>
@@ -86,7 +86,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-            <SearchInput
+            <SearchInput data-guide="directory.search"
               label="Search people"
               placeholder="Search name, email, code or title"
               value={searchText}
@@ -110,7 +110,7 @@ export const EmployeeDirectoryPage: React.FC = () => {
               onChange={(e) => update({ status: e.target.value })}
             />
           </div>
-          <FilterTabs
+          <FilterTabs data-guide="directory.view"
             label="View"
             className="shrink-0 self-start xl:self-auto"
             value={view}

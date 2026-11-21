@@ -8,14 +8,15 @@ import type { Employee } from '@/features/employees/types/employee'
 import type { EmployeeProfile } from '@/features/employees/types/profile'
 import { lifecycleService } from '@/features/lifecycle/services/lifecycleService'
 import { mockUser, renderPage } from '@/test/render'
+import { userManagementService } from '@/features/admin/services/userManagementService'
 
+vi.mock('@/features/admin/services/userManagementService', () => ({ userManagementService: { assignableRoles: vi.fn() } }))
 vi.mock('@/features/auth/services/authService', () => ({ authService: { getCurrentUser: vi.fn() } }))
 vi.mock('@/features/employees/services/employeeService', () => ({
   employeeService: {
     getEmployees: vi.fn(),
     getFilterOptions: vi.fn(),
     getDepartments: vi.fn(),
-    getRoles: vi.fn(),
     getEmployeeById: vi.fn(),
     deleteEmployee: vi.fn(),
   },
@@ -86,7 +87,7 @@ beforeEach(() => {
   vi.mocked(profileService.getEmployeeLifecycle).mockResolvedValue(null)
 })
 
-describe('Directory (§5.3)', () => {
+describe('Directory', () => {
   it('lists people with title, department and status', async () => {
     mockUser('employee', ['request:create'])
     renderPage(<EmployeeDirectoryPage />)
@@ -173,7 +174,7 @@ describe('Directory (§5.3)', () => {
   })
 })
 
-describe('Profile (§5.4)', () => {
+describe('Profile', () => {
   it('shows details and the manager link', async () => {
     mockUser('hr_admin', ['employee:read', 'employee:update'])
     renderPage(<EmployeeProfilePage />, { route: '/employees/p2', path: '/employees/:id' })
@@ -197,7 +198,7 @@ describe('Profile (§5.4)', () => {
   it('offers only active or inactive as a status when HR edits a profile', async () => {
     mockUser('hr_admin', ['employee:read', 'employee:update'])
     vi.mocked(employeeService.getDepartments).mockResolvedValue([])
-    vi.mocked(employeeService.getRoles).mockResolvedValue([])
+    vi.mocked(userManagementService.assignableRoles).mockResolvedValue([])
     renderPage(<EmployeeProfilePage />, { route: '/employees/p2', path: '/employees/:id' })
     fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }))
     const status = within(await screen.findByRole('dialog')).getByLabelText('Status') as HTMLSelectElement
@@ -208,7 +209,7 @@ describe('Profile (§5.4)', () => {
   it('locks the status of someone who is being offboarded', async () => {
     mockUser('hr_admin', ['employee:read', 'employee:update'])
     vi.mocked(employeeService.getDepartments).mockResolvedValue([])
-    vi.mocked(employeeService.getRoles).mockResolvedValue([])
+    vi.mocked(userManagementService.assignableRoles).mockResolvedValue([])
     vi.mocked(profileService.getEmployeeProfile).mockResolvedValue({ ...profile, status: 'offboarding' })
     renderPage(<EmployeeProfilePage />, { route: '/employees/p2', path: '/employees/:id' })
     fireEvent.click(await screen.findByRole('button', { name: 'Edit profile' }))

@@ -6,9 +6,10 @@ import type { EmployeeProfile, ProfileUpdatePayload } from '@/features/employees
 import { roleLabel } from '@/features/auth/hooks/useCurrentUser'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { Alert, Button, Dialog, SelectField, TextField } from '@/ui'
+import { useAssignableRoles } from '@/features/admin/hooks/useAssignableRoles'
 
 /**
- * Edit a profile (PATCH /employees/{id}, §5.4). Fields follow the API's rules:
+ * Edit a profile (PATCH /employees/{id}). Fields follow the API's rules:
  * people editing themselves change contact details only; HR and super admins
  * (employee:update) change job details too. Role options come from
  * /users/assignable-roles, so only roles the caller may grant are offered.
@@ -26,7 +27,7 @@ export const EditProfileDialog: React.FC<{
   const [busy, setBusy] = useState(false)
 
   const departments = useQuery({ queryKey: ['departments'], queryFn: employeeService.getDepartments, enabled: open && full })
-  const roles = useQuery({ queryKey: ['assignable-roles'], queryFn: employeeService.getRoles, enabled: open && full })
+  const roles = useAssignableRoles(open && full)
   const managers = useQuery({
     queryKey: ['manager-options'],
     queryFn: async () => (await employeeService.getEmployees({ page_size: 100, status: 'active' })).items,
@@ -128,6 +129,9 @@ export const EditProfileDialog: React.FC<{
               options={[
                 { value: '', label: 'No one' },
                 ...(managers.data ?? []).filter((m) => m.id !== profile.id).map((m) => ({ value: m.id, label: m.full_name })),
+                ...(profile.manager_id && !(managers.data ?? []).some((m) => m.id === profile.manager_id)
+                  ? [{ value: profile.manager_id, label: profile.manager_name ?? 'Current manager' }]
+                  : []),
               ]}
               value={form.manager_id ?? ''}
               onChange={set('manager_id')}

@@ -6,8 +6,6 @@ import {
   EmployeeQueryFilters,
   EmployeePaginatedResponse,
   EmployeeFiltersMeta,
-  OrgChartNode,
-  RoleOption,
 } from '@/features/employees/types/employee'
 
 export const employeeService = {
@@ -36,6 +34,21 @@ export const employeeService = {
     return response.data
   },
 
+  /** POST /departments (hr_admin, super_admin). */
+  async createDepartment(payload: { name: string; manager_id?: string | null }): Promise<Department> {
+    return (await apiClient.post<Department>('/departments', payload)).data
+  },
+
+  /** PATCH /departments/{id}: rename and/or set the head. */
+  async updateDepartment(id: string, payload: { name?: string; manager_id?: string | null }): Promise<Department> {
+    return (await apiClient.patch<Department>(`/departments/${id}`, payload)).data
+  },
+
+  /** DELETE /departments/{id}: only when nobody is in it. */
+  async deleteDepartment(id: string): Promise<void> {
+    await apiClient.delete(`/departments/${id}`)
+  },
+
   /**
    * Fetches dynamic status and role filter options populated from current DB records.
    */
@@ -44,18 +57,6 @@ export const employeeService = {
     return response.data
   },
 
-  /**
-   * GET /users/assignable-roles — the roles the caller may assign (§5.14):
-   * every role for super_admin; everything except super_admin/it_admin for
-   * hr_admin. Backs the edit-role picker, which needs every assignable role
-   * selectable (not just roles that already have members, unlike
-   * getFilterOptions()'s role list). Other roles get 403 — they can't edit
-   * roles, so the picker simply stays empty for them.
-   */
-  async getRoles(): Promise<RoleOption[]> {
-    const response = await apiClient.get<RoleOption[]>('/users/assignable-roles')
-    return response.data
-  },
 
   /**
    * Fetches single employee record details by ID.
@@ -75,7 +76,7 @@ export const employeeService = {
 
   /**
    * Soft-deletes an employee record (Super Admin only) — sets status=terminated,
-   * preserving the row for audit history (§7 rule 4). Reversible by a later
+   * preserving the row for audit history. Reversible by a later
    * status change; not a hard delete.
    */
   async deleteEmployee(employeeId: string): Promise<{ success: boolean; message: string }> {
@@ -83,41 +84,4 @@ export const employeeService = {
     return response.data
   },
 
-  /**
-   * Transforms flat employee list into hierarchical org chart node tree.
-   */
-  buildOrgTree(employees: Employee[]): OrgChartNode[] {
-    const map = new Map<string, OrgChartNode>()
-    const roots: OrgChartNode[] = []
-
-    employees.forEach((emp) => {
-      map.set(emp.id, {
-        id: emp.id,
-        full_name: emp.full_name,
-        designation: emp.designation,
-        department_name: emp.department_name || 'Unassigned',
-        status: emp.status,
-        avatar_url: emp.avatar_url,
-        manager_id: emp.manager_id,
-        direct_reports: [],
-      })
-    })
-
-    employees.forEach((emp) => {
-      const node = map.get(emp.id)
-      if (!node) return
-
-      if (emp.manager_id && map.has(emp.manager_id)) {
-        const parent = map.get(emp.manager_id)
-        if (parent) {
-          parent.direct_reports = parent.direct_reports || []
-          parent.direct_reports.push(node)
-        }
-      } else {
-        roots.push(node)
-      }
-    })
-
-    return roots
-  },
 }

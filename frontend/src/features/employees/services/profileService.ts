@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client'
+import axios from 'axios'
 import {
   EmployeeProfile,
   DocumentItem,
@@ -7,7 +8,7 @@ import {
   ProfileUpdatePayload,
 } from '@/features/employees/types/profile'
 
-// PDF, PNG, JPG only — project doc §7 rule 8. .docx was previously accepted
+// PDF, PNG, JPG only..docx was previously accepted
 // here (and by the backend) in violation of the documented constraint.
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -35,7 +36,7 @@ export const profileService = {
   },
 
   /**
-   * GET /employees/{id} (PRD §5.4)
+   * GET /employees/{id}
    * Fetches full employee profile record with live DB values.
    */
   async getEmployeeProfile(employeeId: string): Promise<EmployeeProfile> {
@@ -44,7 +45,7 @@ export const profileService = {
   },
 
   /**
-   * PATCH /employees/{id} (PRD §5.4)
+   * PATCH /employees/{id}
    * Updates employee profile details with field-level permissions.
    */
   async updateEmployeeProfile(
@@ -56,7 +57,7 @@ export const profileService = {
   },
 
   /**
-   * GET /employees/{id}/documents (PRD §5.4)
+   * GET /employees/{id}/documents
    * Fetches document vault records for an employee.
    */
   async getEmployeeDocuments(employeeId: string): Promise<DocumentItem[]> {
@@ -68,7 +69,7 @@ export const profileService = {
   },
 
   /**
-   * POST /employees/{id}/documents (PRD §5.4)
+   * POST /employees/{id}/documents
    * Uploads multipart document file to employee vault.
    */
   async uploadEmployeeDocument(
@@ -109,15 +110,31 @@ export const profileService = {
   },
 
   /**
-   * DELETE /employees/{id}/documents/{docId} (PRD §5.4)
+   * DELETE /employees/{id}/documents/{docId}
    * Removes document record from vault.
    */
+  /**
+   * Downloads a document through the authenticated API (the file can't be
+   * linked to directly — the request must carry the session) and saves it.
+   */
+  async downloadEmployeeDocument(fileUrl: string, fileName: string): Promise<void> {
+    const response = await apiClient.get<Blob>(fileUrl, { responseType: 'blob' })
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
+
   async deleteEmployeeDocument(employeeId: string, docId: string): Promise<void> {
     await apiClient.delete(`/employees/${employeeId}/documents/${docId}`)
   },
 
   /**
-   * GET /employees/{id}/assets (PRD §5.4)
+   * GET /employees/{id}/assets
    * Fetches assigned hardware and software assets.
    */
   async getEmployeeAssets(employeeId: string): Promise<AssignedAssetsResponse> {
@@ -126,15 +143,16 @@ export const profileService = {
   },
 
   /**
-   * GET /employees/{id}/lifecycle (PRD §5.4)
+   * GET /employees/{id}/lifecycle
    * Fetches active lifecycle onboarding/offboarding checklist.
    */
   async getEmployeeLifecycle(employeeId: string): Promise<LifecycleChecklist | null> {
     try {
       const response = await apiClient.get<LifecycleChecklist | null>(`/employees/${employeeId}/lifecycle`)
       return response.data
-    } catch {
-      return null
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) return null
+      throw err
     }
   },
 }
