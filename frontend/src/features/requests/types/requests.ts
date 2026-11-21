@@ -1,4 +1,4 @@
-// /requests (§5.11) — mirrors backend app/modules/requests/schemas.py
+// /requests — mirrors backend app/modules/requests/schemas.py
 
 export type RequestType = 'asset_request' | 'access_request' | 'it_ticket' | 'other'
 export type RequestPriority = 'low' | 'medium' | 'high'
@@ -21,6 +21,10 @@ export interface RequestSummary {
   current_step: number
   total_steps: number
   waiting_on_role: string | null
+  /** Fulfilment: set by IT or HR once the request is approved. */
+  fulfilment_note: string | null
+  fulfilled_by_name: string | null
+  fulfilled_at: string | null
   created_at: string
   updated_at: string
 }

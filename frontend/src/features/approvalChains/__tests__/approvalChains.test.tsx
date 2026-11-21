@@ -1,24 +1,25 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApprovalChainConfigPage } from '@/features/approvalChains/pages/ApprovalChainConfigPage'
 import { approvalChainService } from '@/features/approvalChains/services/approvalChainService'
+import { userManagementService } from '@/features/admin/services/userManagementService'
 import { mockUser, renderPage } from '@/test/render'
 
 vi.mock('@/features/auth/services/authService', () => ({
   authService: { getCurrentUser: vi.fn() },
 }))
 
+vi.mock('@/features/admin/services/userManagementService', () => ({ userManagementService: { assignableRoles: vi.fn() } }))
 vi.mock('@/features/approvalChains/services/approvalChainService', () => ({
   approvalChainService: {
     list: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    getAssignableRoles: vi.fn(),
   },
 }))
 
-describe('Approval Chain Configuration (§5.18)', () => {
+describe('Approval Chain Configuration', () => {
   const mockTemplate = {
     id: 'chain-1',
     request_type: 'asset_request' as const,
@@ -43,57 +44,53 @@ describe('Approval Chain Configuration (§5.18)', () => {
       templates: [mockTemplate],
     })
 
-    vi.mocked(approvalChainService.getAssignableRoles).mockResolvedValue([
+    vi.mocked(userManagementService.assignableRoles).mockResolvedValue([
       { id: 'r-mgr', name: 'manager', description: null, is_system_role: true },
       { id: 'r-it', name: 'it_admin', description: null, is_system_role: true },
       { id: 'r-sa', name: 'super_admin', description: null, is_system_role: true },
     ])
   })
 
-  it('renders configured approval chain with horizontal stepper', async () => {
+  it('shows each chain with its kind, cost and approvers in order', async () => {
     renderPage(<ApprovalChainConfigPage />)
-
-    expect(await screen.findByText('High-Value Hardware Approval')).toBeInTheDocument()
-    expect(screen.getByText('Cost threshold: ≥ ₹50,000')).toBeInTheDocument()
-    expect(screen.getByText('3 requests in flight')).toBeInTheDocument()
-
-    // Stepper labels
-    expect(screen.getByText('Department Manager')).toBeInTheDocument()
-    expect(screen.getByText('IT Administrator')).toBeInTheDocument()
-    expect(screen.getByText('Super Admin / Finance VP')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'High-Value Hardware Approval' })).toBeInTheDocument()
+    expect(screen.getByText(/Equipment · ₹50,000 and above/)).toBeInTheDocument()
+    expect(screen.getByText(/3 requests waiting/)).toBeInTheDocument()
+    const approvers = screen.getByRole('list', { name: 'Approvers, in order' })
+    expect(approvers).toHaveTextContent('Their manager')
+    expect(approvers).toHaveTextContent('IT admin')
+    expect(approvers).toHaveTextContent('Super admin')
   })
 
-  it('displays in-flight versioning protection notice', async () => {
+  it('says plainly that changes only affect new requests', async () => {
     renderPage(<ApprovalChainConfigPage />)
-
-    expect(await screen.findByText('High-Value Hardware Approval')).toBeInTheDocument()
-    expect(screen.getByText('Active Versioning Protection')).toBeInTheDocument()
-    expect(
-      screen.getByText(/3 requests are currently pending in flight/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/Changes apply to new requests; ones already waiting keep their approvers/)).toBeInTheDocument()
   })
 
-  it('restricts deleting template when pending requests are in flight', async () => {
+  it('won’t delete a chain that requests are still waiting on', async () => {
     renderPage(<ApprovalChainConfigPage />)
-
-    const deleteBtn = await screen.findByRole('button', { name: /Delete/i })
-    fireEvent.click(deleteBtn)
-
-    expect(await screen.findByText('Delete "High-Value Hardware Approval"?')).toBeInTheDocument()
-    expect(
-      screen.getByText(/In-flight requests must be approved or resolved before this approval chain can be removed/i),
-    ).toBeInTheDocument()
-    // Confirm delete button is not rendered while in-flight count > 0
-    expect(screen.queryByRole('button', { name: 'Delete Chain' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete High-Value Hardware Approval' }))
+    expect(await screen.findByRole('dialog', { name: 'Delete “High-Value Hardware Approval”?' })).toBeInTheDocument()
+    expect(screen.getByText(/3 requests are still waiting on this chain/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Yes, delete' })).not.toBeInTheDocument()
   })
 
-  it('opens new chain modal on clicking New Approval Chain', async () => {
+  it('offers only roles that can approve, and blocks a second manager step', async () => {
+    vi.mocked(userManagementService.assignableRoles).mockResolvedValue([
+      { id: 'r-mgr', name: 'manager', description: null, is_system_role: true },
+      { id: 'r-it', name: 'it_admin', description: null, is_system_role: true },
+      { id: 'r-emp', name: 'employee', description: null, is_system_role: true },
+      { id: 'r-aud', name: 'auditor', description: null, is_system_role: true },
+    ])
     renderPage(<ApprovalChainConfigPage />)
-
-    const newBtn = await screen.findByRole('button', { name: /New Approval Chain/i })
-    fireEvent.click(newBtn)
-
-    expect(await screen.findByText('Approval Steps Hierarchy')).toBeInTheDocument()
-    expect(screen.getByLabelText(/Template Name/i)).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'New chain' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New approval chain' })
+    const first = (await within(dialog).findByLabelText('Approver 1')) as HTMLSelectElement
+    expect(Array.from(first.options).map((o) => o.text)).toEqual(['Manager', 'IT admin'])
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Two managers' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Add approver/ }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create chain' }))
+    expect(await within(dialog).findByText(/only one Manager step/)).toBeInTheDocument()
+    expect(approvalChainService.create).not.toHaveBeenCalled()
   })
 })

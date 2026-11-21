@@ -1,22 +1,12 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2 } from 'lucide-react'
-import {
-  PageHeader,
-  Button,
-  Status,
-  EmptyState,
-  ErrorState,
-  Skeleton,
-  Dialog,
-  Alert,
-} from '@/ui'
-import {
-  useApprovalChainMutations,
-  useApprovalChains,
-} from '@/features/approvalChains/hooks/useApprovalChains'
+import { Plus } from 'lucide-react'
+import { Alert, Button, Dialog, EmptyState, ErrorState, FilterTabs, PageHeader, Skeleton, Status } from '@/ui'
+import { formatMoney } from '@/lib/format'
+import { useApprovalChainMutations, useApprovalChains } from '@/features/approvalChains/hooks/useApprovalChains'
 import { ApprovalChainStepper } from '@/features/approvalChains/components/ApprovalChainStepper'
 import { ChainTemplateModal } from '@/features/approvalChains/components/ChainTemplateModal'
-import { InFlightWarning } from '@/features/approvalChains/components/InFlightWarning'
+import { REQUEST_TYPE_LABEL } from '@/features/approvalChains/lib/labels'
+import { getErrorMessage } from '@/lib/errors'
 import type {
   ChainRequestType,
   ChainTemplateCreate,
@@ -24,249 +14,153 @@ import type {
   ChainTemplateUpdate,
 } from '@/features/approvalChains/types/approvalChains'
 
-const REQUEST_TYPE_TABS: { id: ChainRequestType | 'all'; label: string }[] = [
-  { id: 'all', label: 'All Chains' },
-  { id: 'asset_request', label: 'Asset Requests' },
-  { id: 'access_request', label: 'Access Requests' },
-  { id: 'it_ticket', label: 'IT Tickets' },
-  { id: 'other', label: 'Other' },
+type Filter = ChainRequestType | 'all'
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  ...(Object.keys(REQUEST_TYPE_LABEL) as ChainRequestType[]).map((value) => ({ value, label: REQUEST_TYPE_LABEL[value] })),
 ]
 
+/** who approves each kind of request. */
 export const ApprovalChainConfigPage: React.FC = () => {
-  const [selectedType, setSelectedType] = useState<ChainRequestType | 'all'>('all')
+  const [filter, setFilter] = useState<Filter>('all')
   const [modalOpen, setModalOpen] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<ChainTemplateResponse | null>(null)
-  const [deletingTemplate, setDeletingTemplate] = useState<ChainTemplateResponse | null>(null)
+  const [editing, setEditing] = useState<ChainTemplateResponse | null>(null)
+  const [deleting, setDeleting] = useState<ChainTemplateResponse | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const { data, isLoading, isError, error, refetch } = useApprovalChains(
-    selectedType === 'all' ? undefined : selectedType,
-  )
+  const { data, isLoading, isError, error, refetch } = useApprovalChains(filter === 'all' ? undefined : filter)
   const { createTemplate, updateTemplate, deleteTemplate } = useApprovalChainMutations()
+  const templates = data?.templates ?? []
 
-  const templates = data?.templates || []
-  const totalInFlight = templates.reduce((acc, t) => acc + (t.pending_request_count || 0), 0)
-
-  const handleOpenCreate = () => {
-    setEditingTemplate(null)
+  const openEditor = (template: ChainTemplateResponse | null) => {
+    setEditing(template)
     setModalOpen(true)
     setActionError(null)
   }
 
-  const handleOpenEdit = (template: ChainTemplateResponse) => {
-    setEditingTemplate(template)
-    setModalOpen(true)
-    setActionError(null)
-  }
-
-  const handleSave = async ({
-    isEdit,
-    id,
-    createData,
-    updateData,
-  }: {
-    isEdit: boolean
-    id?: string
-    createData?: ChainTemplateCreate
-    updateData?: ChainTemplateUpdate
-  }) => {
+  const handleSave = async ({ isEdit, id, createData, updateData }: { isEdit: boolean; id?: string; createData?: ChainTemplateCreate; updateData?: ChainTemplateUpdate }) => {
     setActionError(null)
     if (isEdit && id && updateData) {
-      await updateTemplate.mutateAsync({ id, data: updateData })
-    } else if (createData) {
-      await createTemplate.mutateAsync(createData)
+      const saved = await updateTemplate.mutateAsync({ id, data: updateData })
+      if (saved?.warning) setActionError(saved.warning)
     }
+    else if (createData) await createTemplate.mutateAsync(createData)
   }
 
   const handleDelete = async () => {
-    if (!deletingTemplate) return
+    if (!deleting) return
     try {
       setActionError(null)
-      await deleteTemplate.mutateAsync(deletingTemplate.id)
-      setDeletingTemplate(null)
+      await deleteTemplate.mutateAsync(deleting.id)
+      setDeleting(null)
     } catch (err: unknown) {
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : 'Could not delete approval chain template. Ensure no in-flight requests reference it.',
-      )
+      setActionError(getErrorMessage(err, 'Couldn’t delete the chain. Try again.'))
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Approval Chains"
-        description="Configure multi-step routing rules, threshold conditions, and role-based approval sequences."
+        title="Approval chains"
+        description="Who approves each kind of request. Changes apply to new requests; ones already waiting keep their approvers."
         actions={
-          <Button variant="primary" onClick={handleOpenCreate}>
+          <Button data-guide="chains.new" variant="primary" onClick={() => openEditor(null)}>
             <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            New Approval Chain
+            New chain
           </Button>
         }
       />
 
-      <InFlightWarning pendingCount={totalInFlight} />
-
       {actionError && <Alert tone="error">{actionError}</Alert>}
 
-      {/* Filter tabs */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-line pb-3" role="tablist">
-        {REQUEST_TYPE_TABS.map((tab) => {
-          const isActive = selectedType === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setSelectedType(tab.id)}
-              className={`rounded-pill px-3.5 py-1 text-body font-medium transition-colors ${
-                isActive
-                  ? 'bg-ink text-paper'
-                  : 'bg-ground text-muted hover:bg-row-hover hover:text-ink'
-              }`}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      <FilterTabs<Filter> data-guide="chains.filter" label="Kind of request" value={filter} onChange={setFilter} tabs={FILTERS} />
 
       {isLoading ? (
-        <div className="flex flex-col gap-4 py-4" aria-label="Loading approval chains">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
+        <div className="flex flex-col gap-4" aria-label="Loading approval chains">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
         </div>
       ) : isError ? (
-        <ErrorState
-          message={error instanceof Error ? error.message : 'Could not load approval chains.'}
-          onRetry={() => refetch()}
-        />
+        <ErrorState message={getErrorMessage(error, 'Couldn’t load approval chains.')} onRetry={() => refetch()} />
       ) : templates.length === 0 ? (
         <EmptyState
-          title="No approval chains configured"
-          description="Create your first multi-step approval workflow for this request type."
+          title="No approval chains"
+          description="Without a chain, requests of this kind have no one to approve them. Add one to say who does."
           action={
-            <Button variant="secondary" onClick={handleOpenCreate}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Configure chain
+            <Button variant="secondary" onClick={() => openEditor(null)}>
+              Add a chain
             </Button>
           }
         />
       ) : (
-        <div className="flex flex-col gap-4">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              className="flex flex-col gap-3 rounded-card border border-line bg-paper p-5 transition-shadow"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="font-display text-panel text-ink">{template.name}</h3>
-                    <Status value={template.is_active ? 'active' : 'inactive'} />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-meta text-muted">
-                    <span className="font-semibold uppercase text-ink">
-                      {template.request_type.replace(/_/g, ' ')}
-                    </span>
-                    <span>•</span>
-                    <span>
-                      {template.min_amount != null
-                        ? `Cost threshold: ≥ ₹${Number(template.min_amount).toLocaleString('en-IN')}`
-                        : 'Applies to all amounts'}
-                    </span>
-                    <span>•</span>
-                    <span
-                      className={
-                        template.pending_request_count > 0 ? 'font-medium text-status-warn' : ''
-                      }
-                    >
-                      {template.pending_request_count}{' '}
-                      {template.pending_request_count === 1 ? 'request' : 'requests'} in flight
-                    </span>
-                  </div>
+        <div className="flex flex-col gap-8">
+          {templates.map((t) => (
+            <section key={t.id} aria-labelledby={`chain-${t.id}`} className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h2 id={`chain-${t.id}`} className="text-section text-ink">
+                    {t.name}
+                  </h2>
+                  {!t.is_active && <Status value="inactive" />}
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleOpenEdit(template)}
-                  >
-                    <Edit2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => openEditor(t)}>
                     Edit
                   </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => setDeletingTemplate(template)}
-                  >
-                    <Trash2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                  <Button variant="ghost" size="sm" onClick={() => setDeleting(t)} aria-label={`Delete ${t.name}`}>
                     Delete
                   </Button>
                 </div>
               </div>
-
-              {template.warning && <Alert tone="info">{template.warning}</Alert>}
-
-              {/* Stepper preview */}
-              <div className="mt-2 rounded-card border border-line-soft bg-ground/30 p-3">
-                <ApprovalChainStepper steps={template.steps} />
-              </div>
-            </div>
+              <p className="text-meta text-muted">
+                {REQUEST_TYPE_LABEL[t.request_type]} · {t.min_amount != null ? `${formatMoney(t.min_amount)} and above` : 'any cost'}
+                {t.pending_request_count > 0 && (
+                  <span className="text-status-warn">
+                    {' '}
+                    · {t.pending_request_count} {t.pending_request_count === 1 ? 'request' : 'requests'} waiting
+                  </span>
+                )}
+              </p>
+              <ApprovalChainStepper steps={t.steps} />
+              {t.warning && <p className="text-meta text-status-warn">{t.warning}</p>}
+            </section>
           ))}
         </div>
       )}
 
-      {/* Editor Modal */}
       <ChainTemplateModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        template={editingTemplate}
+        template={editing}
         onSave={handleSave}
         isPending={createTemplate.isPending || updateTemplate.isPending}
       />
 
-      {/* Delete Confirmation Dialog */}
-      {deletingTemplate && (
+      {deleting && (
         <Dialog
-          open={Boolean(deletingTemplate)}
-          onOpenChange={(o) => !o && setDeletingTemplate(null)}
-          title={`Delete "${deletingTemplate.name}"?`}
-          description={
-            deletingTemplate.pending_request_count > 0
-              ? `This chain template has ${deletingTemplate.pending_request_count} active requests currently in flight. Deleting it is restricted to preserve audit integrity and request routing.`
-              : 'This template will be permanently removed. Any future requests will route through the default chain for this category.'
-          }
+          open
+          onOpenChange={(o) => !o && setDeleting(null)}
+          title={`Delete “${deleting.name}”?`}
           busy={deleteTemplate.isPending}
           footer={
             <div className="flex w-full items-center justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => setDeletingTemplate(null)}
-                disabled={deleteTemplate.isPending}
-              >
-                Cancel
+              <Button variant="secondary" onClick={() => setDeleting(null)} disabled={deleteTemplate.isPending}>
+                {deleting.pending_request_count > 0 ? 'Close' : 'No, keep it'}
               </Button>
-              {deletingTemplate.pending_request_count === 0 && (
-                <Button
-                  variant="danger"
-                  onClick={handleDelete}
-                  disabled={deleteTemplate.isPending}
-                >
-                  Delete Chain
+              {deleting.pending_request_count === 0 && (
+                <Button variant="danger" onClick={handleDelete} disabled={deleteTemplate.isPending}>
+                  Yes, delete
                 </Button>
               )}
             </div>
           }
         >
-          {deletingTemplate.pending_request_count > 0 && (
-            <Alert tone="error">
-              In-flight requests must be approved or resolved before this approval chain can be removed.
-            </Alert>
-          )}
+          <p className="text-body text-muted">
+            {deleting.pending_request_count > 0
+              ? `${deleting.pending_request_count} ${deleting.pending_request_count === 1 ? 'request is' : 'requests are'} still waiting on this chain. Once they’re approved or rejected you can delete it — or switch it off now from Edit so new requests don’t use it.`
+              : 'New requests of this kind will use your other chains for it.'}
+          </p>
         </Dialog>
       )}
     </div>

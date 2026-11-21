@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { requestService } from '@/features/requests/services/requestService'
-import type { RequestDetail, RequestPriority, RequestType } from '@/features/requests/types/requests'
+import type { RequestDetail, RequestType } from '@/features/requests/types/requests'
 import { getErrorCode, getErrorMessage, getFieldErrors } from '@/lib/errors'
-import { Alert, Button, Dialog, SelectField, TextAreaField, TextField, cn } from '@/ui'
+import { Alert, Button, Dialog, TextAreaField, TextField, cn } from '@/ui'
 
 const TYPES: { value: RequestType; label: string; hint: string; costLabel?: string }[] = [
   { value: 'asset_request', label: 'Equipment', hint: 'A laptop, monitor, phone or accessory', costLabel: 'Estimated cost (₹)' },
@@ -11,13 +11,7 @@ const TYPES: { value: RequestType; label: string; hint: string; costLabel?: stri
   { value: 'other', label: 'Something else', hint: 'Anything that needs an approval' },
 ]
 
-const PRIORITIES: { value: RequestPriority; label: string }[] = [
-  { value: 'low', label: 'Low — whenever possible' },
-  { value: 'medium', label: 'Medium — this week' },
-  { value: 'high', label: 'High — blocking my work' },
-]
-
-/** New request (POST /requests, §5.11). The approval chain is chosen by the server from type and cost. */
+/** New request (POST /requests). The approval chain is chosen by the server from type and cost. */
 export const NewRequestDialog: React.FC<{
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -27,7 +21,7 @@ export const NewRequestDialog: React.FC<{
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [cost, setCost] = useState('')
-  const [priority, setPriority] = useState<RequestPriority>('medium')
+  const [urgent, setUrgent] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -38,7 +32,7 @@ export const NewRequestDialog: React.FC<{
     setTitle('')
     setDescription('')
     setCost('')
-    setPriority('medium')
+    setUrgent(false)
     setErrors({})
     setError(null)
   }, [open])
@@ -59,7 +53,7 @@ export const NewRequestDialog: React.FC<{
         request_type: type,
         title: title.trim(),
         description: description.trim(),
-        priority,
+        priority: urgent ? 'high' : 'medium',
         ...(current.costLabel && cost !== '' ? { estimated_cost: Number(cost) } : {}),
       })
       onCreated(created)
@@ -87,7 +81,7 @@ export const NewRequestDialog: React.FC<{
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" isLoading={busy} onClick={submit}>
+          <Button data-guide="requests.submit" variant="primary" isLoading={busy} onClick={submit}>
             Submit request
           </Button>
         </>
@@ -137,12 +131,10 @@ export const NewRequestDialog: React.FC<{
               hint="Higher-cost requests may need one more approval."
             />
           )}
-          <SelectField
-            label="Priority"
-            options={PRIORITIES}
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as RequestPriority)}
-          />
+          <label className="flex items-center gap-2 text-body text-ink">
+            <input type="checkbox" className="h-4 w-4 accent-navy" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} />
+            This is urgent
+          </label>
         </div>
       </div>
     </Dialog>

@@ -7,7 +7,7 @@ import { mockUser, renderPage } from '@/test/render'
 
 vi.mock('@/features/auth/services/authService', () => ({ authService: { getCurrentUser: vi.fn() } }))
 vi.mock('@/features/requests/services/requestService', () => ({
-  requestService: { mine: vi.fn(), get: vi.fn(), create: vi.fn(), cancel: vi.fn() },
+  requestService: { mine: vi.fn(), get: vi.fn(), create: vi.fn(), cancel: vi.fn(), toFulfil: vi.fn(), fulfil: vi.fn() },
 }))
 
 const summary: RequestSummary = {
@@ -26,6 +26,9 @@ const summary: RequestSummary = {
   current_step: 2,
   total_steps: 2,
   waiting_on_role: 'it_admin',
+  fulfilment_note: null,
+  fulfilled_by_name: null,
+  fulfilled_at: null,
   created_at: '2026-10-10T00:00:00Z',
   updated_at: '2026-10-10T00:00:00Z',
 }
@@ -45,7 +48,7 @@ beforeEach(() => {
   vi.mocked(requestService.get).mockResolvedValue(detail)
 })
 
-describe('Requests (§5.11)', () => {
+describe('Requests', () => {
   it('says where each request stands in plain words', async () => {
     renderPage(<UnifiedRequestsPage />)
     const table = await screen.findByRole('table', { name: 'Your requests' })
@@ -96,5 +99,34 @@ describe('Requests (§5.11)', () => {
     fireEvent.change(within(dialog).getByLabelText('Details'), { target: { value: 'Back support' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Submit request' }))
     expect(await within(dialog).findByText(/no approval route set up/)).toBeInTheDocument()
+  })
+
+  it('marks a request urgent with one checkbox', async () => {
+    vi.mocked(requestService.create).mockResolvedValue({ ...detail, id: 'r3' })
+    renderPage(<UnifiedRequestsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /New request/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'New request' })
+    expect(within(dialog).queryByLabelText('Priority')).not.toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Laptop broke' } })
+    fireEvent.change(within(dialog).getByLabelText('Details'), { target: { value: 'Will not boot.' } })
+    fireEvent.click(within(dialog).getByLabelText('This is urgent'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit request' }))
+    await waitFor(() => expect(requestService.create).toHaveBeenCalledWith(expect.objectContaining({ priority: 'high' })))
+  })
+
+  it('lets IT start and finish an approved request from To fulfil', async () => {
+    mockUser('it_admin', ['request:create', 'request:read', 'request:fulfil'])
+    const approved = { ...summary, status: 'approved' as const, requester_name: 'Kavya Rao' }
+    vi.mocked(requestService.toFulfil).mockResolvedValue({ items: [approved], total: 1, page: 1, page_size: 20 })
+    vi.mocked(requestService.get).mockResolvedValue({ ...detail, ...approved })
+    vi.mocked(requestService.fulfil).mockResolvedValue({ ...detail, ...approved, status: 'in_progress' })
+    renderPage(<UnifiedRequestsPage />, { route: '/requests?view=fulfil' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Open request: 27-inch monitor' }))
+    const panel = await screen.findByRole('dialog', { name: '27-inch monitor' })
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Start work' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Start work on this request?' })
+    fireEvent.change(within(confirm).getByLabelText(/Note for the requester/), { target: { value: 'Ordered' } })
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Start work' }))
+    await waitFor(() => expect(requestService.fulfil).toHaveBeenCalledWith('r1', 'in_progress', 'Ordered'))
   })
 })

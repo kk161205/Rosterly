@@ -6,7 +6,6 @@ import type {
   ChainTemplateResponse,
   ChainTemplateUpdate,
 } from '@/features/approvalChains/types/approvalChains'
-import type { AssignableRole } from '@/features/admin/types/users'
 
 export const approvalChainService = {
   async list(requestType?: ChainRequestType): Promise<ChainTemplateListResponse> {
@@ -24,9 +23,5 @@ export const approvalChainService = {
 
   async delete(id: string): Promise<void> {
     await apiClient.delete(`/approval-chains/${id}`)
-  },
-
-  async getAssignableRoles(): Promise<AssignableRole[]> {
-    return (await apiClient.get<AssignableRole[]>('/users/assignable-roles')).data
   },
 }

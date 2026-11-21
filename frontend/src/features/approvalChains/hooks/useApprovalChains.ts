@@ -7,7 +7,6 @@ import type {
 } from '@/features/approvalChains/types/approvalChains'
 
 export const APPROVAL_CHAINS_KEY = ['approval-chains'] as const
-export const ASSIGNABLE_ROLES_KEY = ['assignable-roles'] as const
 
 export function useApprovalChains(requestType?: ChainRequestType) {
   return useQuery({
@@ -16,13 +15,7 @@ export function useApprovalChains(requestType?: ChainRequestType) {
   })
 }
 
-export function useAssignableRoles() {
-  return useQuery({
-    queryKey: ASSIGNABLE_ROLES_KEY,
-    queryFn: () => approvalChainService.getAssignableRoles(),
-    staleTime: 5 * 60 * 1000,
-  })
-}
+export { useAssignableRoles } from '@/features/admin/hooks/useAssignableRoles'
 
 export function useApprovalChainMutations() {
   const queryClient = useQueryClient()
