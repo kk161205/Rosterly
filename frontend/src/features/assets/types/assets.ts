@@ -10,8 +10,6 @@ export type AssetStatus =
   | 'retired'
   | 'lost'
 
-export type DepreciationMethod = 'straight_line' | 'declining_balance' | 'none'
-
 export interface CurrentHolderNested {
   id: string
   full_name: string
@@ -26,19 +24,17 @@ export interface Asset {
   name: string
   category: AssetCategory
   serial_number?: string | null
-  vendor: string
-  purchase_date: string
+  vendor?: string | null
+  purchase_date?: string | null
   // Decimals arrive as strings (Pydantic Decimal) — format with lib/format
-  purchase_cost: string
-  current_value: string
-  depreciation_method: DepreciationMethod
-  useful_life_months: number
+  purchase_cost?: string | null
+  /** Expected life, for replacement planning. There is no depreciation. */
+  useful_life_months?: number | null
   warranty_expiry?: string | null
   amc_expiry?: string | null
   status: AssetStatus
   current_holder_id?: string | null
   current_holder?: CurrentHolderNested | null
-  license_id?: string | null
   is_expiring_soon?: boolean
   created_at: string
   updated_at: string
@@ -65,11 +61,10 @@ export interface AssetCreatePayload {
   name: string
   category: AssetCategory
   serial_number?: string | null
-  vendor: string
-  purchase_date: string
-  purchase_cost: number
-  depreciation_method: DepreciationMethod
-  useful_life_months: number
+  vendor?: string | null
+  purchase_date?: string | null
+  purchase_cost?: number | null
+  useful_life_months?: number | null
   warranty_expiry?: string | null
   amc_expiry?: string | null
 }
@@ -78,11 +73,10 @@ export interface AssetUpdatePayload {
   name?: string
   category?: AssetCategory
   serial_number?: string | null
-  vendor?: string
-  purchase_date?: string
-  purchase_cost?: number
-  depreciation_method?: DepreciationMethod
-  useful_life_months?: number
+  vendor?: string | null
+  purchase_date?: string | null
+  purchase_cost?: number | null
+  useful_life_months?: number | null
   warranty_expiry?: string | null
   amc_expiry?: string | null
   status?: AssetStatus

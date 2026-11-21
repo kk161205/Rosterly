@@ -13,7 +13,7 @@ import { Alert, Button, ButtonLink, PageHeader, Status, TextField } from '@/ui'
 type CameraState = 'off' | 'starting' | 'on' | 'denied' | 'unavailable'
 
 /**
- * Check-in / check-out by QR (§5.9): point the camera at a label (it encodes
+ * Check-in / check-out by QR: point the camera at a label (it encodes
  * the asset tag) or type the tag; the matched asset shows its one next action,
  * then the scanner is ready for the next desk.
  */
@@ -127,7 +127,7 @@ export const AssetQRScannerPage: React.FC = () => {
                       : 'The camera is off.'}
                 </p>
                 {(camera === 'off' || camera === 'starting') && (
-                  <Button variant="secondary" className="border-paper text-paper hover:bg-paper hover:text-ink" isLoading={camera === 'starting'} onClick={startCamera}>
+                  <Button data-guide="qr.camera" variant="secondary" className="border-paper text-paper hover:bg-paper hover:text-ink" isLoading={camera === 'starting'} onClick={startCamera}>
                     <Camera className="h-4 w-4" aria-hidden="true" />
                     Start camera
                   </Button>
@@ -156,7 +156,7 @@ export const AssetQRScannerPage: React.FC = () => {
               void lookup(tag)
             }}
           >
-            <TextField
+            <TextField data-guide="qr.tag"
               label="Asset tag"
               placeholder="e.g. AST-0013"
               value={tag}
@@ -165,7 +165,7 @@ export const AssetQRScannerPage: React.FC = () => {
               autoCapitalize="characters"
               spellCheck={false}
             />
-            <Button type="submit" variant="secondary" isLoading={looking} disabled={!tag.trim()}>
+            <Button data-guide="qr.find" type="submit" variant="secondary" isLoading={looking} disabled={!tag.trim()}>
               Find
             </Button>
           </form>

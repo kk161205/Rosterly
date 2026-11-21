@@ -1,6 +1,6 @@
 import { daysUntil, formatDate } from '@/lib/format'
 
-/** "Ends 14 Jun 2027", amber within 30 days (§5.7 expiry warning), muted once past. */
+/** "Ends 14 Jun 2027", amber within 30 days (expiry warning), muted once past. */
 export function warrantyInfo(date: string | null | undefined): {
   text: string
   detail: string | null

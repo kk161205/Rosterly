@@ -7,7 +7,7 @@ import { ChangeStatusDialog } from '@/features/assets/components/actions/AssetAc
 import { warrantyInfo, toneClass } from '@/features/assets/lib/warranty'
 import type { Asset, AssetStatus } from '@/features/assets/types/assets'
 import { useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
-import { useSearchParamText, useUrlFilters } from '@/lib/useUrlFilters'
+import { useSearchParamText, useUrlFilters, pageFrom } from '@/lib/useUrlFilters'
 import { getErrorMessage } from '@/lib/errors'
 import { humanize } from '@/lib/format'
 import {
@@ -36,7 +36,7 @@ const PAGE_SIZE = 20
 type Tab = 'all' | AssetStatus
 
 /**
- * Assets (§5.7): status tabs with counts, search and category, a calm table,
+ * Assets: status tabs with counts, search and category, a calm table,
  * and a side panel with the next action. Below 768px rows stack.
  */
 export const AssetInventoryPage: React.FC = () => {
@@ -46,7 +46,7 @@ export const AssetInventoryPage: React.FC = () => {
   const [searchText, setSearchText] = useSearchParamText(params, update)
   const tab = (params.get('status') as Tab) || 'all'
   const category = params.get('category') ?? 'all'
-  const page = Number(params.get('page') ?? '1')
+  const page = pageFrom(params)
   const search = params.get('search') ?? ''
 
 
@@ -100,13 +100,13 @@ export const AssetInventoryPage: React.FC = () => {
         actions={
           <>
             {can('assets:lookup') && (
-              <ButtonLink to="/assets/qr" variant="secondary">
+              <ButtonLink data-guide="assets.scan" to="/assets/qr" variant="secondary">
                 <ScanLine className="h-4 w-4" aria-hidden="true" />
                 Scan QR
               </ButtonLink>
             )}
             {perms.canCreate && (
-              <Button variant="primary" onClick={() => setAdding(true)}>
+              <Button data-guide="assets.add" variant="primary" onClick={() => setAdding(true)}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Add asset
               </Button>
@@ -116,9 +116,9 @@ export const AssetInventoryPage: React.FC = () => {
       />
 
       <div className="flex flex-col gap-4">
-        <FilterTabs label="Filter by status" value={tab} onChange={(v) => update({ status: v })} tabs={tabs} />
+        <FilterTabs data-guide="assets.status" label="Filter by status" value={tab} onChange={(v) => update({ status: v })} tabs={tabs} />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <SearchInput
+          <SearchInput data-guide="assets.search"
             label="Search assets"
             placeholder="Search name, tag or serial number"
             value={searchText}

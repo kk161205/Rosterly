@@ -16,7 +16,6 @@ import {
   MaintenanceTicket,
   MaintenanceTicketCreatePayload,
 } from '@/features/assets/types/assets'
-import { Department } from '@/features/employees/types/employee'
 
 export const assetService = {
   /**
@@ -60,7 +59,7 @@ export const assetService = {
   },
 
   /**
-   * Raises a maintenance ticket for an asset (§5.10 minimal slice used by §5.8's Raise Ticket action).
+   * Raises a maintenance ticket for an asset (minimal slice used by Raise Ticket action).
    */
   async createMaintenanceTicket(payload: MaintenanceTicketCreatePayload): Promise<MaintenanceTicket> {
     const response = await apiClient.post<MaintenanceTicket>('/maintenance-tickets', payload)
@@ -80,14 +79,6 @@ export const assetService = {
    */
   async returnAsset(id: string, payload: AssetReturnPayload): Promise<AssetAssignment> {
     const response = await apiClient.post<AssetAssignment>(`/assets/${id}/return`, payload)
-    return response.data
-  },
-
-  /**
-   * Fetches departments for holder department filter dropdown.
-   */
-  async getDepartments(): Promise<Department[]> {
-    const response = await apiClient.get<Department[]>('/departments')
     return response.data
   },
 
@@ -149,7 +140,7 @@ export const assetService = {
   },
 
   /**
-   * GET /assets/lookup/{asset_tag} (§5.9) — the scanner only has the tag.
+   * GET /assets/lookup/{asset_tag} — the scanner only has the tag.
    */
   async lookupAssetByTag(assetTag: string): Promise<AssetDetailResponse> {
     const response = await apiClient.get<AssetDetailResponse>(`/assets/lookup/${encodeURIComponent(assetTag)}`)

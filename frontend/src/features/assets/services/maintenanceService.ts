@@ -26,7 +26,7 @@ export interface Assignee {
   full_name: string
 }
 
-/** Maintenance queue (§5.10). The API scopes the list: IT and auditors see all, others their own reports. */
+/** Maintenance queue. The API scopes the list: IT and auditors see all, others their own reports. */
 export const maintenanceService = {
   async list(filters: TicketFilters): Promise<MaintenanceTicketListResponse> {
     const { data } = await apiClient.get<MaintenanceTicketListResponse>('/maintenance-tickets', { params: filters })
@@ -38,7 +38,7 @@ export const maintenanceService = {
     return data
   },
 
-  /** Assets a ticket can be raised for: any (IT, via search) or the caller's own (§5.10 rule). */
+  /** Assets a ticket can be raised for: any (IT, via search) or the caller's own (rule). */
   async pickableAssets(opts: { search: string; anyAsset: boolean; userId: string }): Promise<PickableAsset[]> {
     if (opts.anyAsset) {
       const { data } = await apiClient.get<{ items: PickableAsset[] }>('/assets', {
@@ -55,11 +55,12 @@ export const maintenanceService = {
       .filter((a) => !q || a.name.toLowerCase().includes(q) || a.asset_tag.toLowerCase().includes(q))
   },
 
-  /** People who work tickets: IT admins and super admins, from the open directory (§5.3). */
+  /** People who work tickets: IT admins and super admins, from the open directory. */
   async assignees(): Promise<Assignee[]> {
     const fetchRole = async (role: string) =>
       (await apiClient.get<{ items: Assignee[] }>('/employees', { params: { role, page_size: 100 } })).data.items
     const [it, sa] = await Promise.all([fetchRole('it_admin'), fetchRole('super_admin')])
-    return [...it, ...sa].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    const unique = new Map([...it, ...sa].map((a) => [a.id, a]))
+    return [...unique.values()].sort((a, b) => a.full_name.localeCompare(b.full_name))
   },
 }

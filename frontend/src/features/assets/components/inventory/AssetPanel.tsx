@@ -14,7 +14,7 @@ import { formatMoney, humanize } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
 import { Alert, Button, ButtonLink, DetailRow, SidePanel, Status, cn } from '@/ui'
 
-/** Side panel for one asset in the list: the facts and its next action (UI plan §5.7). */
+/** Side panel for one asset in the list: the facts and its next action (UI plan). */
 export const AssetPanel: React.FC<{ asset: Asset | null; onOpenChange: (open: boolean) => void }> = ({
   asset,
   onOpenChange,
@@ -108,9 +108,11 @@ export const AssetPanel: React.FC<{ asset: Asset | null; onOpenChange: (open: bo
             <DetailRow label="Serial number">
               <span className="font-mono text-meta">{asset.serial_number || '—'}</span>
             </DetailRow>
-            <DetailRow label="Book value">
-              <span className="tabular-nums">{formatMoney(asset.current_value)}</span>
-            </DetailRow>
+            {asset.purchase_cost != null && (
+              <DetailRow label="Price">
+                <span className="tabular-nums">{formatMoney(asset.purchase_cost)}</span>
+              </DetailRow>
+            )}
             <DetailRow label="Warranty ends">
               <span className={cn('flex flex-col items-end', toneClass[warranty.tone])}>
                 <span>{warranty.text}</span>

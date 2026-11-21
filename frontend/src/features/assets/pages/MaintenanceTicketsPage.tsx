@@ -8,7 +8,7 @@ import { ASSETS_KEY } from '@/features/assets/hooks/useAssets'
 import type { MaintenanceTicket, TicketPriority, TicketStatus } from '@/features/assets/types/assets'
 import { useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
 import { INBOX_KEY } from '@/features/inbox/hooks/useInbox'
-import { useUrlFilters } from '@/lib/useUrlFilters'
+import { useUrlFilters, pageFrom } from '@/lib/useUrlFilters'
 import { getErrorMessage } from '@/lib/errors'
 import { formatAge, formatDate, humanize } from '@/lib/format'
 import {
@@ -52,7 +52,7 @@ const Priority: React.FC<{ value: string }> = ({ value }) => (
 )
 
 /**
- * Maintenance (§5.10): IT's working queue. Table by default with a board
+ * Maintenance: IT's working queue. Table by default with a board
  * toggle; the side panel changes status, priority and assignee. Everyone else
  * sees the tickets they raised and can raise one for a device they hold.
  */
@@ -64,7 +64,7 @@ export const MaintenanceTicketsPage: React.FC = () => {
   const tab = (params.get('status') as StatusTab) || 'active'
   const priority = params.get('priority') ?? ''
   const mine = params.get('mine') === '1'
-  const page = Number(params.get('page') ?? '1')
+  const page = pageFrom(params)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [raising, setRaising] = useState(false)
 
@@ -98,7 +98,7 @@ export const MaintenanceTicketsPage: React.FC = () => {
             : 'Tickets you’ve raised for your devices, and their progress.'
         }
         actions={
-          <Button variant="primary" onClick={() => setRaising(true)}>
+          <Button data-guide="maintenance.raise" variant="primary" onClick={() => setRaising(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             Raise ticket
           </Button>
@@ -107,7 +107,7 @@ export const MaintenanceTicketsPage: React.FC = () => {
 
       <div className="flex flex-col gap-4">
         {view === 'table' && (
-          <FilterTabs
+          <FilterTabs data-guide="maintenance.status"
             label="Filter by status"
             value={tab}
             onChange={(v) => update({ status: v === 'active' ? null : v })}
@@ -143,7 +143,7 @@ export const MaintenanceTicketsPage: React.FC = () => {
               </label>
             )}
           </div>
-          <FilterTabs
+          <FilterTabs data-guide="maintenance.view"
             label="View"
             className="shrink-0 border-b-0"
             value={view}

@@ -11,7 +11,7 @@ import type { Asset, AssetStatus, TicketPriority } from '@/features/assets/types
 import { Alert, Button, Dialog, SelectField, TextAreaField, TextField, cn, statusLabel } from '@/ui'
 
 /**
- * Asset actions (§5.7–§5.10), each a small dialog that calls the owning
+ * Asset actions, each a small dialog that calls the owning
  * endpoint and refreshes every asset view. Errors come back in the standard
  * envelope and are shown next to the form.
  */
@@ -87,7 +87,7 @@ export const AssignAssetDialog: React.FC<ActionProps> = ({ asset, open, onOpenCh
     queryFn: async () =>
       (
         await apiClient.get<{ items: PersonOption[] }>('/employees', {
-          params: { search: term || undefined, page_size: 6 },
+          params: { search: term || undefined, page_size: 6, status: 'active' },
         })
       ).data.items.filter((p) => p.status !== 'terminated' && p.status !== 'inactive'),
     enabled: open,
@@ -281,7 +281,7 @@ export const RaiseTicketDialog: React.FC<Omit<ActionProps, 'asset'> & { asset?: 
     return () => clearTimeout(t)
   }, [search])
 
-  // IT can raise for any asset; everyone else only for what they hold (§5.10)
+  // IT can raise for any asset; everyone else only for what they hold
   const anyAsset = can('maintenance_ticket:create') && can('assets:read')
   const options = useQuery({
     queryKey: ['ticket-asset-picker', anyAsset, term],
@@ -363,12 +363,15 @@ export const RaiseTicketDialog: React.FC<Omit<ActionProps, 'asset'> & { asset?: 
           error={fieldErrors.issue_description}
           autoFocus={Boolean(asset)}
         />
-        <SelectField
-          label="Priority"
-          options={PRIORITIES}
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as TicketPriority)}
-        />
+        {/* Reporters just describe the problem; IT sets the priority when triaging. */}
+        {can('maintenance_ticket:update') && (
+          <SelectField
+            label="Priority"
+            options={PRIORITIES}
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as TicketPriority)}
+          />
+        )}
       </div>
     </Dialog>
   )
@@ -376,7 +379,7 @@ export const RaiseTicketDialog: React.FC<Omit<ActionProps, 'asset'> & { asset?: 
 
 // ---------------------------------------------------------------- status (single or bulk)
 
-/** Statuses a person may set directly; "assigned" only comes from Assign (§5.7 PATCH rules). */
+/** Statuses a person may set directly; "assigned" only comes from Assign (PATCH rules). */
 const SETTABLE: AssetStatus[] = ['in_stock', 'under_maintenance', 'lost', 'retired']
 
 export const ChangeStatusDialog: React.FC<{

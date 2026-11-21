@@ -19,6 +19,7 @@ vi.mock('@/features/assets/services/assetService', () => ({
     getAssetMaintenance: vi.fn(),
     lookupAssetByTag: vi.fn(),
     updateAsset: vi.fn(),
+    createAsset: vi.fn(),
     bulkUpdateAssets: vi.fn(),
     returnAsset: vi.fn(),
   },
@@ -33,8 +34,6 @@ const asset = (over: Partial<Asset> = {}): Asset => ({
   vendor: 'Apple India',
   purchase_date: '2025-06-12',
   purchase_cost: '114900',
-  current_value: '78400',
-  depreciation_method: 'straight_line',
   useful_life_months: 48,
   warranty_expiry: '2027-06-14',
   amc_expiry: null,
@@ -61,7 +60,7 @@ beforeEach(() => {
   })
 })
 
-describe('Assets list (§5.7)', () => {
+describe('Assets list', () => {
   it('shows status tabs with server counts and the asset table', async () => {
     renderPage(<AssetInventoryPage />)
     expect(await screen.findByRole('button', { name: /All\s*42/ })).toBeInTheDocument()
@@ -93,6 +92,22 @@ describe('Assets list (§5.7)', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Edit details' }))
     expect(await screen.findByRole('dialog', { name: 'Edit details' })).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveValue('Dell P2422H')
+  })
+
+  it('adds an asset with just a name and category', async () => {
+    vi.mocked(assetService.createAsset).mockResolvedValue(asset({ id: 'a9' }))
+    renderPage(<AssetInventoryPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Add an asset|Add asset/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add an asset' })
+    expect(within(dialog).queryByLabelText(/Price/)).not.toBeInTheDocument() // under "More details"
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Spare monitor' } })
+    fireEvent.change(within(dialog).getByLabelText('Category'), { target: { value: 'monitor' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add asset' }))
+    await waitFor(() =>
+      expect(assetService.createAsset).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Spare monitor', category: 'monitor', vendor: null, purchase_cost: null, useful_life_months: 60 }),
+      ),
+    )
   })
 
   it('keeps the panel read-only for roles that cannot edit', async () => {
@@ -128,7 +143,7 @@ describe('Assets list (§5.7)', () => {
   })
 })
 
-describe('Asset record (§5.8)', () => {
+describe('Asset record', () => {
   beforeEach(() => {
     vi.mocked(assetService.getAssetDetail).mockResolvedValue({
       asset: asset(),
@@ -151,14 +166,14 @@ describe('Asset record (§5.8)', () => {
     ])
   })
 
-  it('shows holder, details, activity, book value and open tickets', async () => {
+  it('shows holder, details, activity, expected life and open tickets — no book value', async () => {
     renderPage(<AssetDetailPage />, { route: '/assets/a1', path: '/assets/:id' })
     expect(await screen.findByRole('heading', { level: 1, name: 'MacBook Air M2' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Aman Gupta' })).toHaveAttribute('href', '/employees/u1')
     expect(screen.getByRole('button', { name: 'Return to stock' })).toBeInTheDocument()
-    expect(screen.getByText('Straight line over 48 months')).toBeInTheDocument()
+    expect(screen.getByText('48 months · replace around Jun 2029')).toBeInTheDocument()
     expect(await screen.findByText('Assigned to Aman Gupta')).toBeInTheDocument()
-    expect(screen.getByText('68% of ₹1,14,900 · recalculated nightly')).toBeInTheDocument()
+    expect(screen.queryByText(/Book value/)).not.toBeInTheDocument()
     expect(screen.getAllByText('Battery drains overnight').length).toBeGreaterThan(0)
   })
 
@@ -170,7 +185,7 @@ describe('Asset record (§5.8)', () => {
   })
 })
 
-describe('QR check-in / check-out (§5.9)', () => {
+describe('QR check-in / check-out', () => {
   it('finds an asset by typed tag using the lookup endpoint', async () => {
     vi.mocked(assetService.lookupAssetByTag).mockResolvedValue({ asset: asset({ status: 'in_stock', current_holder: null }) })
     renderPage(<AssetQRScannerPage />)

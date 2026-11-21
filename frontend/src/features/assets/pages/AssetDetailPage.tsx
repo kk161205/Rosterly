@@ -5,7 +5,6 @@ import { MoreHorizontal } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useAssetDetail, useAssetHistory, useAssetPermissions, useRefreshAssets } from '@/features/assets/hooks/useAssets'
 import { assetService } from '@/features/assets/services/assetService'
-import { bookValueAt, depreciationSchedule, monthsBetween } from '@/features/assets/lib/depreciation'
 import { warrantyInfo, toneClass } from '@/features/assets/lib/warranty'
 import {
   AssignAssetDialog,
@@ -15,23 +14,27 @@ import {
 } from '@/features/assets/components/actions/AssetActionDialogs'
 import { AssetFormDialog } from '@/features/assets/components/actions/AssetFormDialog'
 import type { Asset, AssetAssignment, MaintenanceTicket } from '@/features/assets/types/assets'
-import { formatDate, formatMoney, humanize } from '@/lib/format'
+import { formatDate, formatMoney, humanize, parseLocalDate } from '@/lib/format'
 import { getErrorMessage, getErrorStatus } from '@/lib/errors'
 import { Alert, Button, Dialog, EmptyState, ErrorState, FilterTabs, Skeleton, Status, cn } from '@/ui'
 
 type Dialogs = 'assign' | 'return' | 'ticket' | 'edit' | 'status' | 'delete' | null
 type ActivityFilter = 'all' | 'assignments' | 'maintenance'
 
-const METHOD_TEXT = {
-  straight_line: 'Straight line',
-  declining_balance: 'Declining balance, 20% a year',
-  none: 'Not depreciated',
-} as const
+/** "36 months · replace around Mar 2029" — when to budget for a replacement. */
+function replacementText(asset: Asset): string {
+  if (!asset.useful_life_months) return '—'
+  const months = `${asset.useful_life_months} months`
+  if (!asset.purchase_date) return months
+  const bought = parseLocalDate(asset.purchase_date)
+  const due = new Date(bought.getFullYear(), bought.getMonth() + asset.useful_life_months, 1)
+  return `${months} · replace around ${due.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`
+}
 
 /**
- * Asset record (§5.8, UI plan Direction B): name, status and holder with the
- * next action; details; one activity timeline; and a side column with book
- * value, warranty and open tickets. Replaces the hero banner and tab set.
+ * Asset record (UI plan Direction B): name, status and holder with the
+ * next action; details; one activity timeline; and a side column with
+ * warranty and open tickets. Replaces the hero banner and tab set.
  */
 export const AssetDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -93,15 +96,15 @@ export const AssetDetailPage: React.FC = () => {
   }
 
   const primary = !perms.canUpdate ? null : asset.status === 'in_stock' ? (
-    <Button variant="primary" onClick={() => setDialog('assign')}>
+    <Button data-guide="asset.assign" variant="primary" onClick={() => setDialog('assign')}>
       Assign
     </Button>
   ) : asset.status === 'assigned' ? (
-    <Button variant="primary" onClick={() => setDialog('return')}>
+    <Button data-guide="asset.return" variant="primary" onClick={() => setDialog('return')}>
       Return to stock
     </Button>
   ) : asset.status === 'under_maintenance' ? (
-    <Button variant="primary" isLoading={busy} onClick={markRepaired}>
+    <Button data-guide="asset.repaired" variant="primary" isLoading={busy} onClick={markRepaired}>
       Mark repaired
     </Button>
   ) : null
@@ -137,7 +140,7 @@ export const AssetDetailPage: React.FC = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canRaise && asset.status !== 'retired' && (
-              <Button variant="secondary" onClick={() => setDialog('ticket')}>
+              <Button data-guide="asset.ticket" variant="secondary" onClick={() => setDialog('ticket')}>
                 Raise ticket
               </Button>
             )}
@@ -171,14 +174,13 @@ export const AssetDetailPage: React.FC = () => {
                 {asset.serial_number || '—'}
               </Fact>
               <Fact label="Category">{humanize(asset.category)}</Fact>
-              <Fact label="Vendor">{asset.vendor}</Fact>
-              <Fact label="Purchased">
-                {formatDate(asset.purchase_date)} · {formatMoney(asset.purchase_cost)}
+              <Fact label="Bought from">{asset.vendor || '—'}</Fact>
+              <Fact label="Bought">
+                {[asset.purchase_date && formatDate(asset.purchase_date), asset.purchase_cost != null && formatMoney(asset.purchase_cost)]
+                  .filter(Boolean)
+                  .join(' · ') || '—'}
               </Fact>
-              <Fact label="Depreciation">
-                {METHOD_TEXT[asset.depreciation_method]}
-                {asset.depreciation_method !== 'none' && ` over ${asset.useful_life_months} months`}
-              </Fact>
+              <Fact label="Expected life">{replacementText(asset)}</Fact>
               {asset.amc_expiry && <Fact label="AMC ends">{formatDate(asset.amc_expiry)}</Fact>}
             </dl>
           </section>
@@ -192,8 +194,7 @@ export const AssetDetailPage: React.FC = () => {
           />
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-9" aria-label="Value, warranty and open items">
-          <BookValue asset={asset} />
+        <aside className="flex min-w-0 flex-col gap-9" aria-label="Warranty and open items">
           <WarrantyBlock asset={asset} />
           <section aria-labelledby="open-heading">
             <h2 id="open-heading" className="mb-1.5 text-section text-ink">
@@ -383,7 +384,7 @@ const Activity: React.FC<{
         <h2 id="activity-heading" className="pb-2.5 text-section text-ink">
           Activity
         </h2>
-        <FilterTabs
+        <FilterTabs data-guide="asset.activity"
           label="Filter activity"
           value={filter}
           onChange={onFilter}
@@ -420,77 +421,6 @@ const Activity: React.FC<{
             </li>
           ))}
         </ol>
-      )}
-    </section>
-  )
-}
-
-const BookValue: React.FC<{ asset: Asset }> = ({ asset }) => {
-  const cost = Number(asset.purchase_cost)
-  const value = Number(asset.current_value)
-  const pct = cost > 0 ? Math.round((value / cost) * 100) : 100
-  const purchased = new Date(asset.purchase_date)
-  const elapsed = monthsBetween(purchased, new Date())
-  const life = asset.useful_life_months
-  const schedule = asset.depreciation_method === 'none' ? [] : depreciationSchedule(cost, asset.depreciation_method, life)
-  const endDate = new Date(purchased.getFullYear(), purchased.getMonth() + life, 1)
-  const fmtMonth = (d: Date) => d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-
-  // Plot in a 0–100 box stretched to the column; past solid navy, future dashed
-  const x = (m: number) => (m / Math.max(life, 1)) * 100
-  const y = (v: number) => 8 + (1 - v / Math.max(cost, 1)) * 84
-  const now = Math.min(elapsed, life)
-  const past = schedule.filter((p) => p.month <= now)
-  const future = schedule.filter((p) => p.month >= now)
-  const nowValue = bookValueAt(cost, asset.depreciation_method, life, now)
-  const pts = (list: { month: number; value: number }[]) => list.map((p) => `${x(p.month)},${y(p.value)}`).join(' ')
-
-  return (
-    <section aria-labelledby="value-heading">
-      <h2 id="value-heading" className="mb-1.5 text-section text-ink">
-        Book value
-      </h2>
-      <div className="text-metric tabular-nums text-ink">{formatMoney(asset.current_value)}</div>
-      <p className="mb-3 text-meta text-muted">
-        {pct}% of {formatMoney(asset.purchase_cost)} · recalculated nightly
-      </p>
-      {schedule.length > 1 && (
-        <>
-          <div className="relative h-16">
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full overflow-visible"
-              role="img"
-              aria-label={`Book value falls from ${formatMoney(cost)} in ${fmtMonth(purchased)} to ${formatMoney(
-                schedule[schedule.length - 1].value,
-              )} in ${fmtMonth(endDate)}`}
-            >
-              <line x1="0" y1="99" x2="100" y2="99" className="stroke-line" vectorEffect="non-scaling-stroke" />
-              {future.length > 1 && (
-                <polyline points={pts([{ month: now, value: nowValue }, ...future])} fill="none" className="stroke-control" strokeWidth="2" strokeDasharray="4 4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-              )}
-              {past.length > 0 && (
-                <polyline points={pts([...past, { month: now, value: nowValue }])} fill="none" className="stroke-navy" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-              )}
-            </svg>
-            <span
-              className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-navy"
-              style={{ left: `${x(now)}%`, top: `${y(nowValue)}%` }}
-              aria-hidden="true"
-            />
-          </div>
-          <div className="relative h-4 text-micro text-muted">
-            <span className="absolute left-0">{fmtMonth(purchased)}</span>
-            {/* "Today" sits under the dot, unless it would collide with an end label */}
-            {now / Math.max(life, 1) > 0.2 && now / Math.max(life, 1) < 0.8 && (
-              <span className="absolute -translate-x-1/2" style={{ left: `${x(now)}%` }}>
-                Today
-              </span>
-            )}
-            <span className="absolute right-0">{fmtMonth(endDate)}</span>
-          </div>
-        </>
       )}
     </section>
   )

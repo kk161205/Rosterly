@@ -38,7 +38,7 @@ beforeEach(() => {
   vi.mocked(maintenanceService.assignees).mockResolvedValue([{ id: 'me', full_name: 'Test User' }])
 })
 
-describe('Maintenance (§5.10)', () => {
+describe('Maintenance', () => {
   it('shows active tickets with asset, priority as a word and assignee', async () => {
     mockUser('it_admin', IT_ADMIN)
     renderPage(<MaintenanceTicketsPage />)
