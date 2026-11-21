@@ -1,0 +1,72 @@
+# Render Blueprint for the Rosterly API (README, Deployment).
+# The frontend is deployed separately on Vercel (frontend/vercel.json); the
+# database is Neon (set DATABASE_URL by hand — it is never committed).
+services:
+  - type: web
+    name: rosterly-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false # Neon connection string
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: MFA_ENCRYPTION_KEY
+        sync: false # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: CORS_ORIGINS
+        sync: false # the Vercel address, e.g. https://rosterly.vercel.app
+      - key: FRONTEND_BASE_URL
+        sync: false # the same Vercel address
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: rosterly-queue
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: rosterly-queue
+          property: connectionString
+      - key: EMAIL_DELIVERY_ENABLED
+        value: "false"
+      # The real client IP is the right-most X-Forwarded-For entry (added by Render's proxy).
+      # If the first deploy's audit log shows Render/Cloudflare addresses instead of people's,
+      # set CLIENT_IP_HEADER to the header Render documents (e.g. True-Client-IP).
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+
+  # The AI service: middleware with no database. It reads
+  # only through the API above, with each person's own token.
+  - type: web
+    name: rosterly-ai
+    runtime: python
+    plan: free
+    rootDir: ai-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: ENVIRONMENT
+        value: production
+      - key: GROQ_API_KEY
+        sync: false # from console.groq.com — never committed
+      - key: CORE_BACKEND_BASE_URL
+        sync: false # the rosterly-api address + /api/v1
+      - key: CORS_ORIGINS
+        sync: false # the Vercel address
+
+  - type: keyvalue
+    name: rosterly-queue
+    plan: free
+    ipAllowList: [] # internal connections only
+    maxmemoryPolicy: noeviction # a job queue must never drop queued jobs

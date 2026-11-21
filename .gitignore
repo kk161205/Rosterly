@@ -3,9 +3,8 @@
 .env.*
 !.env.example
 
-# Documentation & AI specifications (kept local / internal)
+# Local-only material: presentations, reports, working files
 docs/
-rules.md
 
 # Python
 __pycache__/
@@ -31,6 +30,9 @@ yarn-error.log*
 .vscode/
 .idea/
 *.swp
+
+# Celery beat's local schedule (written by `celery ... -B`)
+celerybeat-schedule*
 
 # Logs
 *.log
