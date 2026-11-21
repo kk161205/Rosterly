@@ -1,4 +1,4 @@
-// /onboarding and /offboarding (§5.5, §5.6) — backend ChecklistResponse
+// /onboarding and /offboarding — backend ChecklistResponse
 
 export type ChecklistType = 'onboarding' | 'offboarding'
 export type ChecklistItemStatus = 'pending' | 'in_progress' | 'done'
@@ -42,4 +42,25 @@ export interface ChecklistListResponse {
   page: number
   page_size: number
   total_pages: number
+}
+
+/** POST /onboarding/new-joiner */
+export interface NewJoinerPayload {
+  full_name: string
+  email: string
+  designation: string
+  date_of_joining: string
+  department_id?: string
+  manager_id?: string
+  role_id?: string
+  /** Tasks beyond the standard ones — the usual equipment and licences for people like them. */
+  extra_items?: { task_name: string; owner: 'it_admin' | 'hr_admin' }[]
+}
+
+export interface NewJoinerResult {
+  checklist: Checklist
+  /** Shown once so HR can pass it on. */
+  set_password_link: string
+  link_expires_in_minutes: number
+  email_sent: boolean
 }

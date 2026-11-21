@@ -6,7 +6,7 @@ import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { Alert, Button, Dialog, TextAreaField, TextField } from '@/ui'
 
 /**
- * "Are you sure?" before starting an offboarding (POST /offboarding, §5.6).
+ * "Are you sure?" before starting an offboarding (POST /offboarding).
  * It marks the person as leaving and lists their devices for IT, so it asks
  * first; while the request runs the dialog is locked (no closing, no edits,
  * no double submit).

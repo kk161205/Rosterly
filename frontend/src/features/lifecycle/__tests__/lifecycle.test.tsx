@@ -5,7 +5,9 @@ import { OffboardingWorkflowPage } from '@/features/lifecycle/pages/OffboardingW
 import { lifecycleService } from '@/features/lifecycle/services/lifecycleService'
 import type { Checklist } from '@/features/lifecycle/types/checklist'
 import { mockUser, renderPage } from '@/test/render'
+import { useRecommendations } from '@/features/lifecycle/services/recommendations'
 
+vi.mock('@/features/lifecycle/services/recommendations', () => ({ useRecommendations: vi.fn(() => ({ data: undefined })) }))
 vi.mock('@/features/auth/services/authService', () => ({ authService: { getCurrentUser: vi.fn() } }))
 vi.mock('@/features/lifecycle/services/lifecycleService', () => ({
   lifecycleService: {
@@ -13,12 +15,25 @@ vi.mock('@/features/lifecycle/services/lifecycleService', () => ({
     get: vi.fn(),
     setItemStatus: vi.fn(),
     startOnboarding: vi.fn(),
+    addNewJoiner: vi.fn(),
     startOffboarding: vi.fn(),
     completeOffboarding: vi.fn(),
   },
 }))
+vi.mock('@/features/admin/services/userManagementService', () => ({
+  userManagementService: {
+    assignableRoles: vi.fn().mockResolvedValue([
+      { id: 'r-emp', name: 'employee', description: null, is_system_role: true },
+      { id: 'r-mgr', name: 'manager', description: null, is_system_role: true },
+    ]),
+  },
+}))
 vi.mock('@/features/employees/services/employeeService', () => ({
-  employeeService: { getEmployees: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 8 }), getEmployeeById: vi.fn() },
+  employeeService: {
+    getEmployees: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 8 }),
+    getEmployeeById: vi.fn(),
+    getDepartments: vi.fn().mockResolvedValue([{ id: 'd1', name: 'Design', code: 'D', head_count: 3 }]),
+  },
 }))
 
 const checklist = (over: Partial<Checklist> = {}): Checklist => ({
@@ -50,7 +65,7 @@ beforeEach(() => {
   vi.mocked(lifecycleService.get).mockResolvedValue(checklist())
 })
 
-describe('Onboarding (§5.5)', () => {
+describe('Onboarding', () => {
   it('lists joiners with their first day and progress', async () => {
     mockUser('hr_admin', [])
     renderPage(<OnboardingWorkflowPage />)
@@ -58,7 +73,7 @@ describe('Onboarding (§5.5)', () => {
     expect(within(table).getByText('Kavya Rao')).toBeInTheDocument()
     expect(within(table).getByText('20 Jan 2099')).toBeInTheDocument()
     expect(within(table).getByText('1 of 3 done')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Start onboarding/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Add new joiner/ })).toBeInTheDocument()
   })
 
   it('opens the checklist with the viewer’s own tasks first and open', async () => {
@@ -69,13 +84,13 @@ describe('Onboarding (§5.5)', () => {
     const mine = await within(panel).findByRole('button', { name: /Your tasks/ })
     expect(mine).toHaveAttribute('aria-expanded', 'true')
     expect(within(panel).getByRole('button', { name: /HR admin/ })).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByRole('button', { name: /Start onboarding/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add new joiner/ })).not.toBeInTheDocument()
     fireEvent.click(within(panel).getByRole('button', { name: 'Mark done' }))
     await waitFor(() => expect(lifecycleService.setItemStatus).toHaveBeenCalledWith('onboarding', 'c1', 'i2', 'done'))
   })
 })
 
-describe('Offboarding (§5.6)', () => {
+describe('Offboarding', () => {
   it('only enables completion once every task is done', async () => {
     mockUser('hr_admin', [])
     vi.mocked(lifecycleService.get).mockResolvedValue(checklist({ type: 'offboarding', date_of_exit: '2099-01-31' }))
@@ -97,5 +112,75 @@ describe('Offboarding (§5.6)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Complete offboarding' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Complete and close account' }))
     await waitFor(() => expect(lifecycleService.completeOffboarding).toHaveBeenCalledWith('c1'))
+  })
+})
+
+describe('Add new joiner', () => {
+  it('creates the account and checklist, then shows the one-time link to copy', async () => {
+    mockUser('hr_admin', ['employee:create'])
+    vi.mocked(lifecycleService.list).mockResolvedValue({ checklists: [], total: 0, page: 1, page_size: 25, total_pages: 0 })
+    vi.mocked(lifecycleService.addNewJoiner).mockResolvedValue({
+      checklist: checklist(),
+      set_password_link: 'https://rosterly.app/reset-password?token=xyz',
+      link_expires_in_minutes: 4320,
+      email_sent: false,
+    })
+    renderPage(<OnboardingWorkflowPage />)
+    fireEvent.click((await screen.findAllByRole('button', { name: /Add new joiner/ }))[0])
+    const dialog = await screen.findByRole('dialog', { name: 'Add new joiner' })
+    const add = within(dialog).getByRole('button', { name: 'Add joiner' })
+    expect(add).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText('Full name'), { target: { value: 'Kavya Rao' } })
+    fireEvent.change(within(dialog).getByLabelText('Work email'), { target: { value: 'kavya@company.com' } })
+    fireEvent.change(within(dialog).getByLabelText('Job title'), { target: { value: 'Designer' } })
+    fireEvent.change(within(dialog).getByLabelText('Joining date'), { target: { value: '2099-01-20' } })
+    fireEvent.click(add)
+    await waitFor(() =>
+      expect(lifecycleService.addNewJoiner).toHaveBeenCalledWith(
+        expect.objectContaining({ full_name: 'Kavya Rao', email: 'kavya@company.com', designation: 'Designer', date_of_joining: '2099-01-20' }),
+      ),
+    )
+    expect(await screen.findByDisplayValue('https://rosterly.app/reset-password?token=xyz')).toBeInTheDocument()
+    expect(screen.getByText(/expires in 72 hours/)).toBeInTheDocument()
+  })
+})
+
+describe('Usual items for a new joiner', () => {
+  it('pre-ticks what similar joiners got; HR adjusts; the ticked ones become checklist tasks', async () => {
+    mockUser('hr_admin', ['employee:create'])
+    vi.mocked(lifecycleService.list).mockResolvedValue({ checklists: [], total: 0, page: 1, page_size: 25, total_pages: 0 })
+    vi.mocked(lifecycleService.addNewJoiner).mockResolvedValue({ checklist: checklist(), set_password_link: 'https://x/reset-password?token=t', link_expires_in_minutes: 60, email_sent: false })
+    vi.mocked(useRecommendations).mockReturnValue({
+      data: {
+        basis: { matches: 5, label: 'Usual for Product Designer joiners in Design' },
+        usual: [
+          { key: 'asset:laptop', label: 'Laptop', task: 'Prepare a laptop', owner: 'it_admin', share: 1, reason: '5 of the 5 most similar joiners got this' },
+          { key: 'licence:f', label: 'Figma', task: 'Give a Figma seat', owner: 'it_admin', share: 0.8, reason: '4 of the 5 most similar joiners got this', licence_id: 'f' },
+        ],
+        sometimes: [{ key: 'asset:monitor', label: 'Monitor', task: 'Prepare a monitor', owner: 'it_admin', share: 0.3, reason: '2 of the 5 most similar joiners got this' }],
+      },
+    } as unknown as ReturnType<typeof useRecommendations>)
+    renderPage(<OnboardingWorkflowPage />)
+    fireEvent.click((await screen.findAllByRole('button', { name: /Add new joiner/ }))[0])
+    const dialog = await screen.findByRole('dialog', { name: 'Add new joiner' })
+    const ready = within(dialog).getByRole('region', { name: 'Ready for their first day' })
+    expect(within(ready).getByText(/Usual for Product Designer joiners in Design/)).toBeInTheDocument()
+    expect(within(ready).getByRole('checkbox', { name: /Prepare a laptop/ })).toBeChecked()
+    expect(within(ready).getByRole('checkbox', { name: /Give a Figma seat/ })).toBeChecked()
+    expect(within(ready).getByRole('checkbox', { name: /Prepare a monitor/ })).not.toBeChecked()
+    expect(within(ready).getByRole('checkbox', { name: /Give a Figma seat/ })).toHaveAccessibleName(/4 of the 5 most similar joiners got this/)
+
+    fireEvent.click(within(ready).getByRole('checkbox', { name: /Give a Figma seat/ }))
+    fireEvent.click(within(ready).getByRole('checkbox', { name: /Prepare a monitor/ }))
+    fireEvent.change(within(dialog).getByLabelText('Full name'), { target: { value: 'Meera Iyer' } })
+    fireEvent.change(within(dialog).getByLabelText('Work email'), { target: { value: 'meera@company.com' } })
+    fireEvent.change(within(dialog).getByLabelText('Job title'), { target: { value: 'Product Designer' } })
+    fireEvent.change(within(dialog).getByLabelText('Joining date'), { target: { value: '2099-01-20' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add joiner' }))
+    await waitFor(() =>
+      expect(lifecycleService.addNewJoiner).toHaveBeenCalledWith(expect.objectContaining({
+        extra_items: [{ task_name: 'Prepare a laptop', owner: 'it_admin' }, { task_name: 'Prepare a monitor', owner: 'it_admin' }],
+      })),
+    )
   })
 })

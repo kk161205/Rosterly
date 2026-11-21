@@ -1,7 +1,16 @@
 import { apiClient } from '@/lib/api-client'
-import type { Checklist, ChecklistItem, ChecklistItemStatus, ChecklistListResponse, ChecklistStatus, ChecklistType } from '@/features/lifecycle/types/checklist'
+import type {
+  Checklist,
+  ChecklistItem,
+  ChecklistItemStatus,
+  ChecklistListResponse,
+  ChecklistStatus,
+  ChecklistType,
+  NewJoinerPayload,
+  NewJoinerResult,
+} from '@/features/lifecycle/types/checklist'
 
-/** Onboarding (§5.5) and offboarding (§5.6) share one shape; the path picks the type. */
+/** Onboarding and offboarding share one shape; the path picks the type. */
 export const lifecycleService = {
   async list(type: ChecklistType, params: { status?: ChecklistStatus; page: number; page_size: number }): Promise<ChecklistListResponse> {
     const { data } = await apiClient.get<ChecklistListResponse>(`/${type}`, { params })
@@ -18,7 +27,13 @@ export const lifecycleService = {
     return data
   },
 
-  /** POST /onboarding — creates the checklist from the template. */
+  /** POST /onboarding/new-joiner — creates the account and its checklist; returns a set-password link. */
+  async addNewJoiner(payload: NewJoinerPayload): Promise<NewJoinerResult> {
+    const { data } = await apiClient.post<NewJoinerResult>('/onboarding/new-joiner', payload)
+    return data
+  },
+
+  /** POST /onboarding — for someone who already has an account (e.g. rejoining). */
   async startOnboarding(employeeId: string): Promise<Checklist> {
     const { data } = await apiClient.post<Checklist>('/onboarding', { employee_id: employeeId })
     return data

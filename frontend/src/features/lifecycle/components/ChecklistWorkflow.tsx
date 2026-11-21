@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Plus, Search } from 'lucide-react'
 import { lifecycleService } from '@/features/lifecycle/services/lifecycleService'
+import { NewJoinerDialog } from '@/features/lifecycle/components/NewJoinerDialog'
 import type { Checklist, ChecklistItem, ChecklistItemStatus, ChecklistStatus, ChecklistType } from '@/features/lifecycle/types/checklist'
 import { employeeService } from '@/features/employees/services/employeeService'
 import { hasRole, roleLabel, rolesOf, useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
 import { INBOX_KEY } from '@/features/inbox/hooks/useInbox'
 import { ASSETS_KEY } from '@/features/assets/hooks/useAssets'
-import { useUrlFilters } from '@/lib/useUrlFilters'
+import { useUrlFilters, pageFrom } from '@/lib/useUrlFilters'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { daysUntil, formatDate } from '@/lib/format'
 import {
@@ -36,16 +36,16 @@ import {
 } from '@/ui'
 
 const PAGE_SIZE = 25
-// Creating and managing checklists is HR's and super admins' (§5.5, §5.6)
+// Creating and managing checklists is HR's and super admins'
 const MANAGER_ROLES = ['hr_admin', 'super_admin']
 
 const COPY = {
   onboarding: {
     title: 'Onboarding',
     description: 'New joiners and everything that has to be ready for their first day.',
-    start: 'Start onboarding',
+    start: 'Add new joiner',
     empty: 'No one is being onboarded',
-    emptyText: 'Start an onboarding when someone new joins; HR, IT and their manager each get their tasks.',
+    emptyText: 'Add someone when they’re joining; HR, IT and their manager each get their tasks.',
     dateVerb: (past: boolean) => (past ? 'Joined' : 'Joins'),
   },
   offboarding: {
@@ -89,7 +89,7 @@ const Progress: React.FC<{ c: Checklist; className?: string }> = ({ c, className
 )
 
 /**
- * Onboarding (§5.5) and offboarding (§5.6): a list with progress, and a side
+ * Onboarding and offboarding: a list with progress, and a side
  * panel with the checklist grouped by who owns each task — the viewer's own
  * tasks first and open, other teams' folded.
  */
@@ -99,10 +99,12 @@ export const ChecklistWorkflow: React.FC<{ type: ChecklistType }> = ({ type }) =
   const canManage = hasRole(user, ...MANAGER_ROLES)
   const { params, update } = useUrlFilters()
   const tab = (params.get('status') as ChecklistStatus) || 'in_progress'
-  const page = Number(params.get('page') ?? '1')
+  const page = pageFrom(params)
   const preselect = params.get('employee')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [addingJoiner, setAddingJoiner] = useState(false)
+  const openStart = () => (type === 'onboarding' ? setAddingJoiner(true) : setStarting(true))
 
   // Profile → "Start offboarding" lands here with ?employee=<id>
   useEffect(() => {
@@ -132,7 +134,7 @@ export const ChecklistWorkflow: React.FC<{ type: ChecklistType }> = ({ type }) =
         description={copy.description}
         actions={
           canManage && (
-            <Button variant="primary" onClick={() => setStarting(true)}>
+            <Button data-guide={type === 'onboarding' ? 'onboarding.start' : 'offboarding.start'} variant="primary" onClick={openStart}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               {copy.start}
             </Button>
@@ -140,7 +142,7 @@ export const ChecklistWorkflow: React.FC<{ type: ChecklistType }> = ({ type }) =
         }
       />
 
-      <FilterTabs
+      <FilterTabs data-guide={type === 'onboarding' ? 'onboarding.status' : 'offboarding.status'}
         label="Filter by status"
         value={tab}
         onChange={(v) => update({ status: v === 'in_progress' ? null : v })}
@@ -164,7 +166,7 @@ export const ChecklistWorkflow: React.FC<{ type: ChecklistType }> = ({ type }) =
           description={tab === 'in_progress' ? copy.emptyText : undefined}
           action={
             tab === 'in_progress' && canManage ? (
-              <Button variant="primary" onClick={() => setStarting(true)}>
+              <Button variant="primary" onClick={openStart}>
                 {copy.start}
               </Button>
             ) : undefined
@@ -227,6 +229,21 @@ export const ChecklistWorkflow: React.FC<{ type: ChecklistType }> = ({ type }) =
       )}
 
       <ChecklistPanel type={type} id={selectedId} canManage={canManage} onClose={() => setSelectedId(null)} />
+      {type === 'onboarding' && (
+        <NewJoinerDialog
+          open={addingJoiner}
+          onOpenChange={setAddingJoiner}
+          onExistingPerson={() => {
+            setAddingJoiner(false)
+            setStarting(true)
+          }}
+          onAdded={(c) => {
+            setAddingJoiner(false)
+            update({ status: null })
+            setSelectedId(c.id)
+          }}
+        />
+      )}
       <StartDialog
         type={type}
         open={starting}
@@ -265,7 +282,7 @@ const ChecklistPanel: React.FC<{ type: ChecklistType; id: string | null; canMana
   // Open the viewer's own tasks; if they own none (HR, super admin), open every team with work left
   useEffect(() => {
     const items = detail.data?.items ?? []
-    // Every role the viewer holds counts as theirs (§5.14 multi-role)
+    // Every role the viewer holds counts as theirs (multi-role)
     const mine = rolesOf(user)
     const own = items.filter((i) => i.owner_role_name && mine.includes(i.owner_role_name))
     setOpen(
@@ -563,7 +580,7 @@ const StartDialog: React.FC<{
       open={open}
       onOpenChange={onOpenChange}
       busy={busy}
-      title={COPY[type].start}
+      title={type === 'onboarding' ? 'Onboard someone with an account' : COPY[type].start}
       description={
         type === 'onboarding'
           ? 'Creates the standard checklist and gives HR, IT and the manager their tasks.'
@@ -574,8 +591,8 @@ const StartDialog: React.FC<{
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" isLoading={busy} disabled={!personId} onClick={start}>
-            {chosen ? `${COPY[type].start} for ${chosen.full_name.split(' ')[0]}` : COPY[type].start}
+          <Button data-guide={type === 'onboarding' ? 'onboarding.start-save' : 'offboarding.start-save'} variant="primary" isLoading={busy} disabled={!personId} onClick={start}>
+            {chosen ? `Start for ${chosen.full_name.split(' ')[0]}` : 'Start'}
           </Button>
         </>
       }
@@ -613,10 +630,7 @@ const StartDialog: React.FC<{
           </ul>
         </div>
         {type === 'onboarding' && (
-          <p className="text-meta text-muted">
-            Add new people from <Link to="/users" className="underline underline-offset-4">Access → Users</Link> first; their join date comes from
-            their record.
-          </p>
+          <p className="text-meta text-muted">For someone who already has an account, such as a person rejoining. Their join date comes from their record.</p>
         )}
         {type === 'offboarding' && (
           <>
