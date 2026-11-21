@@ -16,7 +16,7 @@ vi.mock('@/features/notifications/services/notificationService', () => ({
   },
 }))
 
-describe('Notifications Center (§5.16)', () => {
+describe('Notifications Center', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUser('employee', ['request:read'])
@@ -70,7 +70,7 @@ describe('Notifications Center (§5.16)', () => {
     })
   })
 
-  it('renders notifications grouped by date with accent bar for unread item', async () => {
+  it('renders notifications grouped by date, unread marked for screen readers', async () => {
     renderPage(<NotificationCenterPage />)
 
     expect(await screen.findByText('New laptop request needs approval')).toBeInTheDocument()
@@ -102,17 +102,21 @@ describe('Notifications Center (§5.16)', () => {
     })
   })
 
-  it('filters by category pills', async () => {
+  it('filters by category and by unread through the API', async () => {
     renderPage(<NotificationCenterPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^Equipment/ }))
+    await waitFor(() => expect(notificationService.list).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'hardware', unread_only: false, page: 1 })))
+    fireEvent.click(screen.getByRole('button', { name: /^Unread/ }))
+    await waitFor(() => expect(notificationService.list).toHaveBeenLastCalledWith(expect.objectContaining({ category: undefined, unread_only: true })))
+  })
 
-    const hardwareTab = await screen.findByRole('tab', { name: /hardware/i })
-    fireEvent.click(hardwareTab)
-
-    await waitFor(() => {
-      expect(notificationService.list).toHaveBeenCalledWith(
-        expect.objectContaining({ category: 'hardware' }),
-      )
-    })
+  it('pages through older notifications', async () => {
+    const base = vi.mocked(notificationService.list).getMockImplementation()
+    vi.mocked(notificationService.list).mockImplementation(async (params) => ({ ...(await base!(params)), total: 45 }))
+    renderPage(<NotificationCenterPage />)
+    expect(await screen.findByText(/Showing 1.20 of 45/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }))
+    await waitFor(() => expect(notificationService.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 20 })))
   })
 
   it('shows empty state when list has no notifications', async () => {

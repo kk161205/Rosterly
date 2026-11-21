@@ -25,7 +25,7 @@ export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({
   const { data } = useNotifications({ page: 1, page_size: 5 })
   const { markRead, markAllRead } = useNotificationMutations()
 
-  const items = data?.items?.slice(0, 5) || []
+  const items = data?.items ?? []
   const unreadCount = data?.unread_count ?? 0
 
   useEffect(() => {
@@ -67,9 +67,9 @@ export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({
       {isOpen && (
         <div
           role="dialog"
-          aria-label="Notification center preview"
+          aria-label="Notifications"
           className={cn(
-            'absolute top-full z-50 mt-2 w-80 sm:w-96 rounded-card border border-line bg-paper shadow-lg focus:outline-none',
+            'absolute top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-paper focus:outline-none sm:w-96',
             align === 'left' ? 'left-0' : 'right-0',
           )}
         >
@@ -87,7 +87,7 @@ export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({
                 type="button"
                 onClick={() => markAllRead.mutate()}
                 disabled={markAllRead.isPending}
-                className="flex items-center gap-1 text-micro text-muted hover:text-ink focus:outline-none"
+                className="flex min-h-10 items-center gap-1 text-meta text-muted hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-navy"
               >
                 <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Mark all read</span>
@@ -95,10 +95,10 @@ export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({
             )}
           </div>
 
-          <div className="max-h-80 divide-y divide-line-soft overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto px-4">
             {items.length === 0 ? (
-              <div className="p-6 text-center text-body text-muted">
-                No notifications right now
+              <div className="py-6 text-center text-body text-muted">
+                Nothing new. Updates about your requests and equipment appear here.
               </div>
             ) : (
               items.map((item) => (
@@ -115,14 +115,14 @@ export const NotificationFlyout: React.FC<NotificationFlyoutProps> = ({
             )}
           </div>
 
-          <div className="border-t border-line bg-ground/50 p-2 text-center">
+          <div className="border-t border-line p-2 text-center">
             <Link
               to="/notifications"
               onClick={() => {
                 setIsOpen(false)
                 onNavigate?.()
               }}
-              className="inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-body font-medium text-navy hover:underline focus:outline-none"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-pill px-3 text-body font-medium text-navy hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-navy"
             >
               <span>View all notifications</span>
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
