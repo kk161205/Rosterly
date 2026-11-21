@@ -1,163 +1,98 @@
 import React, { useState } from 'react'
-import { SidePanel, DetailRow, Button } from '@/ui'
-import { AuditActionChip } from '@/features/audit/components/AuditActionChip'
+import { Button, DetailRow, SidePanel } from '@/ui'
+import { humanize } from '@/lib/format'
+import { actionLabel, recordLabel, whenText } from '@/features/audit/lib/labels'
 import type { AuditLogItem } from '@/features/audit/types/audit'
 
-interface AuditDiffDrawerProps {
-  log: AuditLogItem | null
-  onClose: () => void
+const show = (v: unknown): string => {
+  if (v === null || v === undefined || v === '') return '—'
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (typeof v === 'string' || typeof v === 'number') return String(v)
+  return JSON.stringify(v)
 }
 
-export const AuditDiffDrawer: React.FC<AuditDiffDrawerProps> = ({ log, onClose }) => {
-  const [viewMode, setViewMode] = useState<'diff' | 'raw'>('diff')
-
+/** One audit event: who, what, when, and each field before → after. */
+export const AuditDiffDrawer: React.FC<{ log: AuditLogItem | null; onClose: () => void }> = ({ log, onClose }) => {
+  const [raw, setRaw] = useState(false)
   if (!log) return null
 
-  const before = log.before_state || {}
-  const after = log.after_state || {}
-
-  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)])).sort()
-
-  const formattedDate = new Date(log.created_at).toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
+  const before = log.before_state ?? {}
+  const after = log.after_state ?? {}
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)])).sort()
+  const changed = keys.filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+  const hasBefore = log.before_state !== null && Object.keys(before).length > 0
 
   return (
     <SidePanel
-      open={Boolean(log)}
+      open
       onOpenChange={(open) => !open && onClose()}
-      title="Audit Event Details"
-      description={`Change inspection for ${log.action} on ${log.entity_type}`}
+      title={actionLabel(log.action)}
+      description={whenText(log.created_at)}
       footer={
-        <div className="flex w-full items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setViewMode('diff')}
-              className={`rounded-pill px-3 py-1 text-meta font-medium transition-colors ${
-                viewMode === 'diff' ? 'bg-ink text-paper' : 'bg-ground text-muted hover:text-ink'
-              }`}
-            >
-              Field Diff
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('raw')}
-              className={`rounded-pill px-3 py-1 text-meta font-medium transition-colors ${
-                viewMode === 'raw' ? 'bg-ink text-paper' : 'bg-ground text-muted hover:text-ink'
-              }`}
-            >
-              Raw JSON
-            </button>
-          </div>
+        <div className="flex w-full items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setRaw((r) => !r)} aria-pressed={raw}>
+            {raw ? 'Show changes' : 'Show raw data'}
+          </Button>
           <Button variant="secondary" size="sm" onClick={onClose}>
             Close
           </Button>
         </div>
       }
     >
-      <div className="flex flex-col gap-6">
-        {/* Event metadata */}
-        <section className="flex flex-col rounded-card border border-line bg-ground/40 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="font-mono text-micro text-muted">ID: {log.id}</span>
-            <AuditActionChip action={log.action} />
-          </div>
-          <DetailRow label="Timestamp">{formattedDate}</DetailRow>
-          <DetailRow label="Actor">
-            {log.actor ? `${log.actor.full_name} (${log.actor.email})` : 'System (automated)'}
+      <div className="flex flex-col gap-8">
+        <section>
+          <DetailRow label="Who">{log.actor ? `${log.actor.full_name} (${log.actor.email})` : 'Rosterly (automatic)'}</DetailRow>
+          <DetailRow label="Record">
+            {recordLabel(log.entity_type)} <span className="font-mono text-meta text-muted">{log.entity_id}</span>
           </DetailRow>
-          <DetailRow label="Target Resource">
-            <span className="font-mono text-meta font-medium">
-              {log.entity_type} / {log.entity_id}
-            </span>
-          </DetailRow>
-          <DetailRow label="Client IP">
+          <DetailRow label="From address">
             <span className="font-mono text-meta">{log.ip_address}</span>
+          </DetailRow>
+          <DetailRow label="Action code">
+            <span className="font-mono text-meta text-muted">{log.action}</span>
           </DetailRow>
         </section>
 
-        {/* Diff view */}
-        {viewMode === 'diff' ? (
-          <section className="flex flex-col gap-3">
-            <h4 className="text-body font-semibold text-ink">Field Changes</h4>
-            {allKeys.length === 0 ? (
-              <p className="text-meta text-muted">No state payload recorded for this event.</p>
-            ) : (
-              <div className="flex flex-col divide-y divide-line-soft rounded-card border border-line bg-paper">
-                {allKeys.map((key) => {
-                  const bVal = before[key]
-                  const aVal = after[key]
-                  const hasBefore = key in before
-                  const hasAfter = key in after
-                  const isModified = hasBefore && hasAfter && JSON.stringify(bVal) !== JSON.stringify(aVal)
-                  const isAdded = !hasBefore && hasAfter
-                  const isDeleted = hasBefore && !hasAfter
-
-                  return (
-                    <div key={key} className="flex flex-col gap-1.5 p-3 text-body">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-meta font-semibold text-ink">{key}</span>
-                        {isModified && (
-                          <span className="rounded-pill bg-navy-tint px-2 py-0.5 text-micro font-medium text-status-info">
-                            Modified
-                          </span>
-                        )}
-                        {isAdded && (
-                          <span className="rounded-pill bg-row-selected px-2 py-0.5 text-micro font-medium text-status-ok">
-                            Added
-                          </span>
-                        )}
-                        {isDeleted && (
-                          <span className="rounded-pill bg-bad-tint px-2 py-0.5 text-micro font-medium text-status-bad">
-                            Deleted
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-2 pt-1 font-mono text-micro sm:grid-cols-2">
-                        <div className="flex flex-col rounded bg-ground p-2">
-                          <span className="text-micro font-medium uppercase text-muted">Before</span>
-                          <span className="mt-1 break-all text-ink">
-                            {hasBefore ? JSON.stringify(bVal, null, 2) : <em className="text-muted">empty</em>}
-                          </span>
-                        </div>
-                        <div
-                          className={`flex flex-col rounded p-2 ${
-                            isModified || isAdded ? 'bg-navy-tint/40' : 'bg-ground'
-                          }`}
-                        >
-                          <span className="text-micro font-medium uppercase text-muted">After</span>
-                          <span className="mt-1 break-all text-ink">
-                            {hasAfter ? JSON.stringify(aVal, null, 2) : <em className="text-muted">removed</em>}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+        {raw ? (
+          <section className="flex flex-col gap-4">
+            {(['before_state', 'after_state'] as const).map((k) => (
+              <div key={k}>
+                <h3 className="border-b border-ink pb-2 text-section text-ink">{k === 'before_state' ? 'Before' : 'After'}</h3>
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all pt-2 font-mono text-meta text-ink">
+                  {JSON.stringify(log[k], null, 2) ?? 'null'}
+                </pre>
               </div>
-            )}
+            ))}
           </section>
         ) : (
-          <section className="flex flex-col gap-4 font-mono text-micro">
-            <div>
-              <h5 className="mb-1.5 text-meta font-semibold text-muted">Before State</h5>
-              <pre className="max-h-48 overflow-auto rounded-card border border-line bg-ground p-3 text-ink">
-                {JSON.stringify(log.before_state, null, 2) || 'null'}
-              </pre>
-            </div>
-            <div>
-              <h5 className="mb-1.5 text-meta font-semibold text-muted">After State</h5>
-              <pre className="max-h-48 overflow-auto rounded-card border border-line bg-ground p-3 text-ink">
-                {JSON.stringify(log.after_state, null, 2) || 'null'}
-              </pre>
-            </div>
+          <section aria-labelledby="audit-changes">
+            <h3 id="audit-changes" className="border-b border-ink pb-2 text-section text-ink">
+              {hasBefore ? 'What changed' : 'Recorded details'}
+            </h3>
+            {(hasBefore ? changed : keys).length === 0 ? (
+              <p className="pt-3 text-body text-muted">No details were recorded for this event.</p>
+            ) : (
+              <dl>
+                {(hasBefore ? changed : keys).map((k) => (
+                  <div key={k} className="grid grid-cols-1 gap-1 border-b border-line-soft py-3 last:border-b-0 sm:grid-cols-[10rem_1fr]">
+                    <dt className="text-meta text-muted">{humanize(k)}</dt>
+                    <dd className="break-words text-body text-ink">
+                      {hasBefore ? (
+                        <>
+                          <span className="text-muted line-through">{show(before[k])}</span>
+                          <span className="px-1.5 text-muted" aria-label="changed to">
+                            →
+                          </span>
+                          <span>{show(after[k])}</span>
+                        </>
+                      ) : (
+                        show(after[k])
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
           </section>
         )}
       </div>
