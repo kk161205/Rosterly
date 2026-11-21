@@ -28,6 +28,8 @@ import type {
   LicenseItem,
   LicenseUpdate,
 } from '@/features/licenses/types/licenses'
+import { getErrorMessage } from '@/lib/errors'
+import { formatDate, formatMoney } from '@/lib/format'
 
 export const SoftwareLicensesPage: React.FC = () => {
   const { user } = useCurrentUser()
@@ -44,7 +46,8 @@ export const SoftwareLicensesPage: React.FC = () => {
 
   const items = data?.items || []
   const total = data?.total || 0
-  const metrics = computeLicenseMetrics(items)
+  const all = useLicenses(1, 100) // the summary covers every licence, not just this page
+  const metrics = computeLicenseMetrics(all.data?.items ?? items)
 
   const handleOpenAdd = () => {
     setEditingLicense(null)
@@ -77,11 +80,11 @@ export const SoftwareLicensesPage: React.FC = () => {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Software Licences"
-        description="Track entitled seat allocations, renewal timelines, and device license holders."
+        title="Licences"
+        description="Software you pay for, who has a seat, and what isn’t used."
         actions={
           canManage && (
-            <Button variant="primary" onClick={handleOpenAdd}>
+            <Button data-guide="licenses.add" variant="primary" onClick={handleOpenAdd}>
               <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
               Add Licence
             </Button>
@@ -100,13 +103,13 @@ export const SoftwareLicensesPage: React.FC = () => {
         </div>
       ) : isError ? (
         <ErrorState
-          message={error instanceof Error ? error.message : 'Could not load software licenses.'}
+          message={getErrorMessage(error, 'Could not load software licences.')}
           onRetry={() => refetch()}
         />
       ) : items.length === 0 ? (
         <EmptyState
           title="No software licences configured"
-          description="Register software licenses and track seat utilization against your employee assets."
+          description="Add the software you pay for, then give people seats."
           action={
             canManage ? (
               <Button variant="secondary" onClick={handleOpenAdd}>
@@ -135,18 +138,9 @@ export const SoftwareLicensesPage: React.FC = () => {
                     ? Math.min(100, Math.round((lic.seats_used / lic.total_seats) * 100))
                     : 0
 
-                const renewalString = lic.renewal_date
-                  ? new Date(lic.renewal_date).toLocaleDateString('en-IN', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })
-                  : 'Perpetual / Ongoing'
+                const renewalString = lic.renewal_date ? formatDate(lic.renewal_date) : 'No renewal date'
 
-                const costString =
-                  lic.cost_per_seat != null
-                    ? `₹${Number(lic.cost_per_seat).toLocaleString('en-IN')}`
-                    : '—'
+                const costString = lic.cost_per_seat != null ? formatMoney(lic.cost_per_seat) : '—'
 
                 return (
                   <Tr
@@ -222,7 +216,8 @@ export const SoftwareLicensesPage: React.FC = () => {
       )}
 
       <LicenseSeatDrawer
-        license={selectedLicense}
+        license={selectedLicense ? (items.find((l) => l.id === selectedLicense.id) ?? selectedLicense) : null}
+        canEdit={hasPermission(user, 'software_license:update')}
         onClose={() => setSelectedLicense(null)}
       />
 

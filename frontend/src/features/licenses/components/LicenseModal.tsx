@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { getErrorMessage } from '@/lib/errors'
 import { Dialog, Button, TextField, Alert } from '@/ui'
 import type {
   LicenseCreate,
@@ -99,7 +100,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
       }
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save software licence.')
+      setError(getErrorMessage(err, 'The licence could not be saved.'))
     }
   }
 
@@ -107,15 +108,15 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={isEdit ? 'Edit Software Licence' : 'Add Software Licence'}
-      description="Track total entitled capacity and renewal schedule for enterprise software."
+      title={isEdit ? 'Edit licence' : 'Add licence'}
+      description="How many seats you’ve bought, what they cost, and when it renews."
       busy={isPending}
       footer={
         <div className="flex w-full items-center justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={isPending}>
+          <Button data-guide="licenses.add-save" variant="primary" onClick={handleSubmit} disabled={isPending}>
             {isEdit ? 'Save Changes' : 'Add Licence'}
           </Button>
         </div>
@@ -125,7 +126,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         {error && <Alert tone="error">{error}</Alert>}
 
         <TextField
-          label="Licence Name"
+          label="Name"
           placeholder="e.g. Figma Professional or Microsoft 365 E3"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -141,7 +142,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         />
 
         <TextField
-          label="Total Entitled Seats"
+          label="Seats bought"
           type="number"
           min={1}
           placeholder="e.g. 50"
@@ -151,7 +152,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         />
 
         <TextField
-          label="Cost per Seat (₹ INR) — Optional"
+          label="Price per seat a year (₹, optional)"
           type="number"
           placeholder="e.g. 1200"
           value={costPerSeat}
@@ -159,7 +160,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         />
 
         <TextField
-          label="Renewal Date — Optional"
+          label="Renews on (optional)"
           type="date"
           value={renewalDate}
           onChange={(e) => setRenewalDate(e.target.value)}

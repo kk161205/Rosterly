@@ -6,6 +6,9 @@ export interface LicenseItem {
   seats_used: number
   cost_per_seat: number | null
   renewal_date: string | null
+  /** "manual" (IT gives seats here) or a connected provider, e.g. "microsoft_365". */
+  source: string
+  last_synced_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -16,12 +19,12 @@ export interface LicenseListResponse {
 }
 
 export interface LicenseHolder {
+  assignment_id: string
   employee_id: string
   full_name: string
   email: string
-  asset_id: string
-  asset_tag: string
-  asset_name: string
+  source: string
+  assigned_at: string
 }
 
 export interface LicenseHoldersResponse {
