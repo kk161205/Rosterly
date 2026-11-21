@@ -4,15 +4,19 @@ from app.models.assets import (
     AssetAssignment,
     AssetCategory,
     AssetStatus,
-    DepreciationMethod,
     MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
+    LicenseAssignment,
     SoftwareLicense,
 )
 from app.models.auth import (
     Department,
     LoginAttempt,
+    MfaChallenge,
+    MfaRecoveryCode,
+    PasswordToken,
+    PasswordTokenPurpose,
     Permission,
     Role,
     RoleConflict,
@@ -29,6 +33,7 @@ from app.models.leave_attendance import (
     LeaveRequest,
     LeaveStatus,
     LeaveType,
+    Holiday,
 )
 from app.models.lifecycle import (
     Checklist,
@@ -37,6 +42,7 @@ from app.models.lifecycle import (
     ChecklistStatus,
     ChecklistType,
     Document,
+    DocumentFile,
     DocumentType,
 )
 from app.models.requests import (
@@ -51,8 +57,13 @@ from app.models.requests import (
 )
 from app.models.system import (
     AuditLog,
+    CompanySetting,
+    GuideStyle,
+    JobRun,
     Notification,
     NotificationChannel,
+    RateLimitEvent,
+    UserPreference,
 )
 
 __all__ = [
@@ -68,12 +79,16 @@ __all__ = [
     "UserStatus",
     "Session",
     "LoginAttempt",
+    "MfaChallenge",
+    "MfaRecoveryCode",
+    "PasswordToken",
+    "PasswordTokenPurpose",
     # Assets
     "SoftwareLicense",
+    "LicenseAssignment",
     "Asset",
     "AssetCategory",
     "AssetStatus",
-    "DepreciationMethod",
     "AssetAssignment",
     "MaintenanceTicket",
     "MaintenancePriority",
@@ -94,16 +109,23 @@ __all__ = [
     "ChecklistStatus",
     "ChecklistItemStatus",
     "Document",
+    "DocumentFile",
     "DocumentType",
     # Leave & Attendance
     "LeaveRequest",
     "LeaveBalance",
     "AttendanceRecord",
     "LeaveType",
+    "Holiday",
     "LeaveStatus",
     "AttendanceStatus",
     # System
     "Notification",
     "NotificationChannel",
     "AuditLog",
+    "RateLimitEvent",
+    "CompanySetting",
+    "JobRun",
+    "GuideStyle",
+    "UserPreference",
 ]

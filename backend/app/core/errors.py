@@ -1,16 +1,21 @@
 """
-Standard error envelope — project doc §7 rule 7.
+Standard error envelope.
 
 Every non-2xx response across every endpoint uses this exact shape:
     {"error": {"code": str, "message": str, "field_errors": dict | None}}
 
 Do not return a bare string or an ad-hoc error shape from any handler —
 that is what lets the frontend build one shared error-handling layer
-instead of one per page. See rules.md §3 rule 4.
+instead of one per page. See.
 """
+import logging
+
 from fastapi import Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger("rosterly.errors")
 
 
 class AppError(HTTPException):
@@ -53,8 +58,30 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+_HTTP_CODES = {404: "not_found", 405: "method_not_allowed", 401: "unauthenticated", 403: "forbidden"}
+
+
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Framework errors (unknown route, wrong method…) in the same envelope."""
+    if isinstance(exc, AppError):
+        return await app_error_handler(request, exc)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": _HTTP_CODES.get(exc.status_code, "http_error"),
+                "message": str(exc.detail) if exc.detail else "Request failed",
+                "field_errors": None,
+            }
+        },
+        headers=getattr(exc, "headers", None),
+    )
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    # Never leak internals in the message — log the real exception server-side instead.
+    # Never leak internals in the message — the traceback goes to the server log
+    # (with the request ID), not to the client.
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={
@@ -67,15 +94,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-# Common reusable errors, named per the codes already referenced in the project doc
+# Common reusable errors, named per the codes already referenced
 class NotFoundError(AppError):
     def __init__(self, message: str = "Resource not found"):
         super().__init__(404, "not_found", message)
 
 
 class ForbiddenError(AppError):
-    def __init__(self, message: str = "You do not have permission to do this"):
-        super().__init__(403, "forbidden", message)
+    def __init__(self, message: str = "You do not have permission to do this", code: str = "forbidden"):
+        super().__init__(403, code, message)
 
 
 class UnauthenticatedError(AppError):
@@ -99,7 +126,7 @@ class ConflictError(AppError):
 
 
 class FileInvalidError(AppError):
-    """§7 rule 8: rejected uploads return 400 with code: file_invalid."""
+    """rejected uploads return 400 with code: file_invalid."""
 
     def __init__(self, message: str = "Invalid file"):
         super().__init__(400, "file_invalid", message)
