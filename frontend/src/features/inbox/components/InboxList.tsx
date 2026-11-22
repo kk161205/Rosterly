@@ -9,24 +9,26 @@ type ListEntry = { type: 'open'; item: InboxItem } | { type: 'done'; item: DoneI
 
 export const entryId = (e: ListEntry) => (e.type === 'open' ? e.item.id : `done:${e.item.id}`)
 
-const GROUPS: { kind: InboxKind; label: string }[] = [
-  { kind: 'approval', label: 'Needs your decision' },
-  { kind: 'task', label: 'Your tasks' },
-  { kind: 'ticket', label: 'Tickets' },
+// Leave is a decision too, so it sits with request approvals
+const GROUPS: { kinds: InboxKind[]; label: string }[] = [
+  { kinds: ['approval', 'leave'], label: 'Needs your decision' },
+  { kinds: ['task'], label: 'Your tasks' },
+  { kinds: ['ticket'], label: 'Tickets' },
 ]
 
 const dotClass: Record<InboxKind, string> = {
   approval: 'bg-navy',
+  leave: 'bg-navy',
   task: 'bg-status-warn',
   ticket: 'bg-status-bad',
 }
 
-const CLUSTER_NOUN: Record<InboxKind, string> = { approval: 'requests', task: 'people', ticket: 'tickets' }
+const CLUSTER_NOUN: Record<InboxKind, string> = { approval: 'requests', leave: 'people', task: 'people', ticket: 'tickets' }
 
 /** Entries in display order — also the order "finish one, open the next" follows. */
 export function orderEntries(items: InboxItem[], done: DoneItem[]): ListEntry[] {
   return [
-    ...GROUPS.flatMap((g) => items.filter((i) => i.kind === g.kind).map((item) => ({ type: 'open' as const, item }))),
+    ...GROUPS.flatMap((g) => items.filter((i) => g.kinds.includes(i.kind)).map((item) => ({ type: 'open' as const, item }))),
     ...done.map((item) => ({ type: 'done' as const, item })),
   ]
 }
@@ -103,7 +105,7 @@ export const InboxList: React.FC<{
   const groups = [
     ...GROUPS.map((g) => ({
       label: g.label,
-      rows: toRows(entries.filter((e) => e.type === 'open' && e.item.kind === g.kind)),
+      rows: toRows(entries.filter((e) => e.type === 'open' && g.kinds.includes(e.item.kind))),
     })),
     { label: 'Done today', rows: toRows(entries.filter((e) => e.type === 'done')) },
   ].filter((g) => g.rows.length > 0)

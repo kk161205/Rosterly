@@ -7,6 +7,7 @@ import type {
   ChainStep,
   DoneItem,
   InboxItem,
+  LeaveDetail,
   TaskDetail,
   TicketDetail,
 } from '@/features/inbox/types/inbox'
@@ -19,6 +20,8 @@ import { Alert, Button, ButtonLink, DetailRow, Status, TextAreaField, cn } from 
 export interface InboxActions {
   approve: (requestId: string) => Promise<void>
   reject: (requestId: string, reason: string) => Promise<void>
+  approveLeave: (leaveId: string) => Promise<void>
+  rejectLeave: (leaveId: string, reason: string) => Promise<void>
   setTaskStatus: (task: TaskDetail, status: 'in_progress' | 'done') => Promise<void>
   updateTicket: (ticket: TicketDetail, changes: { status?: string; take?: boolean }) => Promise<void>
 }
@@ -278,6 +281,81 @@ const TaskView: React.FC<{ item: InboxItem; detail: TaskDetail; actions: InboxAc
   )
 }
 
+// ---------------------------------------------------------------- leave
+
+const LeaveView: React.FC<{ item: InboxItem; detail: LeaveDetail; actions: InboxActions }> = ({ item, detail, actions }) => {
+  const { busy, error, run } = useAction()
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const firstName = detail.employee.full_name.split(' ')[0]
+  const oneDay = detail.start_date === detail.end_date
+  const starts = daysUntil(detail.start_date) ?? 0
+
+  return (
+    <div className="flex flex-col gap-7">
+      <Header
+        eyebrow={`Leave · ${detail.working_days} working day${detail.working_days === 1 ? '' : 's'}`}
+        title={item.title}
+        sub={detail.employee.department ?? undefined}
+      />
+
+      {detail.reason && <p className="border-l-2 border-line pl-4 text-lead text-ink">{detail.reason}</p>}
+
+      <dl className="m-0">
+        <DetailRow label="Type">{detail.leave_type}</DetailRow>
+        <DetailRow label={oneDay ? 'Day' : 'Dates'}>
+          {oneDay ? formatDate(detail.start_date) : `${formatDate(detail.start_date)} – ${formatDate(detail.end_date)}`}
+        </DetailRow>
+        <DetailRow label="Starts">{starts === 0 ? 'Today' : starts === 1 ? 'Tomorrow' : starts < 0 ? 'Already started' : `In ${starts} days`}</DetailRow>
+      </dl>
+
+      {error && <Alert>{error}</Alert>}
+
+      {rejecting ? (
+        <div className="flex flex-col gap-3">
+          <TextAreaField
+            label={`Reason for ${firstName}`}
+            hint={`${firstName} sees this with the decision.`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            autoFocus
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="danger"
+              disabled={reason.trim().length === 0}
+              isLoading={busy === 'reject'}
+              onClick={() => run('reject', () => actions.rejectLeave(detail.leave_id, reason.trim()))}
+            >
+              Reject leave
+            </Button>
+            <Button variant="ghost" onClick={() => setRejecting(false)} disabled={busy !== null}>
+              Keep it
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            isLoading={busy === 'approve'}
+            disabled={busy !== null}
+            onClick={() => run('approve', () => actions.approveLeave(detail.leave_id))}
+          >
+            Approve
+          </Button>
+          <Button variant="danger" disabled={busy !== null} onClick={() => setRejecting(true)}>
+            Reject
+          </Button>
+          <ButtonLink variant="secondary" to="/leave">
+            Open leave
+          </ButtonLink>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------- tickets
 
 const TicketView: React.FC<{ item: InboxItem; detail: TicketDetail; actions: InboxActions }> = ({
@@ -369,6 +447,7 @@ export const InboxDetail: React.FC<
   const { item, actions } = props
   // key resets local state (reject form, errors) when the selection changes
   if (item.approval) return <ApprovalView key={item.id} item={item} detail={item.approval} actions={actions} />
+  if (item.leave) return <LeaveView key={item.id} item={item} detail={item.leave} actions={actions} />
   if (item.task) return <TaskView key={item.id} item={item} detail={item.task} actions={actions} />
   if (item.ticket) return <TicketView key={item.id} item={item} detail={item.ticket} actions={actions} />
   return null

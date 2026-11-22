@@ -13,6 +13,8 @@ vi.mock('@/features/inbox/services/inboxService', () => ({
     getInbox: vi.fn(),
     approveRequest: vi.fn(),
     rejectRequest: vi.fn(),
+    approveLeave: vi.fn(),
+    rejectLeave: vi.fn(),
     updateChecklistItem: vi.fn(),
     updateTicket: vi.fn(),
   },
@@ -92,7 +94,7 @@ function renderPage() {
   )
 }
 
-describe('Home with the Inbox (§5.2, §5.2a)', () => {
+describe('Home with the Inbox', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Wide layout: list and detail side by side
@@ -151,6 +153,39 @@ describe('Home with the Inbox (§5.2, §5.2a)', () => {
     )
   })
 
+  it('lists leave with the decisions and approves it through the leave endpoint', async () => {
+    const leave = {
+      id: 'leave:l1',
+      kind: 'leave' as const,
+      title: 'Alex Murphy · Casual leave',
+      meta: '2 working days · 07 Jan – 08 Jan',
+      created_at: '2026-10-20T09:00:00Z',
+      approval: null,
+      task: null,
+      ticket: null,
+      leave: {
+        leave_id: 'l1',
+        employee: { id: 'p9', full_name: 'Alex Murphy', department: 'Engineering' },
+        leave_type: 'Casual leave',
+        start_date: '2030-01-07',
+        end_date: '2030-01-08',
+        working_days: 2,
+        reason: 'Family visit',
+      },
+    }
+    vi.mocked(inboxService.getInbox).mockResolvedValue({ ...INBOX, items: [leave, ...INBOX.items] })
+    vi.mocked(inboxService.approveLeave).mockResolvedValue()
+    vi.mocked(inboxService.rejectLeave).mockResolvedValue()
+    renderPage()
+    expect(await screen.findByText('Family visit')).toBeInTheDocument()
+    expect(screen.getByText('Leave · 2 working days')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(screen.getByRole('button', { name: 'Reject leave' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(inboxService.approveLeave).toHaveBeenCalledWith('l1'))
+  })
+
   it('collapses tasks that share a title into one expandable row', async () => {
     const base = INBOX.items[1]
     const clone = (n: number, name: string) => ({
@@ -178,7 +213,7 @@ describe('Home with the Inbox (§5.2, §5.2a)', () => {
     expect(screen.getByRole('link', { name: /In stock\s*5/ })).toHaveAttribute('href', '/assets?status=in_stock')
   })
 
-  it('merges the numbers of every role held, each card once (§5.14)', async () => {
+  it('merges the numbers of every role held, each card once', async () => {
     vi.mocked(authService.getCurrentUser).mockResolvedValue({
       id: 'me', email: 'it@example.com', full_name: 'Miles Dyson', role: 'manager', roles: ['manager', 'it_admin'],
       permissions: ['request:approve', 'request:create'],

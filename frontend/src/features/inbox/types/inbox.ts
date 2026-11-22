@@ -1,6 +1,6 @@
-// GET /inbox — mirrors backend app/modules/inbox/schemas.py (§5.2a)
+// GET /inbox — mirrors backend app/modules/inbox/schemas.py
 
-export type InboxKind = 'approval' | 'task' | 'ticket'
+export type InboxKind = 'approval' | 'leave' | 'task' | 'ticket'
 export type CheckStatus = 'pass' | 'attention' | 'info'
 
 export interface PersonRef {
@@ -65,6 +65,16 @@ export interface TicketDetail {
   assigned_to_me: boolean
 }
 
+export interface LeaveDetail {
+  leave_id: string
+  employee: PersonRef
+  leave_type: string
+  start_date: string
+  end_date: string
+  working_days: number
+  reason: string | null
+}
+
 export interface InboxItem {
   id: string
   kind: InboxKind
@@ -74,6 +84,7 @@ export interface InboxItem {
   approval: ApprovalDetail | null
   task: TaskDetail | null
   ticket: TicketDetail | null
+  leave?: LeaveDetail | null
 }
 
 export interface DoneItem {

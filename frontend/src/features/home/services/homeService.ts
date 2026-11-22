@@ -1,7 +1,7 @@
 import { apiClient } from '@/lib/api-client'
 
 /**
- * GET /dashboard/summary (§5.2) — role-aware counts and short lists for Home.
+ * GET /dashboard/summary — role-aware counts and short lists for Home.
  * The payload's metric keys depend on the caller's role (backend
  * app/modules/dashboard/schemas.py), so fields are optional here.
  */

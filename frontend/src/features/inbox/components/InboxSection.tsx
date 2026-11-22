@@ -6,24 +6,13 @@ import { InboxList, entryId, orderEntries } from '@/features/inbox/components/In
 import { INBOX_KEY, useInbox } from '@/features/inbox/hooks/useInbox'
 import { inboxService } from '@/features/inbox/services/inboxService'
 import { getErrorMessage } from '@/lib/errors'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { ErrorState, SidePanel, Skeleton } from '@/ui'
 
-const KIND_LABEL = { approval: 'Approval', task: 'Task', ticket: 'Ticket' } as const
-
-function useIsWide(): boolean {
-  const query = '(min-width: 1280px)'
-  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
-  useEffect(() => {
-    const mql = window.matchMedia(query)
-    const onChange = () => setWide(mql.matches)
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [])
-  return wide
-}
+const KIND_LABEL = { approval: 'Approval', leave: 'Leave', task: 'Task', ticket: 'Ticket' } as const
 
 /**
- * "Waiting on you" — the Inbox (§5.2a) as a section of Home: everything
+ * "Waiting on you" — the Inbox as a section of Home: everything
  * waiting on the caller in one list, the selected item's context and actions
  * beside it. Finishing an item opens the next one. Below 1280px the detail
  * opens in a side panel.
@@ -32,7 +21,7 @@ export const InboxSection: React.FC = () => {
   const { user } = useCurrentUser()
   const inbox = useInbox(Boolean(user))
   const queryClient = useQueryClient()
-  const wide = useIsWide()
+  const wide = useMediaQuery('(min-width: 1280px)')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
@@ -72,6 +61,14 @@ export const InboxSection: React.FC = () => {
     reject: async (requestId, reason) => {
       await inboxService.rejectRequest(requestId, reason)
       await finish(`approval:${requestId}`)
+    },
+    approveLeave: async (leaveId) => {
+      await inboxService.approveLeave(leaveId)
+      await finish(`leave:${leaveId}`)
+    },
+    rejectLeave: async (leaveId, reason) => {
+      await inboxService.rejectLeave(leaveId, reason)
+      await finish(`leave:${leaveId}`)
     },
     setTaskStatus: async (task, status) => {
       await inboxService.updateChecklistItem(task.checklist_type, task.checklist_id, task.item_id, status)

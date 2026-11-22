@@ -108,7 +108,7 @@ function statsFor(role: string, s: HomeSummary | undefined, waiting: number | un
 const STAT_ORDER = ['super_admin', 'auditor', 'hr_admin', 'it_admin', 'manager']
 
 /**
- * Multi-role (§5.14): every held role's cards, widest first, each card once.
+ * Multi-role: every held role's cards, widest first, each card once.
  * Only one "waiting" card — the Inbox already merges approvals and tasks.
  */
 function mergedStats(roles: string[], s: HomeSummary | undefined, waiting: number | undefined): Stat[] {
@@ -157,8 +157,8 @@ const StatBlock: React.FC<{ stat: Stat; loading: boolean }> = ({ stat, loading }
 }
 
 /**
- * Home (§5.2): a greeting, the handful of numbers this role watches (each a
- * link to the list behind it), then "Waiting on you" — the Inbox (§5.2a).
+ * Home: a greeting, the handful of numbers this role watches (each a
+ * link to the list behind it), then "Waiting on you" — the Inbox.
  * People with little to approve also see their equipment and requests.
  */
 export const HomePage: React.FC = () => {
@@ -249,13 +249,13 @@ export const HomePage: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {can('assets:lookup') && (
-            <ButtonLink to="/assets/qr" variant="secondary">
+            <ButtonLink data-guide="home.scan" to="/assets/qr" variant="secondary">
               <ScanLine className="h-4 w-4" aria-hidden="true" />
               Scan a QR code
             </ButtonLink>
           )}
           {can('request:create') && (
-            <ButtonLink to="/requests?new=1" variant="primary">
+            <ButtonLink data-guide="home.new-request" to="/requests?new=1" variant="primary">
               <Plus className="h-4 w-4" aria-hidden="true" />
               New request
             </ButtonLink>
