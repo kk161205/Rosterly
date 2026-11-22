@@ -5,6 +5,7 @@ import {
   MENU_SELECTOR,
   canPress,
   findVisible,
+  press,
   sectionSelector,
   tabSelector,
   targetSelector,
@@ -127,7 +128,7 @@ export async function runPlan(plan: GuidePlan, deps: RunDeps): Promise<RunOutcom
 
       if (step.action === 'open' && !last && canPress(el, target.changes)) {
         live()
-        el.click()
+        press(el)
         continue
       }
       if (step.action === 'fill' && canPress(el, target.changes)) {

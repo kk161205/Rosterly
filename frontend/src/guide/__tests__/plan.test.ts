@@ -59,13 +59,37 @@ describe('validatePlan — every plan, local or AI, is checked', () => {
   it('never opens or fills something that changes data — it becomes a point', () => {
     const checked = validatePlan(
       show([
-        { action: 'open', target: 'leave.send', caption: 'Send' },
+        { action: 'open', target: 'notifications.mark-all', caption: 'Mark all read' },
         { action: 'fill', target: 'notifications.mark-all', value: 'x', caption: 'no' },
         { action: 'open', target: 'leave.apply', caption: 'ok' },
       ]),
       pages,
     )
     expect(steps(checked).map((s) => s.action)).toEqual(['point', 'point', 'point']) // a tour never ends on the Guide opening a form
+  })
+
+  it('opens the tab or form a target lives behind when the plan forgot to', () => {
+    const checked = validatePlan(
+      show([
+        { action: 'go', page: 'leave', caption: 'Open Leave' },
+        { action: 'point', target: 'leave.add-holiday', caption: 'Press Add holiday' },
+      ]),
+      pages,
+    )
+    expect(steps(checked)).toEqual([
+      { action: 'go', page: 'leave', caption: 'Open Leave' },
+      { action: 'open', target: 'leave.settings', caption: 'Open Settings tab' },
+      { action: 'point', target: 'leave.add-holiday', caption: 'Press Add holiday' },
+    ])
+    const already = validatePlan(
+      show([
+        { action: 'go', page: 'leave' },
+        { action: 'open', target: 'leave.settings', caption: 'Settings' },
+        { action: 'point', target: 'leave.add-holiday', caption: 'Add holiday' },
+      ]),
+      pages,
+    )
+    expect(steps(already).map((s) => s.action)).toEqual(['go', 'open', 'point']) // not opened twice
   })
 
   it('stops once a button has opened its form, except for that form’s own targets', () => {

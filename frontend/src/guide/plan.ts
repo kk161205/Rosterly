@@ -149,6 +149,12 @@ export function validatePlan(plan: GuidePlan, pages: ResolvedPage[]): GuidePlan 
     } else if (step.action === 'point' || step.action === 'open' || step.action === 'fill') {
       const target = targetById.get(step.target)
       if (!target) continue
+      // Something that only appears behind another control (a tab, a form): open that first if the plan forgot
+      const opener = target.after ? targetById.get(target.after) : undefined
+      if (opener && !opener.changes && !steps.some((s) => 'target' in s && s.target === opener.id)) {
+        steps.push({ action: 'open', target: opener.id, caption: `Open ${opener.label.replace(/\s*\(.*\)$/, '')}` })
+        if (opener.kind === 'button') opened = opener.id
+      }
       const caption = String(step.caption ?? target.label).slice(0, 120)
       if (step.action === 'open' && (target.changes || target.kind === 'field')) steps.push({ action: 'point', target: target.id, caption })
       else if (step.action === 'fill' && (target.changes || target.kind !== 'field' || typeof step.value !== 'string')) steps.push({ action: 'point', target: target.id, caption })

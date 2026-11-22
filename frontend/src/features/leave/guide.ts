@@ -15,6 +15,8 @@ export const GUIDE: GuidePage[] = [
       { id: 'leave.attendance', label: 'My month tab', kind: 'tab', changes: false },
       { id: 'leave.team', label: 'Team tab (approvers)', kind: 'tab', changes: false, visible: (u) => hasPermission(u, 'leave_request:approve') },
       { id: 'leave.settings', label: 'Settings tab (HR: leave types, holidays)', kind: 'tab', changes: false, visible: (u) => hasPermission(u, 'leave_policy:manage') },
+      { id: 'leave.add-holiday', label: 'Add holiday (date and name first)', kind: 'button', changes: true, after: 'leave.settings', visible: (u) => hasPermission(u, 'leave_policy:manage') },
+      { id: 'leave.add-type', label: 'Add leave type', kind: 'button', changes: false, after: 'leave.settings', visible: (u) => hasPermission(u, 'leave_policy:manage') },
     ],
   },
 ]

@@ -115,3 +115,22 @@ describe('Stop during a pause', () => {
     expect(clicks).toEqual([]) // the sidebar section was never clicked
   })
 })
+
+describe('Pressing tabs', () => {
+  it('opens a Radix tab, which ignores a bare click()', async () => {
+    const { Tabs, TabsList, TabsTrigger, TabsContent } = await import('@/ui')
+    const { press } = await import('@/guide/dom')
+    const { getByRole, findByText } = render(
+      <Tabs defaultValue="mine">
+        <TabsList label="Sections">
+          <TabsTrigger value="mine">Mine</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+        </TabsList>
+        <TabsContent value="mine">My things</TabsContent>
+        <TabsContent value="settings">Holidays live here</TabsContent>
+      </Tabs>,
+    )
+    press(getByRole('tab', { name: 'Settings' }))
+    expect(await findByText('Holidays live here')).toBeInTheDocument()
+  })
+})

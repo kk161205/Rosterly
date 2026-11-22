@@ -68,6 +68,12 @@ export function canPress(el: HTMLElement, changes: boolean): boolean {
   return true
 }
 
+/** Presses a control the way a person would. Radix tabs switch on mouse-down, not on a bare click(). */
+export function press(el: HTMLElement): void {
+  if (el.getAttribute('role') === 'tab') el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
+  el.click()
+}
+
 /** Types into a React-controlled field the way a person would (input events fire). */
 export function typeInto(el: HTMLElement, value: string): boolean {
   if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false

@@ -37,7 +37,7 @@ const LeaveTypesSection: React.FC = () => {
           </h2>
           <p className="text-meta text-muted">What people can ask for, and how many days they get each year.</p>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => setEditing('new')}>
+        <Button data-guide="leave.add-type" variant="secondary" size="sm" onClick={() => setEditing('new')}>
           Add leave type
         </Button>
       </div>
@@ -213,7 +213,7 @@ const HolidaysSection: React.FC = () => {
       >
         <TextField label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
         <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Diwali" className="min-w-0 flex-1" maxLength={100} />
-        <Button type="submit" variant="secondary" isLoading={busy} disabled={!date || !name.trim()}>
+        <Button data-guide="leave.add-holiday" type="submit" variant="secondary" isLoading={busy} disabled={!date || !name.trim()}>
           Add holiday
         </Button>
       </form>
