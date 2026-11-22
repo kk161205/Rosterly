@@ -40,9 +40,12 @@ services:
           property: connectionString
       - key: EMAIL_DELIVERY_ENABLED
         value: "false"
-      # The real client IP is the right-most X-Forwarded-For entry (added by Render's proxy).
-      # If the first deploy's audit log shows Render/Cloudflare addresses instead of people's,
-      # set CLIENT_IP_HEADER to the header Render documents (e.g. True-Client-IP).
+      # Render sits behind Cloudflare, which sets CF-Connecting-IP to the visitor's address
+      # (overwriting any value a visitor sends). X-Forwarded-For isn't usable here: Render's
+      # proxy appends to it without clearing it, and its right-most entry is an internal 10.x hop.
+      - key: CLIENT_IP_HEADER
+        value: CF-Connecting-IP
+      # Fallback only, if the header above is ever missing.
       - key: TRUSTED_PROXY_HOPS
         value: "1"
 
