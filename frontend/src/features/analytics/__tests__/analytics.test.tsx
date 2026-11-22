@@ -20,7 +20,7 @@ beforeEach(() => {
     ],
     unused_licence_cost_per_year: '20000',
     idle_assets: [
-      { asset_id: 'a1', asset_tag: 'AST-0007', name: 'Dell monitor', category: 'monitor', in_stock_since: '2026-05-01', days_idle: 170, current_value: '12000' },
+      { asset_id: 'a1', asset_tag: 'AST-0007', name: 'Dell monitor', category: 'monitor', in_stock_since: '2026-05-01', days_idle: 170, purchase_cost: '12000' },
     ],
     idle_asset_value: '12000',
     idle_threshold_days: 90,
@@ -42,7 +42,7 @@ beforeEach(() => {
   })
   vi.mocked(analyticsService.followUps).mockResolvedValue({
     leavers: [
-      { employee_id: 'e1', full_name: 'Logan Carter', date_of_exit: '2026-10-31', checklist_id: 'c1', assets: [{ asset_id: 'a3', asset_tag: 'AST-0010', name: 'ThinkPad', current_value: '98817' }] },
+      { employee_id: 'e1', full_name: 'Logan Carter', date_of_exit: '2026-10-31', checklist_id: 'c1', assets: [{ asset_id: 'a3', asset_tag: 'AST-0010', name: 'ThinkPad', purchase_cost: '98817' }] },
     ],
     unreturned_count: 1,
     unreturned_value: '98817',
@@ -61,7 +61,7 @@ beforeEach(() => {
   })
 })
 
-describe('Analytics (§5.15)', () => {
+describe('Analytics', () => {
   it('shows each total with a brief, not the records', async () => {
     mockUser('super_admin', ALL)
     renderPage(<AnalyticsPage />)

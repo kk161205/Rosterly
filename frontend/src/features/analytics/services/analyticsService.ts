@@ -1,7 +1,7 @@
 import { apiClient } from '@/lib/api-client'
 import type { Budget, DateRange, DepartmentCost, FollowUps, Savings, Turnaround } from '@/features/analytics/types/analytics'
 
-/** Analytics (§5.15). Each report has its own permission; the page only asks for what the caller may see. */
+/** Analytics. Each report has its own permission; the page only asks for what the caller may see. */
 export const analyticsService = {
   async savings(): Promise<Savings> {
     return (await apiClient.get<Savings>('/analytics/savings')).data

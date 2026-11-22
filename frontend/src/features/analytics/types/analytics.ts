@@ -1,4 +1,4 @@
-// /analytics/* (§5.15, revised 18 Oct 2026) — mirrors backend app/modules/analytics/schemas.py.
+// /analytics/* — mirrors backend app/modules/analytics/schemas.py.
 // Money arrives as decimal strings.
 
 export interface DateRange {
@@ -33,7 +33,7 @@ export interface IdleAsset {
   category: string
   in_stock_since: string
   days_idle: number
-  current_value: string
+  purchase_cost: string
 }
 
 export interface Savings {
@@ -74,7 +74,7 @@ export interface LeaverWithDevices {
   full_name: string
   date_of_exit: string | null
   checklist_id: string
-  assets: { asset_id: string; asset_tag: string; name: string; current_value: string }[]
+  assets: { asset_id: string; asset_tag: string; name: string; purchase_cost: string }[]
 }
 
 export interface FollowUps {

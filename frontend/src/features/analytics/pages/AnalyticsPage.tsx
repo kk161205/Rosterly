@@ -6,39 +6,24 @@ import { analyticsService } from '@/features/analytics/services/analyticsService
 import type { DateRange, ReplacementQuarter } from '@/features/analytics/types/analytics'
 import { roleLabel, useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
 import { getErrorMessage } from '@/lib/errors'
-import { formatDate, formatDuration as duration, formatMoney, formatShortDate, humanize } from '@/lib/format'
+import { formatDate, formatDuration as duration, formatMoney, formatShortDate, humanize, localISODate } from '@/lib/format'
 import { Button, ErrorState, FilterTabs, PageHeader, SidePanel, Skeleton, cn } from '@/ui'
+import { type CsvCell, downloadCsv } from '@/lib/csv'
 
 type RangeKey = '30' | '90' | '365'
-type Csv = { name: string; header: string[]; rows: (string | number | null)[][] }
+type Csv = { name: string; header: string[]; rows: CsvCell[][] }
 
 function rangeFor(days: number): DateRange {
   const to = new Date()
   const from = new Date(to.getTime() - days * 86400000)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  return { from: iso(from), to: iso(to) }
+  return { from: localISODate(from), to: localISODate(to) }
 }
 
-/** Download the rows a panel shows as CSV — no re-query. */
-function downloadCsv({ name, header, rows }: Csv) {
-  const esc = (v: string | number | null) => {
-    const s = v === null ? '' : String(v)
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  const url = URL.createObjectURL(
-    new Blob([[header, ...rows].map((r) => r.map(esc).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' }),
-  )
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${name}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 /**
- * Analytics (§5.15, revised): each section answers a question someone acts on —
+ * Analytics (revised): each section answers a question someone acts on
  * what we can save, where the money went, what to budget for, what needs
  * chasing, and where we're slow. The page shows the total and a one-line brief;
  * the records behind a figure open in a side panel. Sections appear only for
@@ -56,7 +41,7 @@ export const AnalyticsPage: React.FC = () => {
         title="Analytics"
         description="What we can save, what to budget for, what needs chasing, and where we're slow."
         actions={
-          <FilterTabs
+          <FilterTabs data-guide="analytics.range"
             label="Time range"
             value={rangeKey}
             onChange={setRangeKey}
@@ -145,7 +130,7 @@ const Tile: React.FC<{
             description={panelDescription}
             footer={
               csv && (
-                <Button variant="secondary" onClick={() => downloadCsv(csv)}>
+                <Button variant="secondary" onClick={() => downloadCsv(csv.name, csv.header, csv.rows)}>
                   <Download className="h-4 w-4" aria-hidden="true" />
                   Download CSV
                 </Button>
@@ -273,8 +258,8 @@ const SavingsSection: React.FC = () => {
               panelDescription="Reassign before buying new, or sell."
               csv={{
                 name: 'idle-equipment',
-                header: ['Tag', 'Asset', 'Category', 'In stock since', 'Days idle', 'Book value (INR)'],
-                rows: d.idle_assets.map((a) => [a.asset_tag, a.name, a.category, a.in_stock_since, a.days_idle, a.current_value]),
+                header: ['Tag', 'Asset', 'Category', 'In stock since', 'Days idle', 'Price (INR)'],
+                rows: d.idle_assets.map((a) => [a.asset_tag, a.name, a.category, a.in_stock_since, a.days_idle, a.purchase_cost]),
               }}
             >
               <List>
@@ -288,7 +273,7 @@ const SavingsSection: React.FC = () => {
                         </>
                       }
                     />
-                    <span className="shrink-0 text-body tabular-nums text-ink">{formatMoney(a.current_value)}</span>
+                    <span className="shrink-0 text-body tabular-nums text-ink">{formatMoney(a.purchase_cost)}</span>
                   </Row>
                 ))}
               </List>
@@ -539,8 +524,8 @@ const FollowUpsSection: React.FC<{ range: DateRange; rangeText: string }> = ({ r
               panelDescription="Collect before their last day."
               csv={{
                 name: 'leavers-with-devices',
-                header: ['Employee', 'Last day', 'Tag', 'Asset', 'Book value (INR)'],
-                rows: d.leavers.flatMap((l) => l.assets.map((a) => [l.full_name, l.date_of_exit, a.asset_tag, a.name, a.current_value])),
+                header: ['Employee', 'Last day', 'Tag', 'Asset', 'Price (INR)'],
+                rows: d.leavers.flatMap((l) => l.assets.map((a) => [l.full_name, l.date_of_exit, a.asset_tag, a.name, a.purchase_cost])),
               }}
             >
               {d.leavers.map((l) => (
@@ -549,7 +534,7 @@ const FollowUpsSection: React.FC<{ range: DateRange; rangeText: string }> = ({ r
                     {l.assets.map((a) => (
                       <Row key={a.asset_id} to={`/assets/${a.asset_id}`}>
                         <Main title={a.name} sub={<Tag>{a.asset_tag}</Tag>} />
-                        <span className="shrink-0 text-meta tabular-nums text-ink">{formatMoney(a.current_value)}</span>
+                        <span className="shrink-0 text-meta tabular-nums text-ink">{formatMoney(a.purchase_cost)}</span>
                       </Row>
                     ))}
                   </List>
