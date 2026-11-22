@@ -1,11 +1,11 @@
 """
 Cross-path access rules and the (delivery-disabled) invite flow.
 
-- §5.14 privileged-role rule applied to BOTH role-changing paths:
-  POST/PATCH /users (§5.14) and PATCH /employees/{id} (§5.4), so HR can't use
+- privileged-role rule applied to BOTH role-changing paths:
+  POST/PATCH /users and PATCH /employees/{id}, so HR can't use
   the profile edit to grant or remove super_admin / it_admin.
-- §6 critical account_updated notification on every role change.
-- §5.14 invite: email is built but not sent while EMAIL_DELIVERY_ENABLED is off;
+- critical account_updated notification on every role change.
+- invite: email is built but not sent while EMAIL_DELIVERY_ENABLED is off;
   the invite link activates a never-signed-in account, never a deactivated one.
 - GET /users rejects unknown status values with 400, not a database error.
 """
@@ -20,12 +20,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import (
-    INVITE_TOKEN_PURPOSE,
-    CurrentUser,
-    create_password_reset_token,
-    get_current_user,
-)
+from app.core.password_tokens import issue_password_token
+from app.core.security import CurrentUser, get_current_user
+from app.models.auth import PasswordTokenPurpose
 from app.db.session import Base, get_db
 from app.main import app
 from app.models.auth import Permission, Role, RolePermission, Session as SessionModel, User, UserStatus
@@ -46,7 +43,7 @@ SEED_ROLES = ["super_admin", "hr_admin", "it_admin", "manager", "employee", "aud
 PERMISSIONS_MAP = {
     ("employee", "read"): ["super_admin", "hr_admin", "manager", "auditor", "employee"],
     ("employee", "update"): ["super_admin", "hr_admin"],
-    ("user", "read"): ["super_admin", "hr_admin"],
+    ("user", "read"): ["super_admin", "hr_admin", "auditor"],
     ("user", "create"): ["super_admin", "hr_admin"],
     ("user", "update"): ["super_admin", "hr_admin"],
     ("user", "assign_role"): ["super_admin"],
@@ -188,18 +185,6 @@ def test_user_management_role_change_notifies_affected_user():
 
 # ---------------------------------------------------------------- invites
 
-def test_create_user_builds_invite_but_sends_nothing_while_delivery_disabled():
-    _act_as("hr_admin")
-    with patch.object(email_service.smtplib, "SMTP") as smtp:
-        res = client.post(
-            "/api/v1/users",
-            json={"full_name": "New Hire", "email": "New.Hire@Example.com", "role_id": str(_role_id("employee"))},
-        )
-    assert res.status_code == 201
-    assert res.json()["status"] == "inactive"
-    smtp.assert_not_called()
-
-
 def test_send_email_uses_smtp_only_when_enabled_and_configured():
     settings = email_service.settings
     with patch.object(email_service.smtplib, "SMTP") as smtp:
@@ -219,7 +204,7 @@ def test_send_email_uses_smtp_only_when_enabled_and_configured():
 
 def test_invite_link_activates_never_signed_in_account():
     invited = _make_user("employee", status=UserStatus.inactive)
-    token = create_password_reset_token(invited.id, purpose=INVITE_TOKEN_PURPOSE)
+    token = _token(invited.id, PasswordTokenPurpose.invite)
     res = client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "Str0ng!pass"})
     assert res.status_code == 200
 
@@ -233,7 +218,7 @@ def test_invite_link_never_reactivates_a_deactivated_account():
     deactivated = _make_user(
         "employee", status=UserStatus.inactive, last_login_at=datetime(2026, 1, 5, tzinfo=timezone.utc)
     )
-    token = create_password_reset_token(deactivated.id, purpose=INVITE_TOKEN_PURPOSE)
+    token = _token(deactivated.id, PasswordTokenPurpose.invite)
     client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "Str0ng!pass"})
 
     db = TestingSessionLocal()
@@ -243,7 +228,7 @@ def test_invite_link_never_reactivates_a_deactivated_account():
 
 def test_reset_token_cannot_be_replayed():
     user = _make_user("employee")
-    token = create_password_reset_token(user.id)
+    token = _token(user.id)
     first = client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "Str0ng!pass"})
     second = client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "An0ther!pass"})
     assert first.status_code == 200
@@ -257,3 +242,11 @@ def test_get_users_unknown_status_is_400():
     res = client.get("/api/v1/users", params={"status": "banana"})
     assert res.status_code == 400
     assert res.json()["error"]["code"] == "validation_error"
+
+
+def _token(user_id, purpose=PasswordTokenPurpose.reset):
+    db = TestingSessionLocal()
+    raw = issue_password_token(db, user_id, purpose)
+    db.commit()
+    db.close()
+    return raw

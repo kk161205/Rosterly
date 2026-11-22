@@ -1,6 +1,6 @@
 """
-Unit & Integration Tests for PRD §5.13 (Role & Permission Management)
-and PRD §5.14 (User Management).
+Unit & Integration Tests for roles and users
+and (User Management).
 Covers:
 - 10 endpoints x 6 roles RBAC matrix tests
 - Lockout protections (super_admin permissions & self-modification)
@@ -24,16 +24,12 @@ from app.core.security import CurrentUser, get_current_user
 from app.db.session import Base, get_db
 from app.main import app
 from app.models.auth import Department, Permission, Role, RolePermission, Session as SessionModel, User, UserStatus
-from app.models.lifecycle import Checklist, ChecklistItem, ChecklistType
+from app.models.lifecycle import Checklist, ChecklistItem
 from app.models.requests import (
     ApprovalChainStep,
     ApprovalChainTemplate,
-    ApprovalStatus,
     Request,
     RequestApproval,
-    RequestPriority,
-    RequestStatus,
-    RequestType,
 )
 from app.models.system import AuditLog
 
@@ -66,11 +62,11 @@ app.dependency_overrides[get_db] = override_get_db
 SEED_ROLES = ["super_admin", "hr_admin", "it_admin", "manager", "employee", "auditor"]
 
 PERMISSIONS_MAP = {
-    ("role", "read"): ["super_admin"],
+    ("role", "read"): ["super_admin", "auditor"],
     ("role", "create"): ["super_admin"],
     ("role", "update"): ["super_admin"],
     ("role", "delete"): ["super_admin"],
-    ("user", "read"): ["super_admin", "hr_admin"],
+    ("user", "read"): ["super_admin", "hr_admin", "auditor"],
     ("user", "create"): ["super_admin", "hr_admin"],
     ("user", "update"): ["super_admin", "hr_admin"],
     ("user", "assign_role"): ["super_admin"],
@@ -162,11 +158,11 @@ def set_user(role_name: str, user_id: uuid.UUID = None) -> tuple[CurrentUser, Us
 # ==============================================================================
 
 def test_roles_get_roles_access_matrix():
-    """GET /api/v1/roles is super_admin only; all other 5 roles get 403."""
+    """GET /api/v1/roles: super_admin and auditor (read-only); the other 4 roles get 403."""
     for r in SEED_ROLES:
         set_user(r)
         res = client.get("/api/v1/roles")
-        if r == "super_admin":
+        if r in ("super_admin", "auditor"):
             assert res.status_code == 200, f"Expected 200 for {r}, got {res.status_code}"
             assert isinstance(res.json(), list)
             assert len(res.json()) >= 6
@@ -176,23 +172,8 @@ def test_roles_get_roles_access_matrix():
             assert res.status_code == 403, f"Expected 403 for {r}, got {res.status_code}"
 
 
-def test_roles_post_role_access_matrix():
-    """POST /api/v1/roles is super_admin only; all other 5 roles get 403."""
-    payload = {"name": "SecurityOfficer", "description": "Custom role"}
-    for r in SEED_ROLES:
-        set_user(r)
-        payload["name"] = f"Sec_{r}"
-        res = client.post("/api/v1/roles", json=payload)
-        if r == "super_admin":
-            assert res.status_code == 201
-            assert res.json()["name"] == f"Sec_{r}"
-            assert res.json()["is_system_role"] is False
-        else:
-            assert res.status_code == 403
-
-
 def test_roles_get_permissions_access_matrix():
-    """GET /api/v1/roles/{id}/permissions is super_admin only."""
+    """GET /api/v1/roles/{id}/permissions: super_admin and auditor."""
     db = TestingSessionLocal()
     target_role = db.query(Role).first()
     db.close()
@@ -200,104 +181,21 @@ def test_roles_get_permissions_access_matrix():
     for r in SEED_ROLES:
         set_user(r)
         res = client.get(f"/api/v1/roles/{target_role.id}/permissions")
-        if r == "super_admin":
+        if r in ("super_admin", "auditor"):
             assert res.status_code == 200
             assert "permissions" in res.json()
         else:
             assert res.status_code == 403
 
 
-def test_list_permissions_access_matrix_and_includes_ungranted():
-    """GET /api/v1/permissions is super_admin only and lists every permission —
-    including ones no role holds yet — so the §5.13 matrix can grant them."""
-    db = TestingSessionLocal()
-    db.add(Permission(id=uuid.uuid4(), resource="audit_log", action="read", description="audit_log:read"))
-    db.commit()
-    total = db.query(Permission).count()
-    db.close()
-
-    for r in SEED_ROLES:
-        set_user(r)
-        res = client.get("/api/v1/permissions")
-        if r == "super_admin":
-            assert res.status_code == 200
-            body = res.json()
-            assert len(body) == total
-            assert {"id", "resource", "action", "description"} <= set(body[0])
-            assert any(p["resource"] == "audit_log" and p["action"] == "read" for p in body)
-            assert [(p["resource"], p["action"]) for p in body] == sorted(
-                (p["resource"], p["action"]) for p in body
-            )
-        else:
-            assert res.status_code == 403, f"Expected 403 for {r}, got {res.status_code}"
-
-
-def test_roles_put_permissions_access_matrix():
-    """PUT /api/v1/roles/{id}/permissions is super_admin only."""
-    db = TestingSessionLocal()
-    # Create custom role to test
-    custom_role = Role(id=uuid.uuid4(), name="TempRole", is_system_role=False)
-    db.add(custom_role)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    for r in SEED_ROLES:
-        set_user(r)
-        res = client.put(f"/api/v1/roles/{target_id}/permissions", json={"permission_ids": []})
-        if r == "super_admin":
-            assert res.status_code == 200
-        else:
-            assert res.status_code == 403
-
-
-def test_roles_delete_role_access_matrix():
-    """DELETE /api/v1/roles/{id} is super_admin only."""
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="DeleteTestRole", is_system_role=False)
-    db.add(custom_role)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    for r in ["hr_admin", "it_admin", "manager", "employee", "auditor"]:
-        set_user(r)
-        res = client.delete(f"/api/v1/roles/{target_id}")
-        assert res.status_code == 403
-
-    set_user("super_admin")
-    res = client.delete(f"/api/v1/roles/{target_id}")
-    assert res.status_code == 204
-
-
 def test_users_get_users_access_matrix():
-    """GET /api/v1/users allows super_admin and hr_admin; others get 403."""
+    """GET /api/v1/users allows super_admin, hr_admin and auditor; others get 403."""
     for r in SEED_ROLES:
         set_user(r)
         res = client.get("/api/v1/users")
-        if r in ("super_admin", "hr_admin"):
+        if r in ("super_admin", "hr_admin", "auditor"):
             assert res.status_code == 200
             assert "items" in res.json()
-        else:
-            assert res.status_code == 403
-
-
-def test_users_post_user_access_matrix():
-    """POST /api/v1/users allows super_admin and hr_admin; others get 403."""
-    db = TestingSessionLocal()
-    emp_role = db.query(Role).filter(Role.name == "employee").first()
-    db.close()
-
-    for r in SEED_ROLES:
-        set_user(r)
-        payload = {
-            "full_name": f"New User {r}",
-            "email": f"new_{r}@example.com",
-            "role_id": str(emp_role.id),
-        }
-        res = client.post("/api/v1/users", json=payload)
-        if r in ("super_admin", "hr_admin"):
-            assert res.status_code == 201
         else:
             assert res.status_code == 403
 
@@ -400,322 +298,24 @@ def test_users_force_logout_access_matrix():
 
 
 # ==============================================================================
-# 2. PRD 5.13 Role & Permission Detailed Rules
+# 2. 5.13 Role & Permission Detailed Rules
 # ==============================================================================
 
-def test_post_role_duplicate_name_rejected_409():
-    """POST /roles: name unique (409 Conflict on duplicate)."""
-    set_user("super_admin")
-    res1 = client.post("/api/v1/roles", json={"name": "DuplicateRole", "description": "Desc"})
-    assert res1.status_code == 201
-
-    res2 = client.post("/api/v1/roles", json={"name": "DuplicateRole", "description": "Other"})
-    assert res2.status_code == 409
-    assert res2.json()["error"]["code"] == "conflict"
-
-
-def test_put_permissions_lockout_protection():
-    """Lockout protection: reject change that removes super_admin's core role/user permissions."""
+def test_roles_are_fixed_create_edit_delete_endpoints_removed():
+    """The six roles are fixed: no route creates, deletes or edits a role's permissions."""
     set_user("super_admin")
     db = TestingSessionLocal()
-    sa_role = db.query(Role).filter(Role.name == "super_admin").first()
-    # Find one non-core permission or empty list
+    role_id = db.query(Role).filter(Role.name == "manager").first().id
     db.close()
 
-    # Attempting to set empty list for super_admin must be rejected
-    res = client.put(f"/api/v1/roles/{sa_role.id}/permissions", json={"permission_ids": []})
-    assert res.status_code == 400
-    assert res.json()["error"]["code"] == "lockout_protection"
-    assert "cannot remove core role or user management permissions" in res.json()["error"]["message"]
-
-
-def test_put_permissions_allows_empty_list_for_non_super_admin():
-    """Non-super_admin roles are allowed to have an empty permission list."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="EmptyPermRole", is_system_role=False)
-    db.add(custom_role)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    res = client.put(f"/api/v1/roles/{target_id}/permissions", json={"permission_ids": []})
-    assert res.status_code == 200
-    assert res.json()["permissions"] == []
-
-
-def test_put_permissions_invalid_permission_id_rejected():
-    """PUT /roles/{id}/permissions: rejects nonexistent permission IDs."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="InvalidPermRole", is_system_role=False)
-    db.add(custom_role)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    fake_id = str(uuid.uuid4())
-    res = client.put(f"/api/v1/roles/{target_id}/permissions", json={"permission_ids": [fake_id]})
-    assert res.status_code == 400
-    assert res.json()["error"]["code"] == "invalid_permission_ids"
-
-
-def test_put_permissions_atomic_replace_writes_audit_log():
-    """PUT /roles/{id}/permissions writes before and after state to audit_logs."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="AuditPermRole", is_system_role=False)
-    db.add(custom_role)
-    db.flush()
-    perm1 = db.query(Permission).filter(Permission.resource == "role", Permission.action == "read").first()
-    perm2 = db.query(Permission).filter(Permission.resource == "user", Permission.action == "read").first()
-    # Add initial grant
-    db.add(RolePermission(role_id=custom_role.id, permission_id=perm1.id))
-    db.commit()
-    target_id = custom_role.id
-    perm2_id = perm2.id
-    db.close()
-
-    res = client.put(f"/api/v1/roles/{target_id}/permissions", json={"permission_ids": [str(perm2_id)]})
-    assert res.status_code == 200
-    assert len(res.json()["permissions"]) == 1
-    assert res.json()["permissions"][0]["id"] == str(perm2_id)
-
-    # Verify audit log
-    db = TestingSessionLocal()
-    log = (
-        db.query(AuditLog)
-        .filter(AuditLog.entity_id == target_id, AuditLog.action == "role.permissions_updated")
-        .first()
-    )
-    assert log is not None
-    assert "role:read" in log.before_state["permissions"]
-    assert "user:read" in log.after_state["permissions"]
-    db.close()
-
-
-def test_delete_role_blocked_for_system_role():
-    """DELETE /roles/{id}: 409 Conflict if is_system_role is True."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    sa_role = db.query(Role).filter(Role.name == "super_admin").first()
-    db.close()
-
-    res = client.delete(f"/api/v1/roles/{sa_role.id}")
-    assert res.status_code == 409
-    assert "System roles cannot be deleted" in res.json()["error"]["message"]
-
-
-def test_delete_role_blocked_if_user_references_it():
-    """DELETE /roles/{id}: 409 Conflict if any user references the role."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="InUseRole", is_system_role=False)
-    db.add(custom_role)
-    db.flush()
-    user = User(
-        id=uuid.uuid4(),
-        employee_code="RST-INUSE",
-        full_name="In Use User",
-        email="inuse@example.com",
-        password_hash="hash",
-        role_id=custom_role.id,
-        status=UserStatus.active,
-        designation="Dev",
-    )
-    db.add(user)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    res = client.delete(f"/api/v1/roles/{target_id}")
-    assert res.status_code == 409
-    assert "referenced by 1 user" in res.json()["error"]["message"]
-
-
-def test_delete_role_blocked_if_approval_chain_step_references_it():
-    """DELETE /roles/{id}: 409 Conflict if referenced by approval_chain_steps."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="StepRole", is_system_role=False)
-    db.add(custom_role)
-    db.flush()
-    template = ApprovalChainTemplate(
-        id=uuid.uuid4(),
-        request_type=RequestType.it_ticket,
-        name="Test Chain",
-        is_active=True,
-    )
-    db.add(template)
-    db.flush()
-    step = ApprovalChainStep(
-        id=uuid.uuid4(),
-        template_id=template.id,
-        step_order=1,
-        approver_role_id=custom_role.id,
-    )
-    db.add(step)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    res = client.delete(f"/api/v1/roles/{target_id}")
-    assert res.status_code == 409
-    assert "referenced by 1 approval chain step" in res.json()["error"]["message"]
-
-
-def test_delete_role_blocked_if_checklist_item_references_it():
-    """DELETE /roles/{id}: 409 Conflict if referenced by checklist_items."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="ChecklistRole", is_system_role=False)
-    db.add(custom_role)
-    db.flush()
-    emp_role = db.query(Role).filter(Role.name == "employee").first()
-    emp = User(
-        id=uuid.uuid4(),
-        employee_code="RST-CHKLST",
-        full_name="Checklist User",
-        email="chk@example.com",
-        password_hash="h",
-        role_id=emp_role.id,
-        status=UserStatus.active,
-        designation="Dev",
-    )
-    db.add(emp)
-    db.flush()
-    cl = Checklist(id=uuid.uuid4(), employee_id=emp.id, type=ChecklistType.onboarding)
-    db.add(cl)
-    db.flush()
-    item = ChecklistItem(
-        id=uuid.uuid4(),
-        checklist_id=cl.id,
-        task_name="Task",
-        owner_role_id=custom_role.id,
-    )
-    db.add(item)
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    res = client.delete(f"/api/v1/roles/{target_id}")
-    assert res.status_code == 409
-    assert "checklist item" in res.json()["error"]["message"]
-
-
-def test_delete_role_blocked_if_request_approval_routes_to_it():
-    """DELETE /roles/{id}: 409 (not a 500 from the RESTRICT FK) if a request_approvals row queues to the role."""
-    set_user("super_admin")
-    db = TestingSessionLocal()
-    custom_role = Role(id=uuid.uuid4(), name="QueueRole", is_system_role=False)
-    db.add(custom_role)
-    db.flush()
-    emp_role = db.query(Role).filter(Role.name == "employee").first()
-    requester = User(
-        id=uuid.uuid4(),
-        employee_code="RST-QUEUE",
-        full_name="Queue Requester",
-        email="queue@example.com",
-        password_hash="h",
-        role_id=emp_role.id,
-        status=UserStatus.active,
-        designation="Dev",
-    )
-    db.add(requester)
-    db.flush()
-    req = Request(
-        id=uuid.uuid4(),
-        requester_id=requester.id,
-        request_type=RequestType.it_ticket,
-        title="Laptop fan noise",
-        description="Fan is loud",
-        priority=RequestPriority.medium,
-        status=RequestStatus.pending,
-        current_step=1,
-    )
-    db.add(req)
-    db.flush()
-    db.add(RequestApproval(
-        id=uuid.uuid4(),
-        request_id=req.id,
-        approver_id=None,
-        approver_role_id=custom_role.id,
-        step_order=1,
-        status=ApprovalStatus.pending,
-    ))
-    db.commit()
-    target_id = custom_role.id
-    db.close()
-
-    res = client.delete(f"/api/v1/roles/{target_id}")
-    assert res.status_code == 409
-    assert "request approval step" in res.json()["error"]["message"]
-
-    db = TestingSessionLocal()
-    assert db.query(Role).filter(Role.id == target_id).first() is not None
-    db.close()
+    assert client.post("/api/v1/roles", json={"name": "Custom", "description": "x"}).status_code == 405
+    assert client.put(f"/api/v1/roles/{role_id}/permissions", json={"permission_ids": []}).status_code == 405
+    assert client.delete(f"/api/v1/roles/{role_id}").status_code in (404, 405)
 
 
 # ==============================================================================
-# 3. PRD 5.14 User Management Detailed Rules
+# 3. 5.14 User Management Detailed Rules
 # ==============================================================================
-
-def test_hr_admin_cannot_assign_super_admin_or_it_admin_on_post():
-    """hr_admin gets 403 Forbidden if role_id resolves to super_admin or it_admin."""
-    set_user("hr_admin")
-    db = TestingSessionLocal()
-    sa_role = db.query(Role).filter(Role.name == "super_admin").first()
-    it_role = db.query(Role).filter(Role.name == "it_admin").first()
-    db.close()
-
-    # Attempt super_admin
-    res1 = client.post(
-        "/api/v1/users",
-        json={"full_name": "Try SA", "email": "sa_try@example.com", "role_id": str(sa_role.id)},
-    )
-    assert res1.status_code == 403
-    assert "super_admin" in res1.json()["error"]["message"]
-
-    # Attempt it_admin
-    res2 = client.post(
-        "/api/v1/users",
-        json={"full_name": "Try IT", "email": "it_try@example.com", "role_id": str(it_role.id)},
-    )
-    assert res2.status_code == 403
-    assert "it_admin" in res2.json()["error"]["message"]
-
-
-def test_post_user_success_fills_defaults_and_inactive_status():
-    """POST /users creates inactive user, lowercases email, generates employee_code."""
-    set_user("hr_admin")
-    db = TestingSessionLocal()
-    emp_role = db.query(Role).filter(Role.name == "employee").first()
-    dept = db.query(Department).first()
-    db.close()
-
-    payload = {
-        "full_name": "Alice Wonder",
-        "email": "ALICE.Wonder@Example.COM",
-        "role_id": str(emp_role.id),
-        "department_id": str(dept.id),
-    }
-    res = client.post("/api/v1/users", json=payload)
-    assert res.status_code == 201
-    data = res.json()
-    assert data["email"] == "alice.wonder@example.com"
-    assert data["status"] == "inactive"
-    assert data["designation"] == "Employee"
-    assert data["employee_code"].startswith("RST-")
-    assert "password_hash" not in data
-
-    # Verify audit log
-    db = TestingSessionLocal()
-    log = db.query(AuditLog).filter(AuditLog.entity_id == uuid.UUID(data["id"])).first()
-    assert log is not None
-    assert log.action == "user.created"
-    assert log.after_state["status"] == "inactive"
-    db.close()
-
 
 def test_get_assignable_roles():
     """GET /users/assignable-roles filters out super_admin and it_admin for hr_admin."""

@@ -1,5 +1,5 @@
 """
-§5.14 multi-role (revised 18 Oct 2026).
+multi-role.
 
 A user has one primary role plus optional additional roles; effective access is
 the union. Covers: the live session loads every role, permissions merge, the
@@ -26,7 +26,6 @@ from app.models.assets import (
     AssetAssignment,
     AssetCategory,
     AssetStatus,
-    DepreciationMethod,
     MaintenancePriority,
     MaintenanceStatus,
     MaintenanceTicket,
@@ -60,7 +59,7 @@ GRANTS = {
     ("maintenance_ticket", "read"): ["auditor", "it_admin", "super_admin"],
     ("maintenance_ticket", "update"): ["it_admin", "super_admin"],
     ("employee", "read"): EVERYONE_BUT_IT,
-    ("user", "read"): ["auditor", "hr_admin", "it_admin", "manager", "super_admin"],
+    ("user", "read"): ["auditor", "hr_admin", "super_admin"],
     ("user", "assign_role"): ["super_admin"],
     ("role", "read"): ["auditor", "super_admin"],
     ("role", "update"): ["super_admin"],
@@ -205,8 +204,7 @@ def test_additional_it_admin_sees_every_ticket():
     asset_holder = _user("employee")
     db = TestingSessionLocal()
     asset = Asset(id=uuid.uuid4(), asset_tag="AST-1", name="Laptop", category=AssetCategory.laptop, vendor="Dell",
-                  purchase_date=date(2025, 1, 1), purchase_cost=Decimal("1000"), current_value=Decimal("900"),
-                  depreciation_method=DepreciationMethod.straight_line, useful_life_months=36,
+                  purchase_date=date(2025, 1, 1), purchase_cost=Decimal("1000"),
                   status=AssetStatus.assigned, current_holder_id=asset_holder.id)
     db.add(asset)
     db.add(MaintenanceTicket(id=uuid.uuid4(), asset_id=asset.id, reported_by=reporter.id, issue_description="Broken",
