@@ -79,6 +79,10 @@ class FakeGroq:
 @pytest.fixture
 def fakes(monkeypatch) -> tuple[FakeBackend, FakeGroq]:
     backend, groq = FakeBackend(), FakeGroq()
+    import app.core.groq as groq_module
+    import app.guide.service as service_module
+    groq_module._budget.clear()  # one test's "busy" model must not carry into the next
+    service_module._cache.clear()
     monkeypatch.setattr(main, "make_backend", lambda token: BackendClient(token, transport=httpx.MockTransport(backend.handler)))
     monkeypatch.setattr(main, "make_groq", lambda: GroqClient(transport=httpx.MockTransport(groq.handler), api_key="test-key"))
     monkeypatch.setattr(main, "limiter", RateLimiter(per_minute=100, per_day=1000))

@@ -1,7 +1,7 @@
 """Onboarding recommendations: the maths and the endpoint."""
 from datetime import date
 
-from app.onboarding.recommend import recommend, title_similarity
+from app.onboarding.recommend import describe, recommend, seniority, title_similarity
 from tests.conftest import TOKEN
 
 TODAY = date(2026, 11, 21)
@@ -31,12 +31,12 @@ def test_titles_match_without_seniority_words():
 
 def test_pre_ticks_what_most_similar_joiners_got_and_offers_the_rest():
     rec = recommend(HISTORY, PRODUCT, "Product Designer", TODAY)
-    assert rec["basis"] == {"matches": 4, "label": "Usual for Product Designer joiners in Product"}
+    assert rec["basis"] == {"matches": 4, "label": "Based on 4 similar Product Designers in Product"}
     usual = {i["key"]: i for i in rec["usual"]}
     assert set(usual) == {"asset:laptop", "licence:lic-figma"}
     assert usual["licence:lic-figma"]["task"] == "Give a Figma seat"
     assert usual["licence:lic-figma"]["licence_id"] == "lic-figma"
-    assert usual["asset:laptop"]["reason"] == "4 of 4 similar joiners got this"
+    assert usual["asset:laptop"]["reason"] == "4 of 4 similar Product Designers got this"
     sometimes = {i["key"] for i in rec["sometimes"]}
     assert "asset:monitor" in sometimes and "licence:lic-miro" in sometimes
     everything = str(rec)
@@ -105,3 +105,30 @@ def test_the_reason_never_says_nobody_got_it():
     history = {"joiners": [joiner("Designer", licences=[]) for _ in range(10)] + [joiner("Researcher", licences=["X"]) for _ in range(30)]}
     for item in recommend(history, PRODUCT, "Designer", TODAY)["usual"]:
         assert not item["reason"].startswith("0 of")
+
+
+def test_seniority_is_read_from_the_title():
+    assert seniority("Software Engineer Intern") == 0
+    assert seniority("Junior Analyst") == 1
+    assert seniority("Software Engineer") == 2
+    assert seniority("Senior Software Engineer") == 3
+    assert seniority("Lead Engineer") == 4
+    assert describe("Software Engineer Intern", "Engineering") == "Software Engineer interns in Engineering"
+    assert describe("Senior Software Engineer", None) == "senior Software Engineers"
+
+
+def test_an_intern_is_not_given_what_seniors_usually_get():
+    eng = dict(dept="d-eng", dept_name="Engineering")
+    history = {"joiners": [
+        *[joiner("Senior Software Engineer", assets=["laptop", "monitor", "mobile"], licences=["GitHub", "AWS Console"], **eng) for _ in range(6)],
+        *[joiner("Software Engineer Intern", assets=["laptop"], licences=["GitHub"], **eng) for _ in range(3)],
+    ]}
+    rec = recommend(history, "d-eng", "Software Engineer Intern", TODAY)
+    usual = {i["label"]: i for i in rec["usual"]}
+    assert set(usual) == {"Laptop", "GitHub"}
+    assert usual["GitHub"]["reason"] == "3 of 3 similar Software Engineer interns got this"
+    assert rec["basis"]["label"] == "Based on 3 similar Software Engineer interns in Engineering"
+    offered = {i["label"] for i in rec["usual"] + rec["sometimes"]}
+    assert "AWS Console" not in offered and "Mobile" not in offered  # only seniors got these
+    senior = recommend(history, "d-eng", "Senior Software Engineer", TODAY)
+    assert {"AWS Console", "Mobile"} <= {i["label"] for i in senior["usual"]}

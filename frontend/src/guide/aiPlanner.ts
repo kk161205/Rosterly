@@ -7,6 +7,8 @@ import type { ResolvedPage } from '@/guide/types'
 /** What the AI planner is told besides the question (`/ai/guide`). */
 export interface PlannerContext {
   currentPage?: string
+  /** The asset or person open on screen, so "this one" means it. Only its id is sent. */
+  record?: { type: 'asset' | 'employee'; id: string }
   history: { question: string; answer: string }[]
   /** Aborted when the person presses Stop or asks something else. */
   signal?: AbortSignal
@@ -19,6 +21,7 @@ interface AiReply {
   text?: string
   table?: { columns: string[]; rows: string[][] }
   page?: string
+  links?: { label: string; path: string }[]
   question?: string
   choices?: { label: string; page: string }[]
   message?: string
@@ -40,7 +43,13 @@ export async function aiPlan(question: string, pages: ResolvedPage[], ctx: Plann
     res = await fetch(`${AI_BASE_URL}/ai/guide`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ message: question.slice(0, 400), current_page: ctx.currentPage, pages: toAiPages(pages), history: ctx.history.slice(-2).map((t) => ({ question: t.question.slice(0, 300), answer: t.answer.slice(0, 600) })) }),
+      body: JSON.stringify({
+        message: question.slice(0, 400),
+        current_page: ctx.currentPage,
+        ...(ctx.record ? { record: ctx.record } : {}),
+        pages: toAiPages(pages),
+        history: ctx.history.slice(-2).map((t) => ({ question: t.question.slice(0, 300), answer: t.answer.slice(0, 600) })),
+      }),
       // Stop/new question (signal) or 30 s, whichever comes first.
       signal: signal && typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : (signal ?? AbortSignal.timeout(30_000)),
     })
@@ -57,7 +66,7 @@ export function toPlan(reply: AiReply, question: string, pages: ResolvedPage[]):
     case 'show':
       return { kind: 'show', title: reply.title ?? 'Here’s how', steps: reply.steps ?? [] }
     case 'answer':
-      return { kind: 'answer', question, text: reply.text ?? '', table: reply.table, page: reply.page }
+      return { kind: 'answer', question, text: reply.text ?? '', table: reply.table, page: reply.page, links: reply.links }
     case 'ask':
       return {
         kind: 'ask',

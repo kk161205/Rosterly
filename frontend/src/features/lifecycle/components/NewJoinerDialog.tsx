@@ -230,7 +230,7 @@ export const NewJoinerDialog: React.FC<{
 
 /**
  * The usual equipment and licences for people like this joiner, already ticked
- * a sensible default, not an AI step. Hover an item to see why.
+ * a sensible default, not an AI step. Each item says how many similar joiners got it.
  */
 const ReadyList: React.FC<{
   label: string | null
@@ -241,10 +241,12 @@ const ReadyList: React.FC<{
 }> = ({ label, usual, sometimes, ticked, onToggle }) => {
   const row = (item: UsualItem) => (
     <li key={item.key}>
-      <label className="flex min-h-10 cursor-pointer items-center gap-3 text-body text-ink" title={item.reason}>
-        <input type="checkbox" checked={ticked.has(item.key)} onChange={() => onToggle(item.key)} className="h-4 w-4 accent-navy" />
-        <span>{item.task}</span>
-        <span className="sr-only"> — {item.reason}</span>
+      <label className="flex min-h-10 cursor-pointer items-center gap-3 py-1 text-body text-ink">
+        <input type="checkbox" checked={ticked.has(item.key)} onChange={() => onToggle(item.key)} className="h-4 w-4 shrink-0 accent-navy" />
+        <span className="flex flex-col">
+          <span>{item.task}</span>
+          <span className="text-meta text-muted">{item.reason}</span>
+        </span>
       </label>
     </li>
   )

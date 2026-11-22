@@ -13,6 +13,12 @@ export type GuideStep =
   | { action: 'fill'; target: string; value: string; caption: string }
   | { action: 'say'; caption: string }
 
+export interface AnswerLink {
+  label: string
+  /** An address in the app, e.g. "/assets/…". Only kept when it is a page this person can open. */
+  path: string
+}
+
 export interface AnswerTable {
   columns: string[]
   rows: string[][]
@@ -22,7 +28,7 @@ export type GuidePlan =
   | { kind: 'show'; title: string; steps: GuideStep[] }
   | { kind: 'ask'; question: string; choices: { label: string; plan: GuidePlan }[] }
   /** An answer in words (from the person's own data, or how something works), with a page to open after. */
-  | { kind: 'answer'; question: string; text: string; table?: AnswerTable; page?: string }
+  | { kind: 'answer'; question: string; text: string; table?: AnswerTable; page?: string; links?: AnswerLink[] }
   | { kind: 'none'; message: string }
 
 const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
@@ -126,7 +132,19 @@ export function validatePlan(plan: GuidePlan, pages: ResolvedPage[]): GuidePlan 
     const t = plan.table
     const columns = Array.isArray(t?.columns) ? t.columns.slice(0, 4).map((c) => String(c).slice(0, 40)) : []
     const rows = Array.isArray(t?.rows) ? t.rows.slice(0, 8).filter(Array.isArray).map((r) => r.slice(0, columns.length).map((c) => String(c ?? '').slice(0, 80))) : []
-    return { kind: 'answer', question: String(plan.question ?? '').slice(0, 300), text, ...(columns.length && rows.length ? { table: { columns, rows } } : {}), ...(page ? { page } : {}) }
+    const routes = pages.map((p) => new RegExp(`^${p.route.replace(/:[^/]+/g, '[A-Za-z0-9-]+')}$`))
+    const links = (Array.isArray(plan.links) ? plan.links : [])
+      .filter((l) => typeof l?.path === 'string' && typeof l?.label === 'string' && routes.some((r) => r.test(l.path)))
+      .slice(0, 5)
+      .map((l) => ({ label: l.label.slice(0, 80), path: l.path }))
+    return {
+      kind: 'answer',
+      question: String(plan.question ?? '').slice(0, 300),
+      text,
+      ...(columns.length && rows.length ? { table: { columns, rows } } : {}),
+      ...(page ? { page } : {}),
+      ...(links.length ? { links } : {}),
+    }
   }
   if (plan.kind === 'ask') {
     const choices = plan.choices.map((c) => ({ ...c, plan: validatePlan(c.plan, pages) })).filter((c) => c.plan.kind !== 'none')

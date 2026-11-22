@@ -81,5 +81,5 @@ Reply with ONE JSON object: {"text":"..","table":{"columns":[..],"rows":[[..]]}}
 - If the data doesn't answer it, say so plainly. Never invent anything."""
 
 
-def decide_prompt(pages: list[Page], question: str = "", current_page: str | None = None) -> str:
-    return DECIDE.format(tools=catalog(), pages=page_map_text(pages, focus_pages(question, pages, current_page)))
+def decide_prompt(pages: list[Page], question: str = "", current_page: str | None = None, with_record: bool = False) -> str:
+    return DECIDE.format(tools=catalog(with_record), pages=page_map_text(pages, focus_pages(question, pages, current_page)))

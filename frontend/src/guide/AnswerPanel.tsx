@@ -15,10 +15,12 @@ export const AnswerPanel: React.FC<{
   pages: ResolvedPage[]
   onClose: () => void
   onOpenPage: (pageId: string) => void
+  /** Opens a record named in the answer ("/assets/…"); already checked by validatePlan. */
+  onOpenLink: (path: string) => void
   onFollowUp: (question: string) => void
   /** Where the tile should rest: beside the panel's answer. */
   onShown: (el: HTMLElement | null) => void
-}> = ({ answer, pages, onClose, onOpenPage, onFollowUp, onShown }) => {
+}> = ({ answer, pages, onClose, onOpenPage, onOpenLink, onFollowUp, onShown }) => {
   const [followUp, setFollowUp] = useState('')
   const textRef = useRef<HTMLParagraphElement | null>(null)
   const page = answer.page ? pages.find((p) => p.id === answer.page) : undefined
@@ -79,6 +81,16 @@ export const AnswerPanel: React.FC<{
               ))}
             </tbody>
           </Table>
+        )}
+
+        {answer.links && answer.links.length > 0 && (
+          <nav aria-label="Open from this answer" className="flex flex-wrap gap-2">
+            {answer.links.map((link) => (
+              <Button key={link.path} variant="secondary" size="sm" onClick={() => onOpenLink(link.path)}>
+                {link.label}
+              </Button>
+            ))}
+          </nav>
         )}
 
         <p className="text-meta text-muted">Answered from what you can see in Rosterly. The Guide can be wrong — check the page if it matters.</p>

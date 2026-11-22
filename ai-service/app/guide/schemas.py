@@ -36,11 +36,22 @@ class Turn(BaseModel):
     answer: str = Field(max_length=600)
 
 
+class RecordRef(BaseModel):
+    """The record open on screen (an asset or a person), so "this one" means something.
+    Only its id: the backend decides what this person may read about it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["asset", "employee"]
+    id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
+
+
 class GuideRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=400)
     current_page: Optional[str] = Field(default=None, max_length=40)
+    record: Optional[RecordRef] = None
     pages: list[Page] = Field(min_length=1, max_length=40)
     history: list[Turn] = Field(default_factory=list, max_length=2)
 
@@ -58,6 +69,13 @@ class Choice(BaseModel):
     page: str
 
 
+class Link(BaseModel):
+    """A record to open from an answer. Built by this service from the data, never by a model."""
+
+    label: str
+    path: str
+
+
 class Table(BaseModel):
     columns: list[str]
     rows: list[list[str]]
@@ -73,6 +91,7 @@ class GuideResponse(BaseModel):
     question: Optional[str] = None
     choices: list[Choice] = Field(default_factory=list)
     message: Optional[str] = None
+    links: list[Link] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list) # backend endpoints read, for transparency
     model: Optional[str] = None
 

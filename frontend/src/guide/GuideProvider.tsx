@@ -6,6 +6,7 @@ import { guideAllowed, usePreferences } from '@/features/preferences/usePreferen
 import { pagesFor } from '@/guide/pageMap'
 import { planLocally, validatePlan, type GuidePlan } from '@/guide/plan'
 import { aiPlan, type PlannerContext } from '@/guide/aiPlanner'
+import { explainAccess } from '@/guide/access'
 import { AnswerPanel } from '@/guide/AnswerPanel'
 import { AI_BASE_URL } from '@/lib/api-client'
 import { voiceSupported } from '@/guide/voice'
@@ -29,6 +30,20 @@ export const defaultPlanner: Planner = AI_BASE_URL ? (question, pages, ctx) => a
 /** The page id for an address ("/assets/a1" → "asset"), so the AI knows where the person is. */
 function pageIdFor(pathname: string, pages: ResolvedPage[]): string | undefined {
   return pages.find((p) => new RegExp(`^${p.route.replace(/:[^/]+/g, '[^/]+')}$`).test(pathname))?.id
+}
+
+const RECORD_ROUTES: [RegExp, 'asset' | 'employee'][] = [
+  [/^\/assets\/([0-9a-fA-F-]{36})$/, 'asset'],
+  [/^\/employees\/([0-9a-fA-F-]{36})$/, 'employee'],
+]
+
+/** The asset or person open on screen ("/assets/<id>"), so the Guide can answer about "this one". */
+export function recordFor(pathname: string): PlannerContext['record'] {
+  for (const [pattern, type] of RECORD_ROUTES) {
+    const m = pathname.match(pattern)
+    if (m) return { type, id: m[1] }
+  }
+  return undefined
 }
 
 interface GuideContextValue {
@@ -289,7 +304,14 @@ export const GuideProvider: React.FC<{
       abortRef.current?.abort()
       const thinking = new AbortController()
       abortRef.current = thinking
-      void planner(text, pages, { currentPage: pageIdFor(pathRef.current, pages), history: historyRef.current, signal: thinking.signal })
+      // "Why can't I open …?" is answered from the page map itself — no AI call, nothing used up.
+      const access = explainAccess(text, user, pathRef.current)
+      if (access) {
+        abortRef.current = null
+        run(access)
+        return
+      }
+      void planner(text, pages, { currentPage: pageIdFor(pathRef.current, pages), record: recordFor(pathRef.current), history: historyRef.current, signal: thinking.signal })
         .catch(() => planLocally(text, pages)) // the AI is down: fall back to the page map
         .then((plan) => {
           // Stopped, or a newer question was asked meanwhile: drop this reply.
@@ -298,7 +320,7 @@ export const GuideProvider: React.FC<{
           run(plan)
         })
     },
-    [allowed, planner, pages, run],
+    [allowed, planner, pages, run, user],
   )
 
   const setBoxOpen = useCallback(
@@ -371,6 +393,11 @@ export const GuideProvider: React.FC<{
           answer={answer}
           pages={pages}
           onClose={stop}
+          onOpenLink={(path) => {
+            setAnswer(null)
+            void goHome()
+            navigate(path)
+          }}
           onOpenPage={(pageId) => {
             const page = pages.find((p) => p.id === pageId)
             setAnswer(null)
