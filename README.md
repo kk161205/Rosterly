@@ -14,11 +14,17 @@ the laptop on their desk, the licences they use, the requests they raise and the
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-1F2B67?logo=postgresql&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-Groq-1F2B67)
 
-[Features](#features) · [The Guide](#the-guide) · [Architecture](#architecture) · [Quick start](#quick-start) · [Tests](#tests) · [Deployment](#deployment)
+**[Live demo → rosterly-alpha.vercel.app](https://rosterly-alpha.vercel.app)**
+
+[Screenshots](#screenshots) · [Features](#features) · [The Guide](#the-guide) · [Architecture](#architecture) · [Quick start](#quick-start) · [Tests](#tests) · [Deployment](#deployment)
 
 </div>
 
 ---
+
+<p align="center">
+  <img src=".github/assets/screenshots/home.png" alt="Home: the role's key numbers and everything waiting on you, decided in place" width="900" />
+</p>
 
 ## Why Rosterly
 
@@ -28,6 +34,27 @@ When someone joins a company, HR opens a record, IT orders a laptop, someone buy
 - **Joining and leaving as checklists** owned by HR, IT and Facilities. A leaver can't be signed off while they still hold a device or a seat.
 - **Requests that route themselves** through approval chains set by cost, and no one approves two steps of the same request.
 - **Zero-trust access**: every request re-checks the session, the role and the record's scope. A revoked session stops on its very next click.
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src=".github/assets/screenshots/guide-answer.png" alt="The Guide answering from your own data" /><br/><sub><b>The Guide</b> answers from your own data, with your own access</sub></td>
+<td width="50%"><img src=".github/assets/screenshots/assets.png" alt="Asset inventory" /><br/><sub><b>Assets</b>: every device, who has it and its status</sub></td>
+</tr>
+<tr>
+<td><img src=".github/assets/screenshots/onboarding.png" alt="Onboarding checklist" /><br/><sub><b>Onboarding</b>: one checklist per joiner, tasks per role</sub></td>
+<td><img src=".github/assets/screenshots/requests.png" alt="Request with its approval chain" /><br/><sub><b>Requests</b>: approval chain and fulfilment, step by step</sub></td>
+</tr>
+<tr>
+<td><img src=".github/assets/screenshots/analytics.png" alt="Analytics" /><br/><sub><b>Analytics</b>: money to save, spend, budget and turnaround</sub></td>
+<td><img src=".github/assets/screenshots/audit-log.png" alt="Audit log detail" /><br/><sub><b>Audit log</b>: who did what, with before and after</sub></td>
+</tr>
+<tr>
+<td><img src=".github/assets/screenshots/leave.png" alt="Leave and attendance" /><br/><sub><b>Leave</b>: balances, requests, attendance and HR settings</sub></td>
+<td align="center"><img src=".github/assets/screenshots/mobile-home.png" alt="Rosterly on a phone" width="220" /><br/><sub><b>On a phone</b>: every page works at phone width</sub></td>
+</tr>
+</table>
 
 ## Features
 
@@ -216,13 +243,17 @@ CI also runs every migration up, down and up again on PostgreSQL 18.
 
 ## Deployment
 
-| Part | Platform | Defined in |
-| :--- | :--- | :--- |
-| Core API + Celery worker | Render web service | `render.yaml` → `rosterly-api`, started by `backend/start.sh` |
-| AI service | Render web service | `render.yaml` → `rosterly-ai` |
-| Job queue | Render Key Value | `render.yaml` → `rosterly-queue` |
-| Frontend | Vercel | `frontend/vercel.json` (root directory `frontend`) |
-| Database | Neon | `DATABASE_URL` |
+Rosterly is live at **[rosterly-alpha.vercel.app](https://rosterly-alpha.vercel.app)**, with demo data. Pushes to `main` redeploy every part.
+
+| Part | Platform | Live at | Defined in |
+| :--- | :--- | :--- | :--- |
+| Frontend | Vercel | [rosterly-alpha.vercel.app](https://rosterly-alpha.vercel.app) | `frontend/vercel.json` (root directory `frontend`) |
+| Core API + Celery worker | Render web service (Singapore) | [rosterly-api-6rhc.onrender.com](https://rosterly-api-6rhc.onrender.com/health) | `render.yaml` → `rosterly-api`, started by `backend/start.sh` |
+| AI service | Render web service (Singapore) | [rosterly-ai.onrender.com](https://rosterly-ai.onrender.com/health) | `render.yaml` → `rosterly-ai` |
+| Job queue | Render Key Value (Singapore) | internal only | `render.yaml` → `rosterly-queue` |
+| Database | Neon (Singapore) | private | `DATABASE_URL` |
+
+To deploy your own copy:
 
 1. **Render**: create a Blueprint from this repo. Every service runs in Singapore, next to the Neon database; if your Neon project is in another region, change `region` in `render.yaml` to match, because each page makes many queries. Then set the secrets marked `sync: false`:
    - On `rosterly-api`: `DATABASE_URL`, `MFA_ENCRYPTION_KEY`, `CORS_ORIGINS` and `FRONTEND_BASE_URL` (the last two are both the Vercel address).
