@@ -151,9 +151,17 @@ export function validatePlan(plan: GuidePlan, pages: ResolvedPage[]): GuidePlan 
       if (!target) continue
       // Something that only appears behind another control (a tab, a form): open that first if the plan forgot
       const opener = target.after ? targetById.get(target.after) : undefined
-      if (opener && !opener.changes && !steps.some((s) => 'target' in s && s.target === opener.id)) {
-        steps.push({ action: 'open', target: opener.id, caption: `Open ${opener.label.replace(/\s*\(.*\)$/, '')}` })
-        if (opener.kind === 'button') opened = opener.id
+      if (opener && !opener.changes) {
+        const earlier = steps.findIndex((s) => 'target' in s && s.target === opener.id)
+        const prev = steps[earlier]
+        if (earlier === -1) {
+          steps.push({ action: 'open', target: opener.id, caption: `Open ${opener.label.replace(/\s*\(.*\)$/, '')}` })
+          if (opener.kind === 'button') opened = opener.id
+        } else if (prev?.action === 'point') {
+          // Only pointed at, so it would never open; this step needs it open
+          steps[earlier] = { action: 'open', target: prev.target, caption: prev.caption }
+          if (opener.kind === 'button') opened = opener.id
+        }
       }
       const caption = String(step.caption ?? target.label).slice(0, 120)
       if (step.action === 'open' && (target.changes || target.kind === 'field')) steps.push({ action: 'point', target: target.id, caption })

@@ -90,6 +90,15 @@ describe('validatePlan — every plan, local or AI, is checked', () => {
       pages,
     )
     expect(steps(already).map((s) => s.action)).toEqual(['go', 'open', 'point']) // not opened twice
+    const onlyPointed = validatePlan(
+      show([
+        { action: 'go', page: 'leave' },
+        { action: 'point', target: 'leave.settings', caption: 'Go to Settings' },
+        { action: 'point', target: 'leave.add-holiday', caption: 'Add holiday' },
+      ]),
+      pages,
+    )
+    expect(steps(onlyPointed).map((s) => s.action)).toEqual(['go', 'open', 'point']) // a mid-tour point would never open it
   })
 
   it('stops once a button has opened its form, except for that form’s own targets', () => {
