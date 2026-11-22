@@ -1,42 +1,101 @@
 import React, { useEffect, useState } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import * as RadixDialog from '@radix-ui/react-dialog'
 import { Menu as MenuIcon, Search, X } from 'lucide-react'
-import { useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
+import { useQueryClient } from '@tanstack/react-query'
+import { CURRENT_USER_KEY, useCurrentUser } from '@/features/auth/hooks/useCurrentUser'
+import { MfaSetupRequired } from '@/features/auth/components/MfaSetupRequired'
+import type { UserProfile } from '@/features/auth/types/auth'
+import { MFA_REQUIRED_EVENT } from '@/lib/api-client'
+import { useMediaQuery } from '@/lib/useMediaQuery'
+import { applyAccent } from '@/lib/accent'
+import { usePreferences } from '@/features/preferences/usePreferences'
 import { useInbox } from '@/features/inbox/hooks/useInbox'
 import { authStorage } from '@/lib/authStorage'
-import { IconButton, Logo } from '@/ui'
+import { Button, EmptyState, IconButton, Logo } from '@/ui'
 import { CommandPalette } from '@/shell/CommandPalette'
 import { SectionTabs } from '@/shell/SectionTabs'
 import { Sidebar } from '@/shell/Sidebar'
 import { NotificationFlyout } from '@/features/notifications/components/NotificationFlyout'
-import { activeLink, activeSection, visibleNav } from '@/shell/nav'
+import { activeLink, activeSection, canOpen, visibleNav } from '@/shell/nav'
+import { GuideProvider, useGuide } from '@/guide/GuideProvider'
+import { GuideLauncher } from '@/guide/GuideLauncher'
 
 /**
- * The signed-in frame for every page (§4, DESIGN.md, Layout):
+ * The signed-in frame for every page:
  * tinted sidebar with a flat nav on desktop, a top bar with a drawer below
- * 1024px, Ctrl K search, and section tabs when a section has several pages.
+ * 1024px, the Search-or-ask box (Ctrl K, "/", or the logo's tile), and
+ * section tabs when a section has several pages.
  */
 export const AppShell: React.FC = () => {
-  const location = useLocation()
   const hasSession = Boolean(authStorage.getAccessToken() || authStorage.getRefreshToken())
-  const { user } = useCurrentUser()
+  const { user } = useCurrentUser(hasSession)
+  const desktop = useMediaQuery('(min-width: 1024px)') // one notification bell: sidebar on desktop, top bar on phones
+  const queryClient = useQueryClient()
+  const prefs = usePreferences(Boolean(user))
+  const accent = prefs.data?.accent
+
+  // Wear the person's colour; sign-out resets it (authStorage).
+  useEffect(() => {
+    if (accent) applyAccent(accent)
+  }, [accent])
+
+  // The API refused a call because two-step sign-in must be set up first:
+  // re-read who we are so the setup screen appears.
+  useEffect(() => {
+    const onRequired = () => void queryClient.invalidateQueries({ queryKey: CURRENT_USER_KEY })
+    window.addEventListener(MFA_REQUIRED_EVENT, onRequired)
+    return () => window.removeEventListener(MFA_REQUIRED_EVENT, onRequired)
+  }, [queryClient])
+
+  if (!hasSession) return <Navigate to="/login" replace />
+  if (user?.mfa_setup_required) return <MfaSetupRequired />
+
+  return (
+    <GuideProvider user={user} desktop={desktop}>
+      <ShellFrame user={user} desktop={desktop} />
+    </GuideProvider>
+  )
+}
+
+const typing = (el: EventTarget | null) =>
+  el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+
+const NoAccess: React.FC = () => {
+  const navigate = useNavigate()
+  return (
+    <EmptyState
+      title="You don’t have access to this page"
+      description="It isn’t part of your role. Ask an admin if you need it."
+      action={
+        <Button variant="secondary" onClick={() => navigate('/home')}>
+          Go home
+        </Button>
+      }
+    />
+  )
+}
+
+const ShellFrame: React.FC<{ user: UserProfile | null; desktop: boolean }> = ({ user, desktop }) => {
+  const location = useLocation()
   const inbox = useInbox(Boolean(user))
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  const guide = useGuide()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const { boxOpen, setBoxOpen } = guide
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        setPaletteOpen((o) => !o)
+        setBoxOpen(!boxOpen)
+      } else if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !boxOpen && !typing(e.target)) {
+        e.preventDefault()
+        setBoxOpen(true)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  if (!hasSession) return <Navigate to="/login" replace />
+  }, [boxOpen, setBoxOpen])
 
   const sections = visibleNav(user)
   const section = activeSection(sections, location.pathname)
@@ -44,7 +103,7 @@ export const AppShell: React.FC = () => {
   const inboxCount = inbox.data?.items.length
   const openSearch = () => {
     setDrawerOpen(false)
-    setPaletteOpen(true)
+    setBoxOpen(true)
   }
 
   return (
@@ -57,18 +116,21 @@ export const AppShell: React.FC = () => {
       </a>
 
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 lg:block">
-        <Sidebar sections={sections} active={section} inboxCount={inboxCount} user={user} onSearch={openSearch} />
+        <Sidebar sections={sections} active={section} inboxCount={inboxCount} user={user} onSearch={openSearch} showBell={desktop} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-sidebar px-4 py-2 lg:hidden">
-          <Logo markClassName="h-6 w-6" />
+          <span className="relative inline-flex">
+            <Logo markClassName="h-6 w-6" tileOut={guide.out} />
+            <GuideLauncher />
+          </span>
           <div className="flex items-center gap-1">
-            <NotificationFlyout align="right" onNavigate={() => setDrawerOpen(false)} />
-            <IconButton label="Search" onClick={openSearch}>
+            {!desktop && <NotificationFlyout align="right" onNavigate={() => setDrawerOpen(false)} />}
+            <IconButton label={guide.allowed ? 'Search or ask' : 'Search'} onClick={openSearch}>
               <Search className="h-5 w-5" />
             </IconButton>
-            <IconButton label="Open menu" onClick={() => setDrawerOpen(true)}>
+            <IconButton label="Open menu" data-guide-menu="" onClick={() => setDrawerOpen(true)}>
               <MenuIcon className="h-5 w-5" />
             </IconButton>
           </div>
@@ -81,7 +143,7 @@ export const AppShell: React.FC = () => {
                 <SectionTabs section={section} active={tab} />
               </div>
             )}
-            <Outlet />
+            {canOpen(user, location.pathname) ? <Outlet /> : <NoAccess />}
           </div>
         </main>
       </div>
@@ -109,7 +171,15 @@ export const AppShell: React.FC = () => {
         </RadixDialog.Portal>
       </RadixDialog.Root>
 
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} sections={sections} user={user} />
+      <CommandPalette
+        open={boxOpen}
+        onOpenChange={setBoxOpen}
+        sections={sections}
+        user={user}
+        canAsk={guide.allowed}
+        onAsk={guide.ask}
+        canSpeak={guide.voice}
+      />
     </div>
   )
 }

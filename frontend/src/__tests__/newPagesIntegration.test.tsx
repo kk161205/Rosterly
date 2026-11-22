@@ -9,6 +9,7 @@ import { LeaveAttendancePage } from '@/features/leave/pages/LeaveAttendancePage'
 import { notificationService } from '@/features/notifications/services/notificationService'
 import { auditService } from '@/features/audit/services/auditService'
 import { approvalChainService } from '@/features/approvalChains/services/approvalChainService'
+import { userManagementService } from '@/features/admin/services/userManagementService'
 import { licenseService } from '@/features/licenses/services/licenseService'
 import { leaveService } from '@/features/leave/services/leaveService'
 import { attendanceService } from '@/features/leave/services/attendanceService'
@@ -31,13 +32,13 @@ vi.mock('@/features/audit/services/auditService', () => ({
   },
 }))
 
+vi.mock('@/features/admin/services/userManagementService', () => ({ userManagementService: { assignableRoles: vi.fn() } }))
 vi.mock('@/features/approvalChains/services/approvalChainService', () => ({
   approvalChainService: {
     list: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    getAssignableRoles: vi.fn(),
   },
 }))
 
@@ -50,13 +51,26 @@ vi.mock('@/features/licenses/services/licenseService', () => ({
   },
 }))
 
+vi.mock('@/features/admin/services/companySettingsService', () => {
+  const data = [] as { key: string; value: unknown }[]
+  return {
+    COMPANY_SETTINGS_KEY: ['company-settings'],
+    companySettingsService: { list: vi.fn().mockResolvedValue(data), update: vi.fn() },
+    useCompanySettings: () => ({ data, isLoading: false, isError: false }),
+    settingValue: (settings: { key: string; value: unknown }[] | undefined, key: string) => settings?.find((s) => s.key === key)?.value,
+  }
+})
 vi.mock('@/features/leave/services/leaveService', () => ({
   leaveService: {
     getMyLeave: vi.fn(),
     getPendingApprovals: vi.fn(),
+    getTeam: vi.fn().mockResolvedValue({ items: [] }),
+    getLeaveTypes: vi.fn().mockResolvedValue([]),
+    getHolidays: vi.fn().mockResolvedValue([]),
     apply: vi.fn(),
     approve: vi.fn(),
     reject: vi.fn(),
+    cancel: vi.fn(),
   },
 }))
 
@@ -109,7 +123,7 @@ describe('Pages 5.16 through 5.20 Integration Suite', () => {
             full_name: 'Priya Patel',
             email: 'admin@rosterly.internal',
           },
-          action: 'role_assigned',
+          action: 'user.role_changed',
           entity_type: 'user',
           entity_id: 'usr-202',
           before_state: { role: 'employee' },
@@ -139,7 +153,7 @@ describe('Pages 5.16 through 5.20 Integration Suite', () => {
         },
       ],
     })
-    vi.mocked(approvalChainService.getAssignableRoles).mockResolvedValue([
+    vi.mocked(userManagementService.assignableRoles).mockResolvedValue([
       { id: 'r-mgr', name: 'manager', description: null, is_system_role: true },
       { id: 'r-it', name: 'it_admin', description: null, is_system_role: true },
     ])
@@ -154,6 +168,7 @@ describe('Pages 5.16 through 5.20 Integration Suite', () => {
           seats_used: 40,
           cost_per_seat: 45,
           renewal_date: '2026-12-31',
+          source: 'manual',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -167,10 +182,8 @@ describe('Pages 5.16 through 5.20 Integration Suite', () => {
       page: 1,
       page_size: 20,
       balances: [
-        { leave_type: 'sick', year: 2026, balance_days: 12 },
-        { leave_type: 'casual', year: 2026, balance_days: 12 },
-        { leave_type: 'earned', year: 2026, balance_days: 18 },
-        { leave_type: 'unpaid', year: 2026, balance_days: 0 },
+        { leave_type: { id: 't-sick', name: 'Sick leave', is_paid: true, unlimited: false }, year: 2026, annual_days: '12', balance_days: '12', pending_days: '0' },
+        { leave_type: { id: 't-unpaid', name: 'Unpaid leave', is_paid: false, unlimited: true }, year: 2026, annual_days: null, balance_days: null, pending_days: '0' },
       ],
     })
 
@@ -189,35 +202,35 @@ describe('Pages 5.16 through 5.20 Integration Suite', () => {
     })
   })
 
-  it('renders §5.16 Notifications Center successfully', async () => {
+  it('renders Notifications Center successfully', async () => {
     renderPage(<NotificationCenterPage />, { route: '/notifications' })
     expect(await screen.findByText('Notifications')).toBeInTheDocument()
     expect(await screen.findByText('Integration Test Notification')).toBeInTheDocument()
   })
 
-  it('renders §5.17 Audit Log Viewer successfully', async () => {
+  it('renders Audit Log Viewer successfully', async () => {
     renderPage(<AuditLogViewerPage />, { route: '/audit-logs' })
-    expect(await screen.findByText('Audit Log')).toBeInTheDocument()
-    expect(await screen.findByText('admin@rosterly.internal')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Audit log' })).toBeInTheDocument()
+    expect(await screen.findByText('Role changed')).toBeInTheDocument()
   })
 
-  it('renders §5.18 Approval Chains Configuration successfully', async () => {
+  it('renders Approval Chains Configuration successfully', async () => {
     renderPage(<ApprovalChainConfigPage />, { route: '/approval-chains' })
-    expect(await screen.findByText('Approval Chains')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Approval chains' })).toBeInTheDocument()
     expect(await screen.findByText('Hardware Requisition Flow')).toBeInTheDocument()
   })
 
-  it('renders §5.19 Software License Management successfully', async () => {
+  it('renders Software License Management successfully', async () => {
     renderPage(<SoftwareLicensesPage />, { route: '/licenses' })
-    expect(await screen.findByText('Software Licences')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Licences' })).toBeInTheDocument()
     expect(await screen.findByText('Figma Enterprise')).toBeInTheDocument()
   })
 
-  it('renders §5.20 Leave & Attendance Page successfully', async () => {
+  it('renders Leave & Attendance Page successfully', async () => {
     renderPage(<LeaveAttendancePage />, { route: '/leave' })
-    expect(await screen.findByText('Leave & Attendance')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Leave' })).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByText('Sick Leave')).toBeInTheDocument()
+      expect(screen.getByText('Sick leave')).toBeInTheDocument()
     })
   })
 })

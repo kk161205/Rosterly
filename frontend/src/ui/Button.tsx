@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { cn } from './cn'
 
 /**
- * Pill buttons (DESIGN.md): one solid navy `primary` per screen,
+ * Pill buttons: one solid navy `primary` per screen,
  * outlined ink `secondary`, underlined-text `ghost` for tertiary actions and
  * `danger` for destructive ones.
  */

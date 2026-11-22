@@ -24,13 +24,16 @@ export const TabsList: React.FC<{ children: React.ReactNode; label: string; clas
   )
 }
 
-export const TabsTrigger: React.FC<{ value: string; children: React.ReactNode; count?: number }> = ({
-  value,
-  children,
-  count,
-}) => (
+export const TabsTrigger: React.FC<{
+  value: string
+  children: React.ReactNode
+  count?: number
+  /** Page-map target id for the AI Guide. */
+  'data-guide'?: string
+}> = ({ value, children, count, 'data-guide': guideId }) => (
   <RadixTabs.Trigger
     value={value}
+    data-guide={guideId}
     className="-mb-px inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-0.5 text-body text-muted transition-colors hover:text-ink data-[state=active]:border-ink data-[state=active]:font-semibold data-[state=active]:text-ink"
   >
     {children}

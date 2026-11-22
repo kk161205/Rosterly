@@ -2,7 +2,7 @@ import type { UserProfile } from '@/features/auth/types/auth'
 import { hasPermission, hasRole } from '@/features/auth/hooks/useCurrentUser'
 
 /**
- * The app's navigation (DESIGN.md, Layout): one flat list, at most
+ * The app's navigation: one flat list, at most
  * seven entries for any role. Related pages are tabs inside a section rather
  * than more sidebar items. Visibility mirrors what the API allows the caller.
  */
@@ -25,7 +25,7 @@ const anyOf =
   (...permissions: string[]) =>
   (user: UserProfile) =>
     permissions.some((p) => hasPermission(user, p))
-// Lifecycle endpoints authorise by role (§5.5, §5.6), not by a permission row
+// Lifecycle endpoints authorise by role, not by a permission row
 const LIFECYCLE_ROLES = ['super_admin', 'hr_admin', 'it_admin', 'manager']
 const lifecycle = (user: UserProfile) => hasRole(user, ...LIFECYCLE_ROLES)
 
@@ -52,7 +52,8 @@ const NAV: NavSection[] = [
       {
         label: 'Maintenance',
         path: '/maintenance',
-        visible: anyOf('maintenance_ticket:read', 'maintenance_ticket:create'),
+        // Everyone who can raise requests can raise and follow tickets for their own devices.
+        visible: anyOf('maintenance_ticket:read', 'maintenance_ticket:create', 'request:create'),
       },
     ],
   },
@@ -66,13 +67,14 @@ const NAV: NavSection[] = [
   },
   {
     label: 'People',
-    match: ['/employees', '/leave', '/onboarding', '/offboarding'],
+    match: ['/employees', '/leave', '/onboarding', '/offboarding', '/departments'],
     links: [
-      // The directory is open to every signed-in user (§5.3); profiles check employee:read
+      // The directory is open to every signed-in user; profiles check employee:read
       { label: 'Directory', path: '/employees', visible: () => true },
       { label: 'Leave & Attendance', path: '/leave', visible: () => true },
       { label: 'Onboarding', path: '/onboarding', visible: lifecycle },
       { label: 'Offboarding', path: '/offboarding', visible: lifecycle },
+      { label: 'Departments', path: '/departments', visible: can('department:create') },
     ],
   },
   {
@@ -94,11 +96,13 @@ const NAV: NavSection[] = [
   },
   {
     label: 'Access',
-    match: ['/users', '/roles', '/audit-logs'],
+    match: ['/users', '/roles', '/audit-logs', '/settings'],
     links: [
       { label: 'Users', path: '/users', visible: can('user:read') },
       { label: 'Roles', path: '/roles', visible: can('role:read') },
-      { label: 'Audit Log', path: '/audit-logs', visible: can('audit_log:read') },
+      { label: 'Audit log', path: '/audit-logs', visible: can('audit_log:read') },
+      // Super admins (security) and HR admins (people settings) have settings they can change
+      { label: 'Settings', path: '/settings', visible: (user) => hasRole(user, 'super_admin', 'hr_admin') },
     ],
   },
 ]
@@ -128,4 +132,27 @@ export function activeLink(section: VisibleSection, pathname: string): NavLink |
   return [...section.links]
     .sort((a, b) => b.path.length - a.path.length)
     .find((l) => matches(pathname, l.path))
+}
+
+/**
+ * Where a page sits in the sidebar, for the AI Guide's page map: the section,
+ * the tab (only when the section has several) and who may open it — the same
+ * rule the sidebar uses.
+ */
+export function navPlacement(route: string): { section: string; tab?: string; visible: (user: UserProfile) => boolean } | undefined {
+  for (const section of NAV) {
+    const link = section.links.find((l) => l.path === route)
+    if (link) return { section: section.label, tab: section.links.length > 1 ? link.label : undefined, visible: link.visible }
+  }
+  return undefined
+}
+
+/**
+ * False when the path is a sidebar page this person can't see, so the shell
+ * shows one "no access" state instead of the page firing calls the API refuses.
+ * Paths outside the sidebar (profiles, asset records…) handle access themselves.
+ */
+export function canOpen(user: UserProfile | null, pathname: string): boolean {
+  const place = navPlacement(pathname.replace(/\/+$/, '') || '/')
+  return !user || !place || place.visible(user)
 }

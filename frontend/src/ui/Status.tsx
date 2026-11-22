@@ -2,7 +2,7 @@ import React from 'react'
 import { cn } from './cn'
 
 /**
- * Status is a coloured word with a still dot (DESIGN.md) — never a
+ * Status is a coloured word with a still dot — never a
  * tinted badge, never colour alone, never a pulse.
  */
 type StatusTone = 'ok' | 'info' | 'warn' | 'bad' | 'mute'

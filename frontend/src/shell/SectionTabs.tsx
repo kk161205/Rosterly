@@ -11,6 +11,7 @@ export const SectionTabs: React.FC<{ section: VisibleSection; active?: NavLink }
       return (
         <Link
           key={link.path}
+          data-guide-tab={link.path}
           to={link.path}
           aria-current={isActive ? 'page' : undefined}
           className={cn(

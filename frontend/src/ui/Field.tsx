@@ -2,7 +2,7 @@ import React, { useId } from 'react'
 import { cn } from './cn'
 
 /**
- * Form fields (DESIGN.md): underline inputs and selects, a lightly
+ * Form fields: underline inputs and selects, a lightly
  * outlined textarea. Every field has a real <label>; hints and errors are tied
  * to the control with aria-describedby.
  */

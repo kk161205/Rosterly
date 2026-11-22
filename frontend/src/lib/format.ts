@@ -16,16 +16,20 @@ const shortDateFmt = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: '
 // Some ICU versions abbreviate September as "Sept"; keep every month to three letters
 const threeLetter = (s: string) => s.replace('Sept', 'Sep')
 
+/** "2026-06-08" is a calendar date (local midnight); anything else is an instant. */
+const toDate = (value: string | Date): Date =>
+  typeof value !== 'string' ? value : /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalDate(value) : new Date(value)
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  const d = typeof value === 'string' ? new Date(value) : value
+  const d = toDate(value)
   return Number.isNaN(d.getTime()) ? '—' : threeLetter(dateFmt.format(d))
 }
 
 /** "12 Oct" for this year, "12 Oct 2025" otherwise. */
 export function formatShortDate(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  const d = typeof value === 'string' ? new Date(value) : value
+  const d = toDate(value)
   if (Number.isNaN(d.getTime())) return '—'
   return threeLetter(d.getFullYear() === new Date().getFullYear() ? shortDateFmt.format(d) : dateFmt.format(d))
 }
@@ -45,7 +49,7 @@ export function formatAge(value: string | Date | null | undefined): string {
 /** Days from today until a date (negative when past). */
 export function daysUntil(value: string | null | undefined): number | null {
   if (!value) return null
-  const d = new Date(value)
+  const d = toDate(value)
   if (Number.isNaN(d.getTime())) return null
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -65,4 +69,21 @@ export function formatDuration(hours: number | null | undefined): string {
   if (hours < 1) return 'under 1 h'
   if (hours < 48) return `${Math.round(hours)} h`
   return `${(hours / 24).toFixed(1)} days`
+}
+
+/**
+ * A date as YYYY-MM-DD in the viewer's own timezone. Use this, not
+ * toISOString(), which is UTC — in India it gives yesterday before 05:30.
+ */
+export function localISODate(value: Date = new Date()): string {
+  const y = value.getFullYear()
+  const m = String(value.getMonth() + 1).padStart(2, '0')
+  const d = String(value.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** Parses a YYYY-MM-DD date as local midnight (new Date('2026-06-08') would be UTC). */
+export function parseLocalDate(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
 }

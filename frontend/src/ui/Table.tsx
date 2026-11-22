@@ -4,7 +4,7 @@ import { Button } from './Button'
 import { cn } from './cn'
 
 /**
- * Lists (DESIGN.md): an ink rule over the header, hairlines
+ * Lists: an ink rule over the header, hairlines
  * between rows, no box. Rows that open something are whole-row buttons via
  * `onClick` + a focusable first cell. Below `md` pages render a stacked list
  * instead of the table (see each page).
@@ -86,12 +86,15 @@ export const SearchInput: React.FC<{
   placeholder: string
   label: string
   className?: string
-}> = ({ value, onChange, placeholder, label, className }) => (
+  /** Page-map target id for the AI Guide. */
+  'data-guide'?: string
+}> = ({ value, onChange, placeholder, label, className, 'data-guide': guideId }) => (
   <label className={cn('relative flex min-h-11 items-center border-b border-ink focus-within:border-navy', className)}>
     <span className="sr-only">{label}</span>
     <Search className="pointer-events-none absolute left-0.5 h-4 w-4 text-muted" aria-hidden="true" />
     <input
       type="search"
+      data-guide={guideId}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -178,12 +181,15 @@ export const FilterTabs = <T extends string>({
   tabs,
   label,
   className,
+  'data-guide': guideId,
 }: {
   value: T
   onChange: (value: T) => void
   tabs: { value: T; label: string; count?: number }[]
   label: string
   className?: string
+  /** Page-map target id for the AI Guide. */
+  'data-guide'?: string
 }) => {
   const { ref, over } = useOverflowX<HTMLDivElement>()
   return (
@@ -191,6 +197,7 @@ export const FilterTabs = <T extends string>({
       ref={ref}
       role="group"
       aria-label={label}
+      data-guide={guideId}
       className={cn('scrollbar-none flex flex-nowrap gap-5 overflow-x-auto overflow-y-hidden border-b border-line', over && 'fade-x', className)}
     >
       {tabs.map((t) => {

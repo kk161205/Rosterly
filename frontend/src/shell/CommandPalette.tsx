@@ -1,24 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as RadixDialog from '@radix-ui/react-dialog'
-import { Search } from 'lucide-react'
+import { Loader2, Mic, Search, Square } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import type { UserProfile } from '@/features/auth/types/auth'
-import { hasPermission } from '@/features/auth/hooks/useCurrentUser'
+import { hasPermission, hasRole } from '@/features/auth/hooks/useCurrentUser'
 import type { VisibleSection } from '@/shell/nav'
+import { matchPages, pagesFor } from '@/guide/pageMap'
+import { useVoiceInput } from '@/guide/voice'
 import { cn } from '@/ui'
 
 /**
- * Ctrl K (§4 shell): jump to any page the caller can open, or find a person
- * or an asset by name, code or tag. Results come from the list endpoints, so
- * the API's own scoping applies.
+ * Search or ask (Ctrl K, "/", or the logo's tile): jump to
+ * any page the caller can open, or find a person or an asset by name, code or
+ * tag. Pages are matched by the page map's words, with no AI call. When the
+ * Guide is allowed, the last row is always "Ask Rosterly: …".
+ * People and assets come from the list endpoints, so the API's scoping applies.
  */
 interface Result {
   id: string
-  group: 'Pages' | 'People' | 'Assets'
+  group: 'Pages' | 'People' | 'Assets' | 'Guide'
   label: string
   detail?: string
+  /** Where it goes; empty for the "Ask Rosterly" row. */
   path: string
 }
 
@@ -49,10 +54,17 @@ export const CommandPalette: React.FC<{
   onOpenChange: (open: boolean) => void
   sections: VisibleSection[]
   user: UserProfile | null
-}> = ({ open, onOpenChange, sections, user }) => {
+  /** The Guide is allowed (company + person). */
+  canAsk?: boolean
+  onAsk?: (question: string) => void
+  /** Voice input is on for this person and the browser can record. */
+  canSpeak?: boolean
+}> = ({ open, onOpenChange, sections, user, canAsk = false, onAsk, canSpeak = false }) => {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
+  // What was said goes into the box to check and send — never straight to the Guide.
+  const voice = useVoiceInput((text) => setQuery(text))
   const term = useDebounced(query.trim(), 200)
   const searchable = term.length >= 2
 
@@ -70,19 +82,26 @@ export const CommandPalette: React.FC<{
     enabled: open && searchable && hasPermission(user, 'assets:read'),
   })
 
-  const canOpenProfiles = hasPermission(user, 'employee:read')
+  // Anyone's profile: HR, admins and auditors; others search the directory instead.
+  const canOpenProfiles = hasRole(user, 'super_admin', 'hr_admin', 'auditor')
   const results = useMemo<Result[]>(() => {
-    const q = query.trim().toLowerCase()
-    const pages: Result[] = sections
-      .flatMap((s) =>
-        s.links.map((l) => ({
-          id: `page:${l.path}`,
+    const q = query.trim()
+    const pages: Result[] = q
+      ? matchPages(q, pagesFor(user).filter((p) => p.navigable)).map(({ page }) => ({
+          id: `page:${page.route}`,
           group: 'Pages' as const,
-          label: l.label === s.label ? s.label : `${s.label} · ${l.label}`,
-          path: l.path,
-        })),
-      )
-      .filter((p) => !q || p.label.toLowerCase().includes(q))
+          label: page.section && page.tab ? `${page.section} · ${page.tab}` : page.title,
+          detail: page.purpose,
+          path: page.route,
+        }))
+      : sections.flatMap((s) =>
+          s.links.map((l) => ({
+            id: `page:${l.path}`,
+            group: 'Pages' as const,
+            label: l.label === s.label ? s.label : `${s.label} · ${l.label}`,
+            path: l.path,
+          })),
+        )
     const found: Result[] = searchable
       ? [
           ...(people.data ?? []).map((p) => ({
@@ -90,7 +109,7 @@ export const CommandPalette: React.FC<{
             group: 'People' as const,
             label: p.full_name,
             detail: [p.designation, p.department_name].filter(Boolean).join(' · '),
-            // Profiles need employee:read (§5.4); without it the directory search is the way in
+            // Profiles need employee:read; without it the directory search is the way in
             path: canOpenProfiles ? `/employees/${p.id}` : `/employees?search=${encodeURIComponent(p.full_name)}`,
           })),
           ...(assets.data ?? []).map((a) => ({
@@ -102,16 +121,25 @@ export const CommandPalette: React.FC<{
           })),
         ]
       : []
-    return [...pages, ...found]
-  }, [query, sections, searchable, people.data, assets.data, canOpenProfiles])
+    const askRow: Result[] =
+      canAsk && q.length >= 2 ? [{ id: 'ask', group: 'Guide' as const, label: `Ask Rosterly: “${q}”`, path: '' }] : []
+    return [...pages, ...found, ...askRow]
+  }, [query, sections, searchable, people.data, assets.data, canOpenProfiles, canAsk, user])
 
   useEffect(() => setCursor(0), [query])
+  const cancelVoice = voice.cancel // stable; the voice object itself changes every render
   useEffect(() => {
-    if (!open) setQuery('')
-  }, [open])
+    if (open) return
+    setQuery('')
+    cancelVoice() // closing the box discards a recording in progress
+  }, [open, cancelVoice])
 
   const go = (r: Result | undefined) => {
     if (!r) return
+    if (r.group === 'Guide') {
+      onAsk?.(query.trim()) // the Guide closes the box itself
+      return
+    }
     onOpenChange(false)
     navigate(r.path)
   }
@@ -140,9 +168,11 @@ export const CommandPalette: React.FC<{
           className="fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-[calc(100vw-32px)] max-w-xl -translate-x-1/2 flex-col overflow-hidden rounded-card bg-paper text-ink focus:outline-none"
           onKeyDown={onKeyDown}
         >
-          <RadixDialog.Title className="sr-only">Search Rosterly</RadixDialog.Title>
+          <RadixDialog.Title className="sr-only">{canAsk ? 'Search or ask Rosterly' : 'Search Rosterly'}</RadixDialog.Title>
           <RadixDialog.Description className="sr-only">
-            Type to find a page, a person or an asset. Use the arrow keys and Enter to open a result.
+            {canAsk
+              ? 'Type to find a page, a person or an asset, or ask how to do something. Use the arrow keys and Enter; the last result asks the Guide.'
+              : 'Type to find a page, a person or an asset. Use the arrow keys and Enter to open a result.'}
           </RadixDialog.Description>
           <div className="flex items-center gap-3 border-b border-line px-5">
             <Search className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
@@ -150,15 +180,35 @@ export const CommandPalette: React.FC<{
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search pages, people and assets"
-              aria-label="Search"
+              placeholder={canAsk ? 'Search, or ask how to do something' : 'Search pages, people and assets'}
+              aria-label={canAsk ? 'Search or ask' : 'Search'}
               role="combobox"
               aria-expanded="true"
               aria-controls="palette-results"
               aria-activedescendant={activeId}
               className="min-h-14 flex-1 bg-transparent text-lead text-ink placeholder:text-muted focus:outline-none"
             />
+            {canSpeak && canAsk && (
+              <button
+                type="button"
+                onClick={() => (voice.state === 'listening' ? voice.stop() : voice.start())}
+                disabled={voice.state === 'working' || voice.state === 'starting'}
+                aria-label={voice.state === 'listening' ? 'Stop listening' : 'Speak instead of typing'}
+                aria-pressed={voice.state === 'listening'}
+                className={cn(
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-pill transition-colors focus-visible:outline-navy',
+                  voice.state === 'listening' ? 'bg-navy text-paper' : 'text-muted hover:bg-row-hover hover:text-ink',
+                )}
+              >
+                {voice.state === 'working' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : voice.state === 'listening' ? <Square className="h-3.5 w-3.5" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
+              </button>
+            )}
           </div>
+          {canSpeak && canAsk && (voice.state !== 'idle' || voice.error) && (
+            <p role="status" className="border-b border-line px-5 py-2 text-meta text-muted">
+              {voice.state === 'listening' ? 'Listening… press the square when you’re done.' : voice.state === 'working' ? 'Turning that into text…' : voice.error}
+            </p>
+          )}
           <ul id="palette-results" role="listbox" aria-label="Results" className="m-0 list-none overflow-y-auto p-2">
             {results.map((r, i) => (
               <React.Fragment key={r.id}>
@@ -178,9 +228,9 @@ export const CommandPalette: React.FC<{
                     i === cursor && 'bg-row-hover',
                   )}
                 >
-                  <span className="truncate">{r.label}</span>
+                  <span className={cn('truncate', r.group === 'Guide' && 'font-medium text-navy')}>{r.label}</span>
                   {r.detail && (
-                    <span className={cn('shrink-0 text-meta text-muted', r.group === 'Assets' && 'font-mono')}>
+                    <span className={cn('min-w-0 truncate text-meta text-muted', r.group === 'Assets' && 'shrink-0 font-mono', r.group === 'Pages' && 'hidden sm:inline')}>
                       {r.detail}
                     </span>
                   )}

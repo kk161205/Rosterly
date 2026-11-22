@@ -1,4 +1,4 @@
-// Quiet Workbench design system — DESIGN.md. Pages build from these.
+// Quiet Workbench design system. Pages build from these.
 export { cn } from './cn'
 export { Button, ButtonLink, IconButton } from './Button'
 export { Status, StatusText, statusLabel } from './Status'
@@ -9,3 +9,4 @@ export { DetailRow, PageHeader } from './Layout'
 export { Dialog, SidePanel } from './Overlay'
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './Tabs'
 export { Checkbox, FilterTabs, Pagination, RowButton, SearchInput, Table, Td, Th, THead, Tr } from './Table'
+export { CopyField } from './CopyField'

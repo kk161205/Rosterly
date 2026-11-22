@@ -12,7 +12,7 @@ import { Skeleton } from '@/ui'
 const itemClass =
   'flex min-h-9 cursor-pointer select-none items-center rounded-soft px-3 text-body text-ink outline-none data-[highlighted]:bg-row-hover'
 
-/** Name and role, opening profile and the two sign-out options (§5.1 logout endpoints). */
+/** Name and role, opening profile and the two sign-out options (logout endpoints). */
 export const UserMenu: React.FC<{ user: UserProfile | null; onNavigate?: () => void }> = ({ user, onNavigate }) => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -68,6 +68,15 @@ export const UserMenu: React.FC<{ user: UserProfile | null; onNavigate?: () => v
             }}
           >
             Your profile
+          </Menu.Item>
+          <Menu.Item
+            className={itemClass}
+            onSelect={() => {
+              onNavigate?.()
+              navigate('/assistant')
+            }}
+          >
+            Your assistant
           </Menu.Item>
           <Menu.Separator className="my-1.5 h-px bg-line" />
           <Menu.Item className={itemClass} onSelect={() => signOut(false)}>

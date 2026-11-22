@@ -35,6 +35,12 @@ export function useSearchParamText(
 ): [string, (text: string) => void] {
   const search = params.get('search') ?? ''
   const [text, setText] = useState(search)
+  // ?search= changed from outside (e.g. Ctrl K): show it instead of overwriting it.
+  const [lastSeen, setLastSeen] = useState(search)
+  if (search !== lastSeen) {
+    setLastSeen(search)
+    setText(search)
+  }
   useEffect(() => {
     const timer = setTimeout(() => {
       if (text.trim() !== search) update({ search: text.trim() })
@@ -42,4 +48,10 @@ export function useSearchParamText(
     return () => clearTimeout(timer)
   }, [text, search, update])
   return [text, setText]
+}
+
+/** The ?page= number, clamped to a whole number of at least 1 (a bad URL never sends NaN to the API). */
+export function pageFrom(params: URLSearchParams): number {
+  const n = Math.floor(Number(params.get('page') ?? '1'))
+  return Number.isFinite(n) && n >= 1 ? n : 1
 }

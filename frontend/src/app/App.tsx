@@ -26,6 +26,9 @@ const AuditLogViewerPage = page(() => import('@/features/audit/pages/AuditLogVie
 const ApprovalChainConfigPage = page(() => import('@/features/approvalChains/pages/ApprovalChainConfigPage'), 'ApprovalChainConfigPage')
 const SoftwareLicensesPage = page(() => import('@/features/licenses/pages/SoftwareLicensesPage'), 'SoftwareLicensesPage')
 const LeaveAttendancePage = page(() => import('@/features/leave/pages/LeaveAttendancePage'), 'LeaveAttendancePage')
+const DepartmentsPage = page(() => import('@/features/employees/pages/DepartmentsPage'), 'DepartmentsPage')
+const CompanySettingsPage = page(() => import('@/features/admin/pages/CompanySettingsPage'), 'CompanySettingsPage')
+const AssistantSettingsPage = page(() => import('@/features/preferences/AssistantSettingsPage'), 'AssistantSettingsPage')
 
 const PageLoading = () => (
   <div className="flex flex-col gap-4" aria-label="Loading page">
@@ -65,9 +68,12 @@ function App() {
           <Route path="/approval-chains" element={withSuspense(<ApprovalChainConfigPage />)} />
           <Route path="/licenses" element={withSuspense(<SoftwareLicensesPage />)} />
           <Route path="/leave" element={withSuspense(<LeaveAttendancePage />)} />
+          <Route path="/departments" element={withSuspense(<DepartmentsPage />)} />
+          <Route path="/settings" element={withSuspense(<CompanySettingsPage />)} />
+          <Route path="/assistant" element={withSuspense(<AssistantSettingsPage />)} />
         </Route>
 
-        {/* Home holds the numbers and the Inbox (§5.2, §5.2a); older links land there */}
+        {/* Home holds the numbers and the Inbox; older links land there */}
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/inbox" element={<Navigate to="/home" replace />} />
         <Route path="/dashboard" element={<Navigate to="/home" replace />} />
