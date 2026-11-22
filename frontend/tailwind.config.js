@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 // Colors, radii, and typography scale generated directly from
-// the "Quiet Workbench" system (docs/UI_REDESIGN_PLAN.md §3, docs/DESIGN.md).
+// the "Quiet Workbench" system.
 // Do not add raw hex values or one-off font sizes elsewhere in the app. If a
-// needed token doesn't exist here, that's a rules.md §0 situation: ask before
+// needed token doesn't exist here, that's a situation: ask before
 // inventing one.
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -23,9 +23,14 @@ export default {
         'line': '#E3E1DC',
         'line-soft': '#EFEDE8',
         'control': '#B9B6AE',
-        'navy': '#1F2B67',
-        'navy-hover': '#18215A',
-        'navy-tint': '#F3F4F9',
+        // The accent follows the person's chosen colour:
+        // CSS variables set per palette in globals.css. `navy` = accent-strong.
+        'navy': 'rgb(var(--accent-strong) / <alpha-value>)',
+        'navy-hover': 'rgb(var(--accent-hover) / <alpha-value>)',
+        'navy-tint': 'rgb(var(--accent-tint) / <alpha-value>)',
+        'accent-soft': 'rgb(var(--accent) / <alpha-value>)',
+        // The logo's resting mark never changes with the accent.
+        'brand': '#1F2B67',
         'row-hover': '#F0EFEB',
         'row-selected': '#ECEBE6',
         'status-ok': '#1F6B3E',

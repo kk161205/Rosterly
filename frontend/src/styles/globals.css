@@ -2,16 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Only add custom CSS here for things Tailwind + DESIGN.md tokens genuinely
+/* Only add custom CSS here for things Tailwind + tokens genuinely
    can't express. Default to utility classes using the generated tokens in
-   tailwind.config.js — see rules.md §2 rule 2. */
+   tailwind.config.js. */
 
 @layer base {
   body {
     @apply bg-ground font-sans text-body text-ink antialiased;
   }
 
-  /* One visible focus style everywhere (DESIGN.md, Accessibility): 2px navy ring. */
+  /* One visible focus style everywhere: 2px navy ring. */
   :focus-visible {
     @apply outline outline-2 outline-offset-2 outline-navy;
   }
@@ -79,7 +79,7 @@
   select.select-styled option::checkmark {
     order: 1;
     margin-left: auto;
-    color: theme('colors.navy');
+    color: rgb(var(--accent-strong));
   }
 }
 
@@ -102,6 +102,59 @@
   /* Tailwind's arbitrary-value utilities (e.g. bg-[radial-gradient(...)]) can't
      reference a theme color by name — only this handful of tokens that are
      genuinely needed inside such a function get a matching CSS variable, kept
-     in exact sync with tailwind.config.js / DESIGN.md rather than re-hardcoded. */
+     in exact sync with tailwind.config.js / rather than re-hardcoded. */
   --on-primary: #ffffff;
+}
+
+/* Personal accent. Space-separated
+   RGB so Tailwind opacity modifiers work. The palette is set on <html> with
+   data-accent; a swatch can preview another palette with its own data-accent. */
+:root,
+[data-accent='navy'] {
+  --accent: 91 106 168; /* #5B6AA8 */
+  --accent-strong: 31 43 103; /* #1F2B67 */
+  --accent-hover: 24 33 90; /* #18215A */
+  --accent-tint: 243 244 249; /* #F3F4F9 */
+}
+[data-accent='sage'] {
+  --accent: 143 174 151; /* #8FAE97 */
+  --accent-strong: 61 106 76; /* #3D6A4C */
+  --accent-hover: 52 90 65; /* #345A41 */
+  --accent-tint: 238 244 239; /* #EEF4EF */
+}
+[data-accent='lavender'] {
+  --accent: 169 155 209; /* #A99BD1 */
+  --accent-strong: 88 74 143; /* #584A8F */
+  --accent-hover: 75 63 122; /* #4B3F7A */
+  --accent-tint: 242 239 249; /* #F2EFF9 */
+}
+[data-accent='dusk'] {
+  --accent: 140 169 201; /* #8CA9C9 */
+  --accent-strong: 56 92 132; /* #385C84 */
+  --accent-hover: 48 78 112; /* #304E70 */
+  --accent-tint: 238 243 248; /* #EEF3F8 */
+}
+[data-accent='peach'] {
+  --accent: 232 179 150; /* #E8B396 */
+  --accent-strong: 135 74 43; /* #874A2B */
+  --accent-hover: 115 63 37; /* #733F25 */
+  --accent-tint: 251 241 235; /* #FBF1EB */
+}
+[data-accent='sand'] {
+  --accent: 212 191 148; /* #D4BF94 */
+  --accent-strong: 107 87 43; /* #6B572B */
+  --accent-hover: 91 74 37; /* #5B4A25 */
+  --accent-tint: 248 243 232; /* #F8F3E8 */
+}
+[data-accent='rose'] {
+  --accent: 215 161 174; /* #D7A1AE */
+  --accent-strong: 135 62 84; /* #873E54 */
+  --accent-hover: 115 53 71; /* #733547 */
+  --accent-tint: 250 238 241; /* #FAEEF1 */
+}
+
+/* The element the AI Guide is pointing at. */
+[data-guide-active] {
+  outline: 2px solid rgb(var(--accent-strong));
+  outline-offset: 3px;
 }
