@@ -1,0 +1,829 @@
+[
+ {
+  "id": "users",
+  "title": "Users",
+  "purpose": "Everyone’s account: roles, sign-in links, two-step reset, and signing someone out.",
+  "words": [
+   "accounts",
+   "change role",
+   "give admin",
+   "reset password",
+   "sign-in link",
+   "deactivate",
+   "lock out"
+  ],
+  "how_to_reach": "Access → Users",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "users.search",
+    "label": "Search users",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "users.role",
+    "label": "Role filter",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "users.status",
+    "label": "Status filter",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "roles",
+  "title": "Roles",
+  "purpose": "What each role can do, and which roles can’t be held together.",
+  "words": [
+   "permissions",
+   "role",
+   "access rights",
+   "what can managers do"
+  ],
+  "how_to_reach": "Access → Roles",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "roles.pick",
+    "label": "Role",
+    "kind": "field",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "settings",
+  "title": "Settings",
+  "purpose": "Company-wide switches (super admins and HR): require two-step sign-in for all admins, self check-in, the AI assistant.",
+  "words": [
+   "company settings",
+   "require two-step",
+   "turn off ai",
+   "check-in setting"
+  ],
+  "how_to_reach": "Access → Settings",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "settings.list",
+    "label": "Settings list",
+    "kind": "section",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "analytics",
+  "title": "Analytics",
+  "purpose": "Money we can save, where the money went, what to budget for, what needs chasing, where we’re slow.",
+  "words": [
+   "reports",
+   "spend",
+   "cost",
+   "budget",
+   "savings",
+   "unused licences",
+   "idle equipment",
+   "forecast",
+   "turnaround"
+  ],
+  "how_to_reach": "Analytics",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "analytics.range",
+    "label": "Time range",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "approval-chains",
+  "title": "Approval chains",
+  "purpose": "Who approves each kind of request, in order, and above what cost.",
+  "words": [
+   "approval chain",
+   "approvers",
+   "who approves",
+   "workflow",
+   "approval rules",
+   "threshold"
+  ],
+  "how_to_reach": "Requests → Approval Chains",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "chains.new",
+    "label": "New chain",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "chains.save",
+    "label": "Create chain / Save changes (in the editor)",
+    "kind": "button",
+    "changes": true,
+    "after": "chains.new"
+   },
+   {
+    "id": "chains.filter",
+    "label": "Kind of request",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "assets",
+  "title": "Assets",
+  "purpose": "Every device and piece of equipment: who has it, where it is, and adding new ones.",
+  "words": [
+   "inventory",
+   "equipment",
+   "devices",
+   "laptops",
+   "monitors",
+   "hardware",
+   "add a laptop",
+   "stock"
+  ],
+  "how_to_reach": "Assets → Inventory",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "assets.add",
+    "label": "Add asset",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "assets.add-save",
+    "label": "Add asset (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "assets.add"
+   },
+   {
+    "id": "assets.search",
+    "label": "Search assets",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "assets.status",
+    "label": "Status tabs (in stock, assigned, in repair…)",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "assets.scan",
+    "label": "Scan QR",
+    "kind": "link",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "asset",
+  "title": "Asset record",
+  "purpose": "One asset: who holds it, its details and history; assign it, take it back or raise a ticket.",
+  "words": [
+   "assign a laptop",
+   "give someone a device",
+   "return a device",
+   "check in",
+   "asset history",
+   "repair"
+  ],
+  "how_to_reach": "Open Assets, then click the asset (or \"Open full record and history\" in its side panel).",
+  "navigable": false,
+  "targets": [
+   {
+    "id": "asset.assign",
+    "label": "Assign",
+    "kind": "button",
+    "changes": false,
+    "note": "Only while the asset is in stock."
+   },
+   {
+    "id": "asset.return",
+    "label": "Return to stock",
+    "kind": "button",
+    "changes": false,
+    "note": "Only while the asset is assigned to someone."
+   },
+   {
+    "id": "asset.repaired",
+    "label": "Mark repaired",
+    "kind": "button",
+    "changes": true,
+    "note": "Only while the asset is in repair."
+   },
+   {
+    "id": "asset.ticket",
+    "label": "Raise ticket",
+    "kind": "button",
+    "changes": false,
+    "note": "Not for retired assets."
+   },
+   {
+    "id": "asset.activity",
+    "label": "Activity filter",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "qr",
+  "title": "Scan a QR code",
+  "purpose": "Scan or type an asset tag to find a device and check it in or out.",
+  "words": [
+   "qr",
+   "barcode",
+   "scan",
+   "asset tag",
+   "check out",
+   "camera"
+  ],
+  "how_to_reach": "Assets → Scan a QR code",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "qr.camera",
+    "label": "Start camera",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "qr.tag",
+    "label": "Asset tag",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "qr.find",
+    "label": "Find",
+    "kind": "button",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "maintenance",
+  "title": "Maintenance",
+  "purpose": "Repair tickets for equipment: report a problem and follow it until it’s fixed.",
+  "words": [
+   "ticket",
+   "repair",
+   "broken",
+   "not working",
+   "report an issue",
+   "it support",
+   "fix"
+  ],
+  "how_to_reach": "Maintenance",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "maintenance.raise",
+    "label": "Raise ticket",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "maintenance.status",
+    "label": "Status tabs",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "maintenance.view",
+    "label": "Table or board view",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "audit-logs",
+  "title": "Audit log",
+  "purpose": "Who did what, and when — every change, for review and export.",
+  "words": [
+   "audit",
+   "history",
+   "who changed",
+   "log",
+   "compliance",
+   "activity"
+  ],
+  "how_to_reach": "Access → Audit log",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "audit.what",
+    "label": "What happened",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "audit.when",
+    "label": "When",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "audit.download",
+    "label": "Download CSV",
+    "kind": "button",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "directory",
+  "title": "Directory",
+  "purpose": "Everyone in the company: find a person, their team and what they hold; org chart view.",
+  "words": [
+   "people",
+   "employees",
+   "staff",
+   "find someone",
+   "colleague",
+   "org chart",
+   "team",
+   "phone number"
+  ],
+  "how_to_reach": "People → Directory",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "directory.search",
+    "label": "Search people",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "directory.view",
+    "label": "List or org chart view",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "directory.onboard",
+    "label": "Onboard someone",
+    "kind": "link",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "person",
+  "title": "Person’s profile",
+  "purpose": "One person: contact details, equipment, documents, and joining or leaving.",
+  "words": [
+   "profile",
+   "employee details",
+   "their equipment",
+   "their documents"
+  ],
+  "how_to_reach": "Open Directory, click the person, then \"Open profile\" in the side panel.",
+  "navigable": false,
+  "targets": [
+   {
+    "id": "profile.edit",
+    "label": "Edit profile / Edit contact details",
+    "kind": "button",
+    "changes": false,
+    "note": "HR edits everything; people edit their own contact details."
+   },
+   {
+    "id": "profile.equipment",
+    "label": "Equipment tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.documents",
+    "label": "Documents tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.upload",
+    "label": "Upload (documents)",
+    "kind": "button",
+    "changes": false,
+    "after": "profile.documents"
+   },
+   {
+    "id": "profile.lifecycle",
+    "label": "Joining and leaving tab",
+    "kind": "tab",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "profile",
+  "title": "Your profile",
+  "purpose": "Your own details, equipment and documents, and setting up your own two-step sign-in (authenticator app).",
+  "words": [
+   "my profile",
+   "my details",
+   "my equipment",
+   "my documents",
+   "two-step",
+   "mfa",
+   "authenticator",
+   "change phone"
+  ],
+  "how_to_reach": "Your profile",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "profile.edit",
+    "label": "Edit profile / Edit contact details",
+    "kind": "button",
+    "changes": false,
+    "note": "HR edits everything; people edit their own contact details."
+   },
+   {
+    "id": "profile.equipment",
+    "label": "Equipment tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.documents",
+    "label": "Documents tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.upload",
+    "label": "Upload (documents)",
+    "kind": "button",
+    "changes": false,
+    "after": "profile.documents"
+   },
+   {
+    "id": "profile.lifecycle",
+    "label": "Joining and leaving tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.security",
+    "label": "Sign-in tab (two-step sign-in)",
+    "kind": "tab",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "departments",
+  "title": "Departments",
+  "purpose": "The company’s departments and who heads each one.",
+  "words": [
+   "department",
+   "team",
+   "add a department",
+   "head of department"
+  ],
+  "how_to_reach": "People → Departments",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "departments.add",
+    "label": "Add department",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "departments.save",
+    "label": "Add department / Save (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "departments.add"
+   }
+  ]
+ },
+ {
+  "id": "home",
+  "title": "Home",
+  "purpose": "What needs you today: approvals, tasks and tickets waiting on you, plus your key numbers.",
+  "words": [
+   "dashboard",
+   "start",
+   "today",
+   "waiting on me",
+   "my tasks",
+   "inbox",
+   "approvals to do"
+  ],
+  "how_to_reach": "Home",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "home.new-request",
+    "label": "New request",
+    "kind": "link",
+    "changes": false
+   },
+   {
+    "id": "home.scan",
+    "label": "Scan a QR code",
+    "kind": "link",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "leave",
+  "title": "Leave & Attendance",
+  "purpose": "Ask for leave, see what you have left, your month, and (for approvers) your team’s leave.",
+  "words": [
+   "leave",
+   "holiday",
+   "vacation",
+   "time off",
+   "day off",
+   "sick",
+   "pto",
+   "balance",
+   "attendance",
+   "check in"
+  ],
+  "how_to_reach": "People → Leave & Attendance",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "leave.apply",
+    "label": "Ask for leave",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "leave.send",
+    "label": "Send request (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "leave.apply"
+   },
+   {
+    "id": "leave.mine",
+    "label": "My leave tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "leave.attendance",
+    "label": "My month tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "leave.team",
+    "label": "Team tab (approvers)",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "leave.settings",
+    "label": "Settings tab (HR: leave types, holidays)",
+    "kind": "tab",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "licenses",
+  "title": "Licences",
+  "purpose": "Software the company pays for, who has a seat, and seats nobody uses.",
+  "words": [
+   "software",
+   "licence",
+   "license",
+   "seats",
+   "subscription",
+   "figma",
+   "microsoft 365",
+   "renewal"
+  ],
+  "how_to_reach": "Assets → Licences",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "licenses.add",
+    "label": "Add Licence",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "licenses.add-save",
+    "label": "Add Licence (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "licenses.add"
+   }
+  ]
+ },
+ {
+  "id": "onboarding",
+  "title": "Onboarding",
+  "purpose": "Bring a new joiner in: create their account and track their first-day checklist.",
+  "words": [
+   "new joiner",
+   "new hire",
+   "new employee",
+   "add a person",
+   "add user",
+   "create account",
+   "onboard",
+   "first day"
+  ],
+  "how_to_reach": "People → Onboarding",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "onboarding.start",
+    "label": "Add new joiner",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "onboarding.add-save",
+    "label": "Add joiner (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "onboarding.start"
+   },
+   {
+    "id": "onboarding.start-save",
+    "label": "Start (for someone who already has an account)",
+    "kind": "button",
+    "changes": true,
+    "after": "onboarding.start"
+   },
+   {
+    "id": "onboarding.status",
+    "label": "Status tabs",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "offboarding",
+  "title": "Offboarding",
+  "purpose": "When someone leaves: get equipment back, take licences back and close their account.",
+  "words": [
+   "leaver",
+   "leaving",
+   "exit",
+   "resign",
+   "offboard",
+   "last day",
+   "return equipment"
+  ],
+  "how_to_reach": "People → Offboarding",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "offboarding.start",
+    "label": "Start offboarding",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "offboarding.start-save",
+    "label": "Start (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "offboarding.start"
+   },
+   {
+    "id": "offboarding.status",
+    "label": "Status tabs",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "notifications",
+  "title": "Notifications",
+  "purpose": "Updates about your requests, approvals and equipment.",
+  "words": [
+   "alerts",
+   "updates",
+   "messages",
+   "unread",
+   "bell"
+  ],
+  "how_to_reach": "Notifications",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "notifications.show",
+    "label": "Show (all, unread, approvals…)",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "notifications.mark-all",
+    "label": "Mark all as read",
+    "kind": "button",
+    "changes": true
+   }
+  ]
+ },
+ {
+  "id": "assistant",
+  "title": "Your assistant",
+  "purpose": "Your colour for the app and the Guide, and how the Guide helps you.",
+  "words": [
+   "colour",
+   "color",
+   "theme",
+   "personalise",
+   "turn off guide",
+   "assistant settings",
+   "preferences"
+  ],
+  "how_to_reach": "Your name at the bottom of the sidebar, then \"Your assistant\".",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "assistant.colour",
+    "label": "Colour",
+    "kind": "section",
+    "changes": false
+   },
+   {
+    "id": "assistant.guide",
+    "label": "Show the Guide",
+    "kind": "field",
+    "changes": true
+   },
+   {
+    "id": "assistant.style",
+    "label": "How it helps",
+    "kind": "section",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "requests",
+  "title": "Requests",
+  "purpose": "Ask for equipment, access or IT help, see where your requests are, and approve or fulfil others’.",
+  "words": [
+   "request",
+   "ask for a laptop",
+   "new laptop",
+   "access",
+   "it help",
+   "approve",
+   "approval",
+   "to fulfil",
+   "my requests"
+  ],
+  "how_to_reach": "Requests → Requests",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "requests.new",
+    "label": "New request",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "requests.submit",
+    "label": "Submit request (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "requests.new"
+   },
+   {
+    "id": "requests.whose",
+    "label": "Whose requests (yours, to approve, to fulfil)",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "requests.status",
+    "label": "Status tabs",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ }
+]

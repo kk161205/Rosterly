@@ -1,0 +1,340 @@
+[
+ {
+  "id": "qr",
+  "title": "Scan a QR code",
+  "purpose": "Scan or type an asset tag to find a device and check it in or out.",
+  "words": [
+   "qr",
+   "barcode",
+   "scan",
+   "asset tag",
+   "check out",
+   "camera"
+  ],
+  "how_to_reach": "Assets → Scan a QR code",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "qr.camera",
+    "label": "Start camera",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "qr.tag",
+    "label": "Asset tag",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "qr.find",
+    "label": "Find",
+    "kind": "button",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "maintenance",
+  "title": "Maintenance",
+  "purpose": "Repair tickets for equipment: report a problem and follow it until it’s fixed.",
+  "words": [
+   "ticket",
+   "repair",
+   "broken",
+   "not working",
+   "report an issue",
+   "it support",
+   "fix"
+  ],
+  "how_to_reach": "Maintenance",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "maintenance.raise",
+    "label": "Raise ticket",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "maintenance.status",
+    "label": "Status tabs",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "maintenance.view",
+    "label": "Table or board view",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "directory",
+  "title": "Directory",
+  "purpose": "Everyone in the company: find a person, their team and what they hold; org chart view.",
+  "words": [
+   "people",
+   "employees",
+   "staff",
+   "find someone",
+   "colleague",
+   "org chart",
+   "team",
+   "phone number"
+  ],
+  "how_to_reach": "People → Directory",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "directory.search",
+    "label": "Search people",
+    "kind": "field",
+    "changes": false
+   },
+   {
+    "id": "directory.view",
+    "label": "List or org chart view",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "profile",
+  "title": "Your profile",
+  "purpose": "Your own details, equipment and documents, and setting up your own two-step sign-in (authenticator app).",
+  "words": [
+   "my profile",
+   "my details",
+   "my equipment",
+   "my documents",
+   "two-step",
+   "mfa",
+   "authenticator",
+   "change phone"
+  ],
+  "how_to_reach": "Your profile",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "profile.edit",
+    "label": "Edit profile / Edit contact details",
+    "kind": "button",
+    "changes": false,
+    "note": "HR edits everything; people edit their own contact details."
+   },
+   {
+    "id": "profile.equipment",
+    "label": "Equipment tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.documents",
+    "label": "Documents tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.upload",
+    "label": "Upload (documents)",
+    "kind": "button",
+    "changes": false,
+    "after": "profile.documents"
+   },
+   {
+    "id": "profile.lifecycle",
+    "label": "Joining and leaving tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "profile.security",
+    "label": "Sign-in tab (two-step sign-in)",
+    "kind": "tab",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "home",
+  "title": "Home",
+  "purpose": "What needs you today: approvals, tasks and tickets waiting on you, plus your key numbers.",
+  "words": [
+   "dashboard",
+   "start",
+   "today",
+   "waiting on me",
+   "my tasks",
+   "inbox",
+   "approvals to do"
+  ],
+  "how_to_reach": "Home",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "home.new-request",
+    "label": "New request",
+    "kind": "link",
+    "changes": false
+   },
+   {
+    "id": "home.scan",
+    "label": "Scan a QR code",
+    "kind": "link",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "leave",
+  "title": "Leave & Attendance",
+  "purpose": "Ask for leave, see what you have left, your month, and (for approvers) your team’s leave.",
+  "words": [
+   "leave",
+   "holiday",
+   "vacation",
+   "time off",
+   "day off",
+   "sick",
+   "pto",
+   "balance",
+   "attendance",
+   "check in"
+  ],
+  "how_to_reach": "People → Leave & Attendance",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "leave.apply",
+    "label": "Ask for leave",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "leave.send",
+    "label": "Send request (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "leave.apply"
+   },
+   {
+    "id": "leave.mine",
+    "label": "My leave tab",
+    "kind": "tab",
+    "changes": false
+   },
+   {
+    "id": "leave.attendance",
+    "label": "My month tab",
+    "kind": "tab",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "notifications",
+  "title": "Notifications",
+  "purpose": "Updates about your requests, approvals and equipment.",
+  "words": [
+   "alerts",
+   "updates",
+   "messages",
+   "unread",
+   "bell"
+  ],
+  "how_to_reach": "Notifications",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "notifications.show",
+    "label": "Show (all, unread, approvals…)",
+    "kind": "filter",
+    "changes": false
+   },
+   {
+    "id": "notifications.mark-all",
+    "label": "Mark all as read",
+    "kind": "button",
+    "changes": true
+   }
+  ]
+ },
+ {
+  "id": "assistant",
+  "title": "Your assistant",
+  "purpose": "Your colour for the app and the Guide, and how the Guide helps you.",
+  "words": [
+   "colour",
+   "color",
+   "theme",
+   "personalise",
+   "turn off guide",
+   "assistant settings",
+   "preferences"
+  ],
+  "how_to_reach": "Your name at the bottom of the sidebar, then \"Your assistant\".",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "assistant.colour",
+    "label": "Colour",
+    "kind": "section",
+    "changes": false
+   },
+   {
+    "id": "assistant.guide",
+    "label": "Show the Guide",
+    "kind": "field",
+    "changes": true
+   },
+   {
+    "id": "assistant.style",
+    "label": "How it helps",
+    "kind": "section",
+    "changes": false
+   }
+  ]
+ },
+ {
+  "id": "requests",
+  "title": "Requests",
+  "purpose": "Ask for equipment, access or IT help, see where your requests are, and approve or fulfil others’.",
+  "words": [
+   "request",
+   "ask for a laptop",
+   "new laptop",
+   "access",
+   "it help",
+   "approve",
+   "approval",
+   "to fulfil",
+   "my requests"
+  ],
+  "how_to_reach": "Requests → Requests",
+  "navigable": true,
+  "targets": [
+   {
+    "id": "requests.new",
+    "label": "New request",
+    "kind": "button",
+    "changes": false
+   },
+   {
+    "id": "requests.submit",
+    "label": "Submit request (in the form)",
+    "kind": "button",
+    "changes": true,
+    "after": "requests.new"
+   },
+   {
+    "id": "requests.status",
+    "label": "Status tabs",
+    "kind": "filter",
+    "changes": false
+   }
+  ]
+ }
+]
