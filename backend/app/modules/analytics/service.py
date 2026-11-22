@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.clock import local_today
+from app.core.clock import local_date, local_today
 from app.core.errors import AppError
 from app.core.security import CurrentUser, check_permission
 from app.models.assets import Asset, AssetAssignment, AssetStatus, MaintenanceTicket
@@ -173,9 +173,9 @@ class AnalyticsService:
         idle: list[IdleAssetItem] = []
         for asset, returned in stock:
             if returned:
-                since = _aware(returned).astimezone().date()  # local date, like `today`
+                since = local_date(_aware(returned))  # the company's date, like `today`
             elif asset.created_at:
-                since = _aware(asset.created_at).astimezone().date()
+                since = local_date(_aware(asset.created_at))
             else:
                 since = asset.purchase_date or today
             days = (today - since).days
