@@ -100,8 +100,16 @@ def _remember(key: str, reply: GuideResponse) -> None:
     _cache[key] = (time.time() + ttl, reply.model_dump(exclude_none=True))
 
 
-def _shortcut(message: str) -> str | None:
-    text = message.lower()
+# With an asset or person open, "this one" / "it" / "here" means that record: read it, so the answer
+# comes from its data and is never made up.
+ABOUT_THIS = re.compile(r"\b(this|it|here|this one)\b")
+HOW_TO = re.compile(r"^\s*(how|where) (do|can|should) i\b")
+
+
+def _shortcut(message: str, has_record: bool = False) -> str | None:
+    text = message.lower().replace("’", "'")
+    if has_record and ABOUT_THIS.search(text) and not HOW_TO.search(text):
+        return "this_record"
     return next((tool for pattern, tool in SHORTCUTS if pattern.search(text)), None)
 
 
@@ -115,7 +123,7 @@ async def guide(req: GuideRequest, backend: BackendClient, groq: GroqClient, lim
     if not limiter.allow(str(me.get("id"))):
         raise RateLimited()
 
-    shortcut = _shortcut(req.message)
+    shortcut = _shortcut(req.message, req.record is not None)
     if shortcut:
         log.info("guide shortcut tool=%s", shortcut)
         reply = await _lookup(req, {"kind": "lookup", "tool": shortcut, "args": {}}, backend, groq)

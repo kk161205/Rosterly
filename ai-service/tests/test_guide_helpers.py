@@ -50,10 +50,14 @@ def test_the_record_on_screen_is_read_only_when_one_is_open(fakes, ask):
     backend.responses[f"/api/v1/assets/{ASSET_ID}"] = (200, {"asset": {"asset_tag": "AST-0011", "name": "Pixel 8", "status": "assigned",
                                                                        "current_holder": {"full_name": "Alex Murphy"}}})
     backend.responses[f"/api/v1/assets/{ASSET_ID}/maintenance"] = (200, [])
-    groq.replies = [{"kind": "lookup", "tool": "this_record", "args": {}}, {"text": "AST-0011 is with Alex Murphy and has no open tickets."}]
+    groq.replies = [{"text": "AST-0011 is with Alex Murphy and has no open tickets."}]
     body = ask("what's happening with this one?", record={"type": "asset", "id": ASSET_ID}, current_page="asset").json()
     assert body["text"] == "AST-0011 is with Alex Murphy and has no open tickets."
-    assert "this_record" in groq.requests[0]["messages"][0]["content"]
+    assert len(groq.requests) == 1 and "Alex Murphy" in groq.requests[0]["messages"][1]["content"]  # read first, then answered from the data
+    groq.requests.clear()
+    groq.replies = [{"kind": "show", "title": "x", "steps": [{"action": "go", "page": "assets"}]}]
+    ask("how do I return this?", record={"type": "asset", "id": ASSET_ID}).json()
+    assert "Question:" in groq.requests[0]["messages"][1]["content"]  # "how do I…" still goes to the deciding model
     groq.replies = [{"kind": "lookup", "tool": "this_record", "args": {}}]
     assert ask("what about this?").json()["kind"] == "none"  # nothing open: the tool isn't offered or run
 
@@ -92,3 +96,11 @@ def test_groq_reset_times_are_read():
     assert groq_module._seconds("7.66s") == 7.66
     assert groq_module._seconds("1m2.5s") == 62.5
     assert groq_module._seconds("250ms") == 0.25
+
+
+def test_asset_categories_are_matched_as_stored():
+    from app.guide.tools import TOOLS, clean_args
+    tool = TOOLS["find_assets"]
+    assert clean_args(tool, {"category": "Monitors"})["category"] == "monitor"
+    assert clean_args(tool, {"category": "laptop"})["category"] == "laptop"
+    assert clean_args(tool, {"category": "Furniture"})["category"] == "furniture"

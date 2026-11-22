@@ -23,6 +23,15 @@ def _text(value: Any, limit: int = 60) -> Optional[str]:
     return s[:limit] if s else None
 
 
+def _category(value: Any) -> Optional[str]:
+    """Asset categories are stored lower-case and singular ("monitor"); "Monitors" means the same."""
+    s = _text(value, 40)
+    if not s:
+        return None
+    s = s.lower().replace(" ", "_")
+    return s[:-1] if len(s) > 3 and s.endswith("s") and not s.endswith("ss") else s
+
+
 # What people (and models) say → the API's value.
 _SYNONYMS = {
     "available": "in_stock", "spare": "in_stock", "stock": "in_stock", "unassigned": "in_stock",
@@ -235,7 +244,7 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "find_assets", "/assets", "Assets by name/tag/serial (search), status or category; who holds each.", "assets",
-            args={"search": _text, "status": _choice(ASSET_STATUSES), "category": _text},
+            args={"search": _text, "status": _choice(ASSET_STATUSES), "category": _category},
             fixed={"page_size": ROWS},
             project=lambda d: {
                 "total": d.get("total"),

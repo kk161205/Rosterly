@@ -41,7 +41,7 @@ export const GuideOverlay: React.FC<{
             width: TILE,
             height: TILE,
             transform: `translate(${tile.x}px, ${tile.y}px) rotate(-14deg)`,
-            transition: `transform ${moveMs}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 120ms ease-out`,
+            transition: `transform ${moveMs}ms cubic-bezier(0.45, 0, 0.25, 1), opacity 120ms ease-out`,
             opacity: fading ? 0 : 1,
           }}
         />
@@ -53,7 +53,7 @@ export const GuideOverlay: React.FC<{
           className="pointer-events-none fixed left-0 top-0 z-[70] max-w-[240px] rounded-card border border-line bg-paper px-3 py-1.5 text-body text-ink"
           style={{
             transform: `translate(${captionLeft}px, ${Math.max(8, tile.y - 4)}px)`,
-            transition: `transform ${moveMs}ms cubic-bezier(0.2, 0.8, 0.2, 1)`,
+            transition: `transform ${moveMs}ms cubic-bezier(0.45, 0, 0.25, 1)`,
           }}
         >
           {caption}

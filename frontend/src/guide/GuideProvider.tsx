@@ -108,9 +108,22 @@ function listeningPosition(): TilePosition {
 
 export interface GuideTiming {
   move: number
+  /** The least time a caption stays up; longer captions get more (see readingTime). */
   dwell: number
+  /** Extra time per character of caption, so it can be read (0 = a flat dwell). */
+  perChar?: number
+  maxDwell?: number
+  /** A breath after a new page opens, before the tile moves on. */
+  afterPage?: number
 }
-const REAL_TIMING: GuideTiming = { move: 380, dwell: 1100 }
+// About 0.6 s to glide (the eye can follow it) and a caption up for 1.4–2.6 s depending on its length:
+// long enough to read, short enough not to drag.
+const REAL_TIMING: GuideTiming = { move: 600, dwell: 1400, perChar: 45, maxDwell: 2600, afterPage: 500 }
+
+export function readingTime(caption: string, t: GuideTiming): number {
+  if (!t.perChar) return t.dwell
+  return Math.min(Math.max(1200 + caption.length * t.perChar, t.dwell), t.maxDwell ?? t.dwell)
+}
 
 export const GuideProvider: React.FC<{
   user: UserProfile | null
@@ -136,6 +149,7 @@ export const GuideProvider: React.FC<{
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState<Extract<GuidePlan, { kind: 'answer' }> | null>(null)
   const historyRef = useRef<{ question: string; answer: string }[]>([])
+  const captionRef = useRef('')
 
   const pathRef = useRef(location.pathname)
   pathRef.current = location.pathname
@@ -256,10 +270,14 @@ export const GuideProvider: React.FC<{
           highlight(el)
           await place(el ? besideElement(el) : homePosition())
         },
-        say: setCaption,
+        say: (text) => {
+          captionRef.current = text
+          setCaption(text)
+        },
+        pause: (ms) => sleep(timing.afterPage ? ms : 0),
         dwell: () =>
           new Promise<void>((resolve) => {
-            const t = setTimeout(resolve, timing.dwell)
+            const t = setTimeout(resolve, readingTime(captionRef.current, timing))
             controller.signal.addEventListener('abort', () => {
               clearTimeout(t)
               resolve()
@@ -289,7 +307,7 @@ export const GuideProvider: React.FC<{
         }
       })
     },
-    [pages, style, desktop, navigate, place, timing.dwell, tile, goHome, highlight],
+    [pages, style, desktop, navigate, place, timing, tile, goHome, highlight],
   )
 
   const ask = useCallback(

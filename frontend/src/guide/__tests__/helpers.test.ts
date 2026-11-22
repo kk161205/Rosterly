@@ -56,3 +56,14 @@ describe('“Why can’t I open this?” without AI', () => {
     expect(explainAccess('how many laptops are in stock', EMPLOYEE, '/home')).toBeNull()
   })
 })
+
+describe('Tile timing', () => {
+  it('gives longer captions more time, within limits', async () => {
+    const { readingTime } = await import('@/guide/GuideProvider')
+    const t = { move: 600, dwell: 1400, perChar: 45, maxDwell: 2600 }
+    expect(readingTime('Open Leave', t)).toBe(1650)
+    expect(readingTime('Hi', t)).toBe(1400)
+    expect(readingTime('A very long caption that goes on and on for quite a while', t)).toBe(2600)
+    expect(readingTime('anything', { move: 0, dwell: 0 })).toBe(0)
+  })
+})

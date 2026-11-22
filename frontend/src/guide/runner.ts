@@ -26,6 +26,8 @@ export interface RunDeps {
   say: (caption: string) => void
   /** A pause long enough to read the caption. */
   dwell: () => Promise<void>
+  /** A short breath after a new page opens, so it settles before the tile moves on. */
+  pause?: (ms: number) => Promise<void>
   /** Resolves when the person presses the element, or moves on. */
   waitForPerson: (el: HTMLElement) => Promise<void>
 }
@@ -102,6 +104,7 @@ export async function runPlan(plan: GuidePlan, deps: RunDeps): Promise<RunOutcom
           if (!(await waitUntil(() => onRoute(deps.pathname(), page.route), signal, 4000))) {
             return { status: 'stuck', message: `I couldn’t open ${page.title}. You can reach it from ${routeText(page)}.` }
           }
+          await deps.pause?.(500)
         }
         if (last) {
           deps.say(`This is ${page.title}. ${page.purpose}`)
