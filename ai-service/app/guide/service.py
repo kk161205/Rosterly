@@ -13,7 +13,6 @@ The Guide's brain.
 """
 import json
 import logging
-import re
 import time
 from typing import Any
 
@@ -31,12 +30,6 @@ log = logging.getLogger("rosterly.ai")
 CACHE_SECONDS = {"answer": 120, "default": 900}  # data goes stale quickly; the way to a page doesn't
 CACHE_MAX = 500
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
-
-# Questions common enough to skip the deciding model: (pattern, tool, args).
-SHORTCUTS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\b(my|our)\b.*\brequests?\b.*\b(stuck|waiting|pending|status|where|who|held up|taking)\b|\b(why|where|who)\b.*\b(my|our)\b.*\brequests?\b"), "request_status"),
-]
-
 
 class GuideDisabled(Exception):
     pass
@@ -100,19 +93,6 @@ def _remember(key: str, reply: GuideResponse) -> None:
     _cache[key] = (time.time() + ttl, reply.model_dump(exclude_none=True))
 
 
-# With an asset or person open, "this one" / "it" / "here" means that record: read it, so the answer
-# comes from its data and is never made up.
-ABOUT_THIS = re.compile(r"\b(this|it|here|this one)\b")
-HOW_TO = re.compile(r"^\s*(how|where) (do|can|should) i\b")
-
-
-def _shortcut(message: str, has_record: bool = False) -> str | None:
-    text = message.lower().replace("’", "'")
-    if has_record and ABOUT_THIS.search(text) and not HOW_TO.search(text):
-        return "this_record"
-    return next((tool for pattern, tool in SHORTCUTS if pattern.search(text)), None)
-
-
 async def guide(req: GuideRequest, backend: BackendClient, groq: GroqClient, limiter: RateLimiter) -> GuideResponse:
     me = await who_is_asking(backend)
     key = _cache_key(me.get("id"), req)
@@ -123,13 +103,14 @@ async def guide(req: GuideRequest, backend: BackendClient, groq: GroqClient, lim
     if not limiter.allow(str(me.get("id"))):
         raise RateLimited()
 
-    shortcut = _shortcut(req.message, req.record is not None)
-    if shortcut:
-        log.info("guide shortcut tool=%s", shortcut)
-        reply = await _lookup(req, {"kind": "lookup", "tool": shortcut, "args": {}}, backend, groq)
-    else:
-        decision = await groq.chat_json(settings.decide_models, decide_prompt(req.pages, req.message, req.current_page, req.record is not None), _question_text(req), max_tokens=900)
-        reply = await _act(req, decision, backend, groq)
+    # Every question goes to the model: it decides, from the page map, the tools and the facts it is given.
+    decision = await groq.chat_json(
+        settings.decide_models,
+        decide_prompt(req.pages, req.message, req.current_page, req.record is not None, req.locked_pages),
+        _question_text(req),
+        max_tokens=900,
+    )
+    reply = await _act(req, decision, backend, groq)
     reply.model = groq.last_model
     _remember(key, reply)
     return reply

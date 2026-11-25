@@ -116,6 +116,13 @@ describe('Trimmed to what the person can open', () => {
     }
   })
 
+  it('lets an employee open the record of a device they hold, without the admin buttons', () => {
+    const asset = pagesFor(EMPLOYEE).find((p) => p.id === 'asset')!
+    expect(asset.navigable).toBe(false) // reached from Your profile → Equipment, never walked to
+    expect(asset.targets.map((t) => t.id)).not.toEqual(expect.arrayContaining(['asset.assign']))
+    expect(asset.targets.map((t) => t.id)).not.toContain('asset.return')
+  })
+
   it('drops targets the person won’t have on a page they can open', () => {
     const leave = pagesFor(EMPLOYEE).find((p) => p.id === 'leave')!
     expect(leave.targets.map((t) => t.id)).not.toContain('leave.settings')
@@ -135,7 +142,7 @@ describe('What the AI service receives', () => {
     expect(JSON.parse(JSON.stringify(pages))).toEqual(pages)
     const licences = pages.find((p) => p.id === 'licenses')!
     expect(licences.how_to_reach).toBe('Assets → Licences')
-    expect(pages.find((p) => p.id === 'asset')).toMatchObject({ navigable: false, how_to_reach: expect.stringContaining('Open Assets') })
+    expect(pages.find((p) => p.id === 'asset')).toMatchObject({ navigable: false, how_to_reach: expect.stringMatching(/Equipment tab.*open Assets/) })
     expect(pages.find((p) => p.id === 'home')!.how_to_reach).toBe('Home')
   })
 
@@ -157,6 +164,15 @@ describe('Instant matching, no AI', () => {
     ['new joiner', 'onboarding'],
     ['change my colour', 'assistant'],
     ['two-step', 'profile'],
+    // Your own things go to your own pages, even for admins who can see everyone's.
+    ['show me my assigned assets', 'profile'],
+    ['my assets', 'profile'],
+    ['my laptop', 'profile'],
+    ['my devices', 'profile'],
+    ['inventory', 'assets'],
+    ['my leave', 'leave'],
+    ['check in', 'leave'],
+    ['my tickets', 'maintenance'],
   ])('“%s” → %s', (q, page) => {
     expect(best(q)).toBe(page)
   })

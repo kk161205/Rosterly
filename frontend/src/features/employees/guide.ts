@@ -3,7 +3,7 @@ import { hasPermission } from '@/features/auth/hooks/useCurrentUser'
 
 const PROFILE_TARGETS: GuidePage['targets'] = [
   { id: 'profile.edit', label: 'Edit profile / Edit contact details', kind: 'button', changes: false, note: 'HR edits everything; people edit their own contact details.' },
-  { id: 'profile.equipment', label: 'Equipment tab', kind: 'tab', changes: false },
+  { id: 'profile.equipment', label: 'Equipment tab', kind: 'tab', changes: false, note: 'Lists the devices assigned to this person; each one opens its own record.' },
   { id: 'profile.documents', label: 'Documents tab', kind: 'tab', changes: false },
   { id: 'profile.upload', label: 'Upload (documents)', kind: 'button', changes: false, after: 'profile.documents' },
   { id: 'profile.lifecycle', label: 'Joining and leaving tab', kind: 'tab', changes: false },
@@ -36,8 +36,8 @@ export const GUIDE: GuidePage[] = [
     id: 'profile',
     route: '/profile',
     title: 'Your profile',
-    purpose: 'Your own details, equipment and documents, and setting up your own two-step sign-in (authenticator app).',
-    words: ['my profile', 'my details', 'my equipment', 'my documents', 'two-step', 'mfa', 'authenticator', 'change phone'],
+    purpose: 'Your own details, the equipment assigned to you (each device opens its own record), your documents, and setting up your own two-step sign-in (authenticator app).',
+    words: ['my profile', 'my details', 'my equipment', 'my assets', 'my assigned assets', 'assets assigned to me', 'assigned to me', 'my devices', 'my laptop', 'what do i have', 'my documents', 'two-step', 'mfa', 'authenticator', 'change phone'],
     visible: () => true,
     targets: [...PROFILE_TARGETS, { id: 'profile.security', label: 'Sign-in tab (two-step sign-in)', kind: 'tab', changes: false }],
   },
@@ -46,7 +46,7 @@ export const GUIDE: GuidePage[] = [
     route: '/departments',
     title: 'Departments',
     purpose: 'The company’s departments and who heads each one.',
-    words: ['department', 'team', 'add a department', 'head of department'],
+    words: ['department', 'departments list', 'add a department', 'head of department'],
     targets: [
       { id: 'departments.add', label: 'Add department', kind: 'button', changes: false },
       { id: 'departments.save', label: 'Add department / Save (in the form)', kind: 'button', changes: true, after: 'departments.add' },

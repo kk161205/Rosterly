@@ -2,7 +2,8 @@ import React from 'react'
 import { Check } from 'lucide-react'
 import { Alert, ErrorState, PageHeader, Skeleton, cn } from '@/ui'
 import { getErrorMessage } from '@/lib/errors'
-import { ACCENTS, type AccentId } from '@/lib/accent'
+import { TILE_DESIGNS } from '@/guide/designs'
+import { GuideTileArt } from '@/guide/GuideTileArt'
 import { usePreferences, useUpdatePreferences, type Preferences } from '@/features/preferences/usePreferences'
 
 const STYLES: { value: Preferences['guide_style']; title: string; description: string }[] = [
@@ -11,8 +12,8 @@ const STYLES: { value: Preferences['guide_style']; title: string; description: s
 ]
 
 /**
- * "Your assistant": the colour of the app and the Guide
- * tile, and how the Guide helps. Each change saves at once.
+ * "Your assistant": which Guide comes out of the logo (its design), and how
+ * the Guide helps. Each change saves at once.
  */
 export const AssistantSettingsPage: React.FC = () => {
   const prefs = usePreferences()
@@ -22,7 +23,7 @@ export const AssistantSettingsPage: React.FC = () => {
 
   return (
     <div className="flex max-w-3xl flex-col gap-10">
-      <PageHeader title="Your assistant" description="Pick a colour you like and choose how the Guide helps you. Only you see these." />
+      <PageHeader title="Your assistant" description="Pick your Guide and choose how it helps you. Only you see these." />
 
       {update.isError && <Alert>{getErrorMessage(update.error, 'That change didn’t save. Try again.')}</Alert>}
       <p className="sr-only" role="status" aria-live="polite">
@@ -35,32 +36,36 @@ export const AssistantSettingsPage: React.FC = () => {
         <ErrorState message={getErrorMessage(prefs.error, 'Your settings couldn’t be loaded.')} onRetry={() => prefs.refetch()} />
       ) : (
         <>
-          <section aria-labelledby="colour-heading" className="flex flex-col gap-4">
+          <section aria-labelledby="tile-heading" className="flex flex-col gap-4">
             <div className="border-b border-ink pb-2">
-              <h2 id="colour-heading" className="text-section text-ink">
-                Colour
+              <h2 id="tile-heading" className="text-section text-ink">
+                Your Guide
               </h2>
-              <p className="text-meta text-muted">Used for buttons, links and the Guide tile.</p>
+              <p className="text-meta text-muted">Pick who comes out of the logo when you ask for help. Only the tile changes, not the rest of the app.</p>
             </div>
-            <div data-guide="assistant.colour" role="radiogroup" aria-labelledby="colour-heading" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {ACCENTS.map((a) => {
-                const selected = p.accent === a.id
+            <div data-guide="assistant.tile" role="radiogroup" aria-labelledby="tile-heading" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {TILE_DESIGNS.map((d) => {
+                const selected = p.accent === d.id
                 return (
                   <button
-                    key={a.id}
+                    key={d.id}
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    data-accent={a.id}
-                    onClick={() => !selected && update.mutate({ accent: a.id as AccentId })}
+                    aria-label={d.name}
+                    data-design={d.id}
+                    onClick={() => !selected && update.mutate({ accent: d.id })}
                     className={cn(
-                      'flex min-h-12 items-center gap-3 rounded-card border px-3 text-left text-body text-ink transition-colors',
+                      'flex min-h-16 items-center gap-4 rounded-card border px-4 py-3 text-left text-body text-ink transition-colors',
                       selected ? 'border-navy bg-navy-tint' : 'border-line hover:bg-row-hover',
                     )}
                   >
-                    <span className="h-5 w-5 shrink-0 rotate-[-14deg] rounded-soft border-[1.5px] border-navy bg-accent-soft" aria-hidden="true" />
-                    <span className="flex-1">{a.name}</span>
-                    {selected && <Check className="h-4 w-4 text-navy" aria-hidden="true" />}
+                    <GuideTileArt design={d.id} idle={selected} className="h-12 w-12 shrink-0" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="font-medium">{d.name}</span>
+                      <span className="text-meta text-muted">{d.blurb}</span>
+                    </span>
+                    {selected && <Check className="h-4 w-4 shrink-0 text-navy" aria-hidden="true" />}
                   </button>
                 )
               })}

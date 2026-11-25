@@ -7,7 +7,7 @@ export const GUIDE: GuidePage[] = [
     route: '/leave',
     title: 'Leave & Attendance',
     purpose: 'Ask for leave, see what you have left, your month, and (for approvers) your team’s leave.',
-    words: ['leave', 'holiday', 'vacation', 'time off', 'day off', 'sick', 'pto', 'balance', 'attendance', 'check in'],
+    words: ['leave', 'holiday', 'vacation', 'time off', 'day off', 'sick', 'pto', 'balance', 'my leave', 'leave left', 'attendance', 'check in', 'my attendance'],
     targets: [
       { id: 'leave.apply', label: 'Ask for leave', kind: 'button', changes: false },
       { id: 'leave.send', label: 'Send request (in the form)', kind: 'button', changes: true, after: 'leave.apply' },

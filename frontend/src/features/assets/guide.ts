@@ -8,7 +8,7 @@ export const GUIDE: GuidePage[] = [
     id: 'assets',
     route: '/assets',
     title: 'Assets',
-    purpose: 'Every device and piece of equipment: who has it, where it is, and adding new ones.',
+    purpose: 'The whole company’s devices and equipment: who has each one, where it is, and adding new ones. (Your own devices are on Your profile.)',
     words: ['inventory', 'equipment', 'devices', 'laptops', 'monitors', 'hardware', 'add a laptop', 'stock'],
     targets: [
       { id: 'assets.add', label: 'Add asset', kind: 'button', changes: false, visible: can('assets:create'), note: 'Only for new equipment the company has just bought — giving someone a device is Assign on its record.' },
@@ -22,10 +22,11 @@ export const GUIDE: GuidePage[] = [
     id: 'asset',
     route: '/assets/:id',
     title: 'Asset record',
-    purpose: 'One asset: who holds it, its details and history; assign it, take it back or raise a ticket.',
-    words: ['assign a laptop', 'give someone a device', 'return a device', 'check in', 'asset history', 'repair'],
-    visible: (user) => hasPermission(user, 'assets:read'),
-    reach: 'Open Assets, then click the asset (or "Open full record and history" in its side panel).',
+    purpose: 'One asset: who holds it, its details and history; assign it, take it back or raise a ticket. Everyone can open the devices assigned to them.',
+    words: ['assign a laptop', 'give someone a device', 'return a device', 'check in a device', 'asset details', 'asset history', 'repair'],
+    // Anyone may open a device they hold (the API checks the rest); asset admins open any.
+    visible: () => true,
+    reach: 'Your own devices: Your profile → Equipment tab, then click the device. Asset admins: open Assets, then click the asset (or "Open full record and history" in its side panel).',
     targets: [
       { id: 'asset.assign', label: 'Assign', kind: 'button', changes: false, visible: can('assets:update'), note: 'Only while the asset is in stock.' },
       { id: 'asset.return', label: 'Return to stock', kind: 'button', changes: false, visible: can('assets:update'), note: 'Only while the asset is assigned to someone.' },
@@ -39,7 +40,7 @@ export const GUIDE: GuidePage[] = [
     route: '/assets/qr',
     title: 'Scan a QR code',
     purpose: 'Scan or type an asset tag to find a device and check it in or out.',
-    words: ['qr', 'barcode', 'scan', 'asset tag', 'check out', 'camera'],
+    words: ['qr', 'barcode', 'scan', 'asset tag', 'check out a device', 'camera'],
     targets: [
       { id: 'qr.camera', label: 'Start camera', kind: 'button', changes: true },
       { id: 'qr.tag', label: 'Asset tag', kind: 'field', changes: false },
@@ -51,7 +52,7 @@ export const GUIDE: GuidePage[] = [
     route: '/maintenance',
     title: 'Maintenance',
     purpose: 'Repair tickets for equipment: report a problem and follow it until it’s fixed.',
-    words: ['ticket', 'repair', 'broken', 'not working', 'report an issue', 'it support', 'fix'],
+    words: ['ticket', 'my tickets', 'repair', 'broken', 'not working', 'report an issue', 'it support', 'fix'],
     targets: [
       { id: 'maintenance.raise', label: 'Raise ticket', kind: 'button', changes: false },
       { id: 'maintenance.status', label: 'Status tabs', kind: 'filter', changes: false },

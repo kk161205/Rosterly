@@ -1,7 +1,6 @@
 // Session tokens live in sessionStorage (cleared when the tab closes). The
 // signed-in user's profile is not cached here — it comes from GET /auth/me
 // (useCurrentUser) so the role and permissions are always live.
-import { resetAccent } from '@/lib/accent'
 
 const ACCESS_TOKEN_KEY = 'rosterly_access_token'
 const REFRESH_TOKEN_KEY = 'rosterly_refresh_token'
@@ -29,6 +28,5 @@ export const authStorage = {
     sessionStorage.removeItem(ACCESS_TOKEN_KEY)
     sessionStorage.removeItem(REFRESH_TOKEN_KEY)
     sessionStorage.removeItem(LEGACY_PROFILE_KEY)
-    resetAccent() // the next person on this device starts in the default colour
   },
 }

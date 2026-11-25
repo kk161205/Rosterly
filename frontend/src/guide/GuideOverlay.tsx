@@ -2,13 +2,17 @@ import React from 'react'
 import { cn } from '@/ui'
 import type { GuidePlan } from '@/guide/plan'
 import type { GuidePhase, TilePosition } from '@/guide/GuideProvider'
+import { BODY, GuideTileArt } from '@/guide/GuideTileArt'
+import { tileDesign } from '@/guide/designs'
 
-const TILE = 18
+const TILE = 22
+// The art's 32-unit grid drawn so its 20-unit body is exactly TILE wide.
+const ART = (BODY.grid / BODY.size) * TILE
 const CAPTION_WIDTH = 240
 
 /**
- * The Guide on screen: the tile in the person's accent
- * with a strong outline, a one-line caption beside it, and a fixed pill at the
+ * The Guide on screen: the person's chosen character (it leaves the logo as the
+ * logo's own square and reshapes into the character mid-flight), a one-line caption beside it, and a fixed pill at the
  * bottom with Stop / Ask again. No shadows, trails or bouncing.
  */
 export const GuideOverlay: React.FC<{
@@ -17,6 +21,10 @@ export const GuideOverlay: React.FC<{
   fading: boolean
   moveMs: number
   caption: string
+  /** The person's tile design id (see designs.ts). */
+  design?: string
+  /** Said beside the tile when the search box opens; empty when there is nothing to say. */
+  greeting: string
   title: string
   message: string
   question: string
@@ -25,9 +33,12 @@ export const GuideOverlay: React.FC<{
   onChoose: (plan: GuidePlan) => void
   onStop: () => void
   onAskAgain: () => void
-}> = ({ phase, tile, fading, moveMs, caption, title, message, question, choices, lastQuestion, onChoose, onStop, onAskAgain }) => {
+}> = ({ phase, tile, fading, moveMs, caption, design, greeting, title, message, question, choices, lastQuestion, onChoose, onStop, onAskAgain }) => {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1024
   const captionLeft = tile ? (tile.x + TILE + 8 + CAPTION_WIDTH > vw - 8 ? Math.max(8, tile.x - CAPTION_WIDTH - 8) : tile.x + TILE + 8) : 0
+  // The greeting sits to the right of the tile and is skipped where it would cover the search box (narrow screens).
+  const greetLeft = tile ? tile.x + TILE + 8 : 0
+  const showGreeting = Boolean(tile && greeting && phase === 'listening' && greetLeft + CAPTION_WIDTH <= vw - 8)
   const showPill = phase === 'guiding' || phase === 'thinking' || phase === 'asking' || phase === 'message'
 
   return (
@@ -36,15 +47,27 @@ export const GuideOverlay: React.FC<{
         <div
           data-testid="guide-tile"
           aria-hidden="true"
-          className="pointer-events-none fixed left-0 top-0 z-[70] rounded-soft border-[1.5px] border-navy bg-accent-soft"
+          data-design={tileDesign(design).id}
+          className="pointer-events-none fixed left-0 top-0 z-[70]"
           style={{
             width: TILE,
             height: TILE,
-            transform: `translate(${tile.x}px, ${tile.y}px) rotate(-14deg)`,
+            transform: `translate(${tile.x}px, ${tile.y}px) scale(${tile.scale ?? 1})`,
             transition: `transform ${moveMs}ms cubic-bezier(0.45, 0, 0.25, 1), opacity 120ms ease-out`,
             opacity: fading ? 0 : 1,
           }}
-        />
+        >
+          <GuideTileArt
+            design={design}
+            // In the logo it is the logo's square; out of it, the character. It reshapes partway through
+            // the flight out, and back into the square as soon as it heads home.
+            form={(tile.scale ?? 1) >= 1 ? 'character' : 'square'}
+            idle
+            revealDelay={Math.round(moveMs * 0.45)}
+            className="absolute"
+            style={{ width: ART, height: ART, left: (-BODY.x / BODY.size) * TILE, top: (-BODY.y / BODY.size) * TILE }}
+          />
+        </div>
       )}
 
       {tile && caption && phase === 'guiding' && (
@@ -57,6 +80,17 @@ export const GuideOverlay: React.FC<{
           }}
         >
           {caption}
+        </div>
+      )}
+
+      {showGreeting && tile && (
+        <div
+          data-testid="guide-greeting"
+          aria-hidden="true"
+          className="guide-greet pointer-events-none fixed left-0 top-0 z-[70] max-w-[240px] rounded-card border border-line bg-paper px-3 py-1.5 text-body text-ink"
+          style={{ transform: `translate(${greetLeft}px, ${Math.max(8, tile.y - 4)}px)` }}
+        >
+          {greeting}
         </div>
       )}
 

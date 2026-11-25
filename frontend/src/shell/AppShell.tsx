@@ -8,8 +8,6 @@ import { MfaSetupRequired } from '@/features/auth/components/MfaSetupRequired'
 import type { UserProfile } from '@/features/auth/types/auth'
 import { MFA_REQUIRED_EVENT } from '@/lib/api-client'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { applyAccent } from '@/lib/accent'
-import { usePreferences } from '@/features/preferences/usePreferences'
 import { useInbox } from '@/features/inbox/hooks/useInbox'
 import { authStorage } from '@/lib/authStorage'
 import { Button, EmptyState, IconButton, Logo } from '@/ui'
@@ -32,14 +30,6 @@ export const AppShell: React.FC = () => {
   const { user } = useCurrentUser(hasSession)
   const desktop = useMediaQuery('(min-width: 1024px)') // one notification bell: sidebar on desktop, top bar on phones
   const queryClient = useQueryClient()
-  const prefs = usePreferences(Boolean(user))
-  const accent = prefs.data?.accent
-
-  // Wear the person's colour; sign-out resets it (authStorage).
-  useEffect(() => {
-    if (accent) applyAccent(accent)
-  }, [accent])
-
   // The API refused a call because two-step sign-in must be set up first:
   // re-read who we are so the setup screen appears.
   useEffect(() => {

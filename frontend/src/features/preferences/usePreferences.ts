@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import type { AccentId } from '@/lib/accent'
+import type { TileDesignId } from '@/guide/designs'
 
 export interface Preferences {
-  accent: AccentId
+  /** The Guide tile's design (stored as `accent` for older saved choices). */
+  accent: TileDesignId
   assistant_enabled: boolean
   guide_style: 'show' | 'take'
   voice_enabled: boolean

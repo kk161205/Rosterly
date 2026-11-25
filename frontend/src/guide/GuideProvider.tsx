@@ -6,13 +6,13 @@ import { guideAllowed, usePreferences } from '@/features/preferences/usePreferen
 import { pagesFor } from '@/guide/pageMap'
 import { planLocally, validatePlan, type GuidePlan } from '@/guide/plan'
 import { aiPlan, type PlannerContext } from '@/guide/aiPlanner'
-import { explainAccess } from '@/guide/access'
 import { AnswerPanel } from '@/guide/AnswerPanel'
 import { AI_BASE_URL } from '@/lib/api-client'
 import { voiceSupported } from '@/guide/voice'
 import { runPlan } from '@/guide/runner'
 import { HOME_SELECTOR, findVisible, prefersReducedMotion } from '@/guide/dom'
 import { GuideOverlay } from '@/guide/GuideOverlay'
+import { nextGreeting } from '@/guide/greeting'
 import type { ResolvedPage } from '@/guide/types'
 
 export type GuidePhase = 'docked' | 'listening' | 'thinking' | 'guiding' | 'asking' | 'answer' | 'message'
@@ -20,6 +20,8 @@ export type GuidePhase = 'docked' | 'listening' | 'thinking' | 'guiding' | 'aski
 export interface TilePosition {
   x: number
   y: number
+  /** Size relative to the full tile; below 1 while it sits in the logo. */
+  scale?: number
 }
 
 /** Turns a question into a plan: the AI service when configured, else the page map. Failures fall back to the page map. */
@@ -80,7 +82,8 @@ const OFF: GuideContextValue = {
 /** The Guide's state, or "off" outside the signed-in app (e.g. the sign-in page). */
 export const useGuide = () => useContext(GuideContext) ?? OFF
 
-const TILE = 18 // px, the tile's size on screen
+const TILE = 22 // px, the tile's size on screen (keep in step with GuideOverlay)
+const GREETING_MS = 4000
 
 function besideElement(el: Element): TilePosition {
   const r = el.getBoundingClientRect()
@@ -88,7 +91,7 @@ function besideElement(el: Element): TilePosition {
   const vh = window.innerHeight
   return {
     x: Math.min(Math.max(r.right + 6, 8), vw - TILE - 8),
-    y: Math.min(Math.max(r.top - TILE / 2, 8), vh - TILE - 8),
+    y: Math.min(Math.max(r.top - TILE / 2, 20), vh - TILE - 8),
   }
 }
 
@@ -96,8 +99,15 @@ function homePosition(): TilePosition | null {
   const home = findVisible(HOME_SELECTOR)
   if (!home) return null
   const r = home.getBoundingClientRect()
-  return { x: r.left + r.width / 2 - TILE / 2, y: r.top + r.height / 2 - TILE / 2 }
+  // The logo's tile is 10.5 of the mark's 28 units; start (and end) at that size so it reads as leaving the logo.
+  const svg = (home as unknown as SVGGraphicsElement).ownerSVGElement
+  const mark = svg?.getBoundingClientRect().width ?? 0
+  const scale = mark > 0 ? (mark * 10.5) / 28 / TILE : 1
+  return { x: r.left + r.width / 2 - TILE / 2, y: r.top + r.height / 2 - TILE / 2, scale }
 }
+
+/** Two frames: the tile is painted where it starts before it is told to move, so the move animates. */
+const nextPaint = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
 
 /** Beside the Search-or-ask box (top centre), as if listening. */
 function listeningPosition(): TilePosition {
@@ -143,6 +153,8 @@ export const GuideProvider: React.FC<{
   const [tile, setTile] = useState<TilePosition | null>(null)
   const [fading, setFading] = useState(false)
   const [caption, setCaption] = useState('')
+  const [greeting, setGreeting] = useState('')
+  const openCount = useRef(0)
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
   const [choices, setChoices] = useState<{ label: string; plan: GuidePlan }[]>([])
@@ -195,6 +207,25 @@ export const GuideProvider: React.FC<{
       }
     },
     [reduced, timing.move],
+  )
+
+  /** Bring the tile out of the logo (if it is home) and on to `target`. */
+  const tileRef = useRef<TilePosition | null>(null)
+  tileRef.current = tile
+  const launch = useCallback(
+    async (target: TilePosition | null) => {
+      if (!tileRef.current) {
+        const start = homePosition()
+        if (start && timing.move > 0 && !reduced) {
+          setTile(start)
+          await nextPaint()
+        } else if (!target) {
+          setTile(start ?? listeningPosition())
+        }
+      }
+      await place(target)
+    },
+    [place, reduced, timing.move],
   )
 
   const goHome = useCallback(async () => {
@@ -259,7 +290,7 @@ export const GuideProvider: React.FC<{
       setTitle(plan.title)
       setMessage('')
       setPhase('guiding')
-      if (!tile) setTile(homePosition() ?? listeningPosition())
+      if (!tile) void launch(null)
       void runPlan(plan, {
         signal: controller.signal,
         style,
@@ -268,7 +299,7 @@ export const GuideProvider: React.FC<{
         pathname: () => pathRef.current,
         moveTo: async (el) => {
           highlight(el)
-          await place(el ? besideElement(el) : homePosition())
+          await launch(el ? besideElement(el) : homePosition())
         },
         say: (text) => {
           captionRef.current = text
@@ -307,7 +338,7 @@ export const GuideProvider: React.FC<{
         }
       })
     },
-    [pages, style, desktop, navigate, place, timing, tile, goHome, highlight],
+    [pages, style, desktop, navigate, launch, timing, tile, goHome, highlight],
   )
 
   const ask = useCallback(
@@ -322,13 +353,6 @@ export const GuideProvider: React.FC<{
       abortRef.current?.abort()
       const thinking = new AbortController()
       abortRef.current = thinking
-      // "Why can't I open …?" is answered from the page map itself — no AI call, nothing used up.
-      const access = explainAccess(text, user, pathRef.current)
-      if (access) {
-        abortRef.current = null
-        run(access)
-        return
-      }
       void planner(text, pages, { currentPage: pageIdFor(pathRef.current, pages), record: recordFor(pathRef.current), history: historyRef.current, signal: thinking.signal })
         .catch(() => planLocally(text, pages)) // the AI is down: fall back to the page map
         .then((plan) => {
@@ -338,7 +362,7 @@ export const GuideProvider: React.FC<{
           run(plan)
         })
     },
-    [allowed, planner, pages, run, user],
+    [allowed, planner, pages, run],
   )
 
   const setBoxOpen = useCallback(
@@ -351,14 +375,30 @@ export const GuideProvider: React.FC<{
         setChoices([])
         setMessage('')
         setPhase('listening')
-        if (!tile) setTile(homePosition() ?? listeningPosition())
-        void place(listeningPosition())
+        // Greet once the tile has arrived beside the box, unless the box was closed or reopened meanwhile.
+        const thisOpen = ++openCount.current
+        setGreeting('')
+        void launch(listeningPosition()).then(() => {
+          if (openCount.current === thisOpen) setGreeting(nextGreeting(user))
+        })
       } else if (phase === 'listening') {
+        openCount.current++
         void goHome()
       }
     },
-    [allowed, tile, place, phase, goHome, highlight],
+    [allowed, launch, phase, goHome, highlight, user],
   )
+
+  // The greeting is only for the moment the box opens: gone once the person asks, closes, or after a few seconds.
+  useEffect(() => {
+    if (phase !== 'listening') {
+      setGreeting('')
+      return
+    }
+    if (!greeting) return
+    const t = setTimeout(() => setGreeting(''), GREETING_MS)
+    return () => clearTimeout(t)
+  }, [phase, greeting])
 
   const askAgain = useCallback(() => setBoxOpen(true), [setBoxOpen])
 
@@ -395,6 +435,8 @@ export const GuideProvider: React.FC<{
             fading={fading}
             moveMs={reduced ? 0 : timing.move}
             caption={caption}
+            design={prefs.data?.accent}
+            greeting={greeting}
             title={title}
             message={message}
             question={question}

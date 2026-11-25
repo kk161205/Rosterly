@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { UserProfile } from '@/features/auth/types/auth'
 import { pagesFor } from '@/guide/pageMap'
 import { validatePlan } from '@/guide/plan'
-import { explainAccess } from '@/guide/access'
+import { lockedPages } from '@/guide/access'
 import { recordFor } from '@/guide/GuideProvider'
 
 const EMPLOYEE: UserProfile = { id: 'e', email: 'e@example.com', full_name: 'E', role: 'employee', permissions: ['request:create', 'request:read'] }
@@ -34,26 +34,11 @@ describe('Answers', () => {
   })
 })
 
-describe('“Why can’t I open this?” without AI', () => {
-  it('says who a page is for and who can change roles', () => {
-    const reply = explainAccess('why can’t I open analytics?', EMPLOYEE, '/home')
-    expect(reply?.kind).toBe('answer')
-    expect(reply?.kind === 'answer' && reply.text).toMatch(/^Analytics is for IT admins, HR admins, super admins and auditors.*ask a super admin/)
-  })
-
-  it('uses the page on screen for “this page”', () => {
-    const reply = explainAccess("why can't I see this page", EMPLOYEE, '/licenses')
-    expect(reply?.kind === 'answer' && reply.text).toMatch(/^Licences is for IT admins, super admins and auditors/)
-  })
-
-  it('tells someone who can open it where it is', () => {
-    const reply = explainAccess('why can’t I open licences', IT, '/home')
-    expect(reply?.kind === 'answer' && reply.text).toMatch(/^You can open Licences\. It’s under Assets/)
-  })
-
-  it('leaves other “why can’t I” questions to the Guide', () => {
-    expect(explainAccess('why can’t I complete this offboarding?', EMPLOYEE, '/home')).toBeNull()
-    expect(explainAccess('how many laptops are in stock', EMPLOYEE, '/home')).toBeNull()
+describe('“Why can’t I open this?”: facts for the AI', () => {
+  it('lists the pages this person can’t open and who each is for, and nothing they can open', () => {
+    const locked = lockedPages(pagesFor(EMPLOYEE))
+    expect(locked).toContainEqual({ title: 'Analytics', who: 'IT admins, HR admins, super admins and auditors (each sees the sections for their work)' })
+    expect(locked.map((p) => p.title)).not.toContain('Leave & Attendance')
   })
 })
 

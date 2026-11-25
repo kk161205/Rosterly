@@ -8,7 +8,7 @@ from app.core.rate_limit import RateLimiter
 ASSET_ID = "11111111-2222-3333-4444-555555555555"
 
 
-def test_why_is_my_request_stuck_needs_no_model_at_all(fakes, ask):
+def test_why_is_my_request_stuck_is_read_when_the_model_picks_it(fakes, ask):
     backend, groq = fakes
     backend.responses["/api/v1/requests/mine"] = (200, {"items": [
         {"id": "r1", "title": "Dell monitor", "status": "pending", "total_steps": 2, "created_at": "2026-11-18T09:00:00"},
@@ -18,12 +18,13 @@ def test_why_is_my_request_stuck_needs_no_model_at_all(fakes, ask):
         {"step_order": 1, "status": "approved", "approver_name": "Sarah Lee"},
         {"step_order": 2, "status": "pending", "approver_name": None, "approver_role_name": "it_admin"},
     ]})
+    groq.replies = [{"kind": "lookup", "tool": "request_status", "args": {}}]  # the model chooses the tool
     body = ask("why is my request stuck?").json()
     assert body["kind"] == "answer"
     assert "“Dell monitor” is waiting on an IT admin (step 2 of 2)" in body["text"]
     assert "Old chair" not in body["text"]
     assert body["links"] == [{"label": "Open Requests", "path": "/requests"}]
-    assert groq.requests == []  # answered without Groq
+    assert len(groq.requests) == 1  # one call to decide; the answer is written from the data
 
 
 def test_what_is_left_on_an_offboarding(fakes, ask):
@@ -50,10 +51,11 @@ def test_the_record_on_screen_is_read_only_when_one_is_open(fakes, ask):
     backend.responses[f"/api/v1/assets/{ASSET_ID}"] = (200, {"asset": {"asset_tag": "AST-0011", "name": "Pixel 8", "status": "assigned",
                                                                        "current_holder": {"full_name": "Alex Murphy"}}})
     backend.responses[f"/api/v1/assets/{ASSET_ID}/maintenance"] = (200, [])
-    groq.replies = [{"text": "AST-0011 is with Alex Murphy and has no open tickets."}]
+    groq.replies = [{"kind": "lookup", "tool": "this_record", "args": {}}, {"text": "AST-0011 is with Alex Murphy and has no open tickets."}]
     body = ask("what's happening with this one?", record={"type": "asset", "id": ASSET_ID}, current_page="asset").json()
     assert body["text"] == "AST-0011 is with Alex Murphy and has no open tickets."
-    assert len(groq.requests) == 1 and "Alex Murphy" in groq.requests[0]["messages"][1]["content"]  # read first, then answered from the data
+    assert "this_record" in groq.requests[0]["messages"][0]["content"]  # offered to the model while a record is open
+    assert "Alex Murphy" in groq.requests[1]["messages"][1]["content"]  # read, then answered from the data
     groq.requests.clear()
     groq.replies = [{"kind": "show", "title": "x", "steps": [{"action": "go", "page": "assets"}]}]
     ask("how do I return this?", record={"type": "asset", "id": ASSET_ID}).json()
@@ -104,3 +106,35 @@ def test_asset_categories_are_matched_as_stored():
     assert clean_args(tool, {"category": "Monitors"})["category"] == "monitor"
     assert clean_args(tool, {"category": "laptop"})["category"] == "laptop"
     assert clean_args(tool, {"category": "Furniture"})["category"] == "furniture"
+
+
+def test_the_ai_can_read_my_own_devices_and_link_each_record(fakes, ask):
+    backend, groq = fakes
+    backend.responses["/api/v1/employees/u-1/assets"] = (200, {"current": [
+        {"asset_id": "a-1", "asset_tag": "AST-1", "asset_name": "MacBook Air", "category": "laptop", "assigned_at": "2026-11-01T09:00:00"},
+        {"asset_id": "a-2", "asset_tag": "AST-2", "asset_name": "Dell monitor", "category": "monitor", "assigned_at": "2026-11-01T09:00:00"},
+    ], "history": []})
+    groq.replies = [{"kind": "lookup", "tool": "my_devices", "args": {}}]  # the model chooses the tool
+    body = ask("what devices do I have?").json()
+    assert body["kind"] == "answer"
+    assert "You have 2 devices assigned to you: MacBook Air (AST-1) and Dell monitor (AST-2)." in body["text"]
+    assert body["links"] == [
+        {"label": "AST-1 · MacBook Air", "path": "/assets/a-1"},
+        {"label": "AST-2 · Dell monitor", "path": "/assets/a-2"},
+    ]
+    assert not any(path == "/api/v1/assets" for path, *_ in backend.calls)  # never the company-wide list
+
+
+def test_no_devices_says_so(fakes, ask):
+    backend, groq = fakes
+    backend.responses["/api/v1/employees/u-1/assets"] = (200, {"current": [], "history": []})
+    groq.replies = [{"kind": "lookup", "tool": "my_devices", "args": {}}]
+    assert ask("which laptop is assigned to me").json()["text"] == "You have no devices assigned to you right now."
+
+
+def test_the_model_is_told_which_pages_are_locked_and_for_whom(fakes, ask):
+    backend, groq = fakes
+    groq.replies = [{"kind": "answer", "text": "Analytics is for admins."}]
+    ask("why can't I open analytics?", locked_pages=[{"title": "Analytics", "who": "IT admins, HR admins, super admins and auditors"}])
+    prompt = groq.requests[0]["messages"][0]["content"]
+    assert "- Analytics: for IT admins, HR admins, super admins and auditors" in prompt

@@ -198,6 +198,35 @@ def _checklist_links(d: dict[str, Any]) -> list[dict[str, str]]:
     return [{"label": f"Open {k.capitalize()}", "path": f"/{k}"} for k in ("onboarding", "offboarding") if k in kinds]
 
 
+# ---- "What do I have?": the person's own devices, each linked to its record.
+
+async def _my_devices(backend: Any, _args: dict[str, Any], _req: Any) -> dict[str, Any]:
+    me = await backend.get("/auth/me")
+    if not me.get("id"):
+        return {"current": []}
+    return await backend.get(f"/employees/{me['id']}/assets")
+
+
+def _device(a: dict[str, Any]) -> str:
+    return f"{a.get('asset_name')} ({a.get('asset_tag')})"
+
+
+def _render_devices(d: dict[str, Any]) -> dict[str, Any]:
+    current = (d or {}).get("current") or []
+    if not current:
+        return {"text": "You have no devices assigned to you right now."}
+    names = [_device(a) for a in current[:ROWS]]
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+    more = len(current) - len(names)
+    text = f"You have {len(current)} device{'s' if len(current) != 1 else ''} assigned to you: {listed}." + (f" And {more} more on your profile." if more > 0 else "")
+    rows = [[str(a.get("asset_name"))[:60], str(a.get("asset_tag")), str(a.get("category") or "").replace("_", " "), _ago(a.get("assigned_at"))] for a in current[:ROWS]]
+    return {"text": text, "table": {"columns": ["Device", "Tag", "Kind", "Assigned"], "rows": rows} if len(current) > 1 else None}
+
+
+def _device_links(d: dict[str, Any]) -> list[dict[str, str]]:
+    return [_link(f"{a.get('asset_tag')} · {a.get('asset_name')}", "/assets/", a.get("asset_id")) for a in ((d or {}).get("current") or [])[:LINKS]]
+
+
 # ---- "What's happening with this one?": the asset or person open on screen.
 
 async def _this_record(backend: Any, _args: dict[str, Any], req: Any) -> dict[str, Any]:
@@ -255,6 +284,10 @@ TOOLS: dict[str, Tool] = {
                 ],
             },
             links=lambda d: [_link(f"{a.get('asset_tag')} · {a.get('name')}", "/assets/", a.get("id")) for a in d.get("items", [])[:LINKS]],
+        ),
+        Tool(
+            "my_devices", "/employees/{me}/assets", "The devices and equipment assigned to the person themselves (not anyone else's).", "profile",
+            fetch=_my_devices, render=_render_devices, links=_device_links,
         ),
         Tool(
             "my_requests", "/requests/mine", "The person's own requests and where each one is.", "requests",

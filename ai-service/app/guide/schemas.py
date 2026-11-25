@@ -46,6 +46,15 @@ class RecordRef(BaseModel):
     id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
 
 
+class LockedPage(BaseModel):
+    """A page this person can't open: only its title and who it is for, so the Guide can explain access."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = Field(max_length=80)
+    who: str = Field(max_length=200)
+
+
 class GuideRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +63,7 @@ class GuideRequest(BaseModel):
     record: Optional[RecordRef] = None
     pages: list[Page] = Field(min_length=1, max_length=40)
     history: list[Turn] = Field(default_factory=list, max_length=2)
+    locked_pages: list[LockedPage] = Field(default_factory=list, max_length=40)
 
 
 class Step(BaseModel):

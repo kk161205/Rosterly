@@ -23,6 +23,7 @@ function Harness() {
     <>
       <Logo tileOut={guide.out} />
       <p data-testid="phase">{guide.phase}</p>
+      <p data-testid="allowed">{String(guide.allowed)}</p>
       <button onClick={() => guide.setBoxOpen(true)}>Open box</button>
       <CommandPalette open={guide.boxOpen} onOpenChange={guide.setBoxOpen} sections={[]} user={USER} canAsk={guide.allowed} onAsk={guide.ask} />
       <Routes>
@@ -77,6 +78,35 @@ describe('The Guide on screen', () => {
     expect(screen.queryByTestId('guide-tile')).not.toBeInTheDocument()
     expect(apply).not.toHaveAttribute('data-guide-active')
     expect(container.querySelector('[data-guide-home]')).toHaveAttribute('fill', 'currentColor')
+  })
+
+  it('greets the person once a visit beside the tile: hello, nothing on later opens, then welcome back on a new visit', async () => {
+    vi.spyOn(preferencesService, 'get').mockResolvedValue(prefs())
+    localStorage.clear()
+    sessionStorage.clear()
+    const width = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 }) // room beside the box
+    try {
+      renderGuide()
+      await waitFor(() => expect(screen.getByTestId('allowed')).toHaveTextContent('true')) // preferences loaded
+      fireEvent.click(screen.getByRole('button', { name: 'Open box' }))
+      expect(await screen.findByTestId('guide-greeting')).toHaveTextContent('Hello, Asha')
+      fireEvent.keyDown(await screen.findByRole('combobox', { name: 'Search or ask' }), { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByTestId('guide-greeting')).not.toBeInTheDocument())
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open box' })) // again on the same visit: no greeting
+      await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('listening'))
+      await new Promise((r) => setTimeout(r, 50))
+      expect(screen.queryByTestId('guide-greeting')).not.toBeInTheDocument()
+      fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search or ask' }), { key: 'Escape' })
+      await waitFor(() => expect(screen.getByTestId('phase')).toHaveTextContent('docked'))
+
+      sessionStorage.clear() // a new visit on the same device
+      fireEvent.click(screen.getByRole('button', { name: 'Open box' }))
+      expect(await screen.findByTestId('guide-greeting')).toHaveTextContent('Welcome back, Asha')
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+    }
   })
 
   it('stops and goes home when the person presses Stop, or Esc', async () => {

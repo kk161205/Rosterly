@@ -1,4 +1,5 @@
 import { AI_BASE_URL } from '@/lib/api-client'
+import { lockedPages } from '@/guide/access'
 import { authStorage } from '@/lib/authStorage'
 import { toAiPages } from '@/guide/pageMap'
 import type { GuidePlan, GuideStep } from '@/guide/plan'
@@ -48,6 +49,7 @@ export async function aiPlan(question: string, pages: ResolvedPage[], ctx: Plann
         current_page: ctx.currentPage,
         ...(ctx.record ? { record: ctx.record } : {}),
         pages: toAiPages(pages),
+        locked_pages: lockedPages(pages),
         history: ctx.history.slice(-2).map((t) => ({ question: t.question.slice(0, 300), answer: t.answer.slice(0, 600) })),
       }),
       // Stop/new question (signal) or 30 s, whichever comes first.

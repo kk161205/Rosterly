@@ -1,5 +1,5 @@
 """
-Personal preferences: the accent colour and the AI
+Personal preferences: the Guide tile's design and the AI
 Guide switches. Self only — everyone reads and changes just their own row.
 Not audited: these are personal display choices, not business records.
 The company switch `ai.assistant_enabled` (Access → Settings) is returned
@@ -19,7 +19,8 @@ from app.models.system import GuideStyle, UserPreference
 
 router = APIRouter()
 
-# Palette ids — the colours themselves live in the frontend (styles/globals.css).
+# Guide tile design ids (named Bolt, Sprout, … in frontend/src/guide/designs.ts).
+# Stored as `accent` because these began as colour ids; the ids never change.
 Accent = Literal["navy", "sage", "lavender", "dusk", "peach", "sand", "rose"]
 
 
